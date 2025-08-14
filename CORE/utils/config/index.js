@@ -1,6 +1,11 @@
-
+import dotenv from 'dotenv';
+dotenv.config();
 
 export const config = {
+    app: {
+        env: process.env.NODE_ENV,
+        port:process.env.PORT
+     },
     db: {
         host: process.env.DB_HOST,
         user: process.env.DB_USER,
@@ -8,3 +13,4 @@ export const config = {
         database: process.env.DB_NAME
     }
 }
+

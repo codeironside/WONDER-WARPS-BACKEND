@@ -1,53 +1,115 @@
-const winston = require('winston');
-require('winston-daily-rotate-file'); 
-// Define the log levels and their prioritie
-const logLevels = {
+import {
+    createLogger,
+    format,
+    config,
+    transports,
+} from "winston";
+import "winston-daily-rotate-file";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+const { combine, timestamp, printf, colorize, errors } = format;
+
+// Helper function to get the current directory name in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const customLevels = {
     levels: {
         error: 0,
         warn: 1,
         info: 2,
-        debug: 3
+        http: 3,
+        verbose: 4,
+        debug: 5,
+        silly: 6,
     },
     colors: {
-        error: 'red',
-        warn: 'yellow',
-        info: 'green',
-        debug: 'blue'
-    }
+        error: "red",
+        warn: "yellow",
+        info: "green",
+        http: "magenta",
+        verbose: "cyan",
+        debug: "blue",
+        silly: "gray",
+    },
 };
-const logger = winston.createLogger({
-    levels: logLevels.levels,
-    transports: [
-        new winston.transports.Console({
-            level: process.env.NODE_ENV === 'development' ? 'debug' : 'info', 
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-                winston.format.printf(({ timestamp, level, message }) => {
-                    return `[${timestamp}] ${level}: ${message}`;
-                })
-            )
-        }),
-        new winston.transports.DailyRotateFile({
-            filename: 'logs/app-%DATE%.log',
-            level: 'info',
-            datePattern: 'YYYY-MM-DD',
-            zippedArchive: true,
-            maxSize: '20m',  // Max file size before rotating
-            maxFiles: '7d',  // Keep logs for 7 days
-            format: winston.format.combine(
-                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-                winston.format.printf(({ timestamp, level, message }) => {
-                    return `[${timestamp}] ${level}: ${message}`;
-                })
-            )
-        })
-    ],
-    // Optionally add a log level filter globally
-    exitOnError: false // Do not exit the process on logging error
+config.addColors(customLevels.colors);
+
+const dailyTransport = new transports.DailyRotateFile({
+    dirname: path.join(__dirname, "../../../logs"),
+    filename: "application-%DATE%.log",
+    datePattern: "YYYY-MM-DD",
+    zippedArchive: true,
+    maxSize: "20m",
+    maxFiles: "14d",
+    level: "info",
+    format: combine(
+        timestamp(),
+        printf((info) => `${info.timestamp} [${info.level}]: ${info.message}`)
+    ),
+});
+dailyTransport.on("error", (err) => {
+    console.error(`[Logger Transport Error] ${err.message}`);
 });
 
-// Add colors for log levels in the console
-winston.addColors(logLevels.colors);
+class logger {
+    constructor() {
+        this.logger = createLogger({
+            levels: customLevels.levels,
+            level: "debug",
+            format: combine(
+                errors({ stack: true }),
+                timestamp(),
+                printf(
+                    ({ timestamp, level, message, stack }) =>
+                        `${timestamp} [${level}]: ${stack ?? message}`
+                )
+            ),
+            transports: [
+                new transports.Console({
+                    level: "debug",
+                    format: combine(
+                        colorize({ all: true }),
+                        timestamp(),
+                        printf(
+                            ({ timestamp, level, message }) =>
+                                `${timestamp} [${level}]: ${message}`
+                        )
+                    ),
+                }),
+                dailyTransport,
+            ],
+            exceptionHandlers: [
+                new transports.File({ filename: path.join(__dirname, "logs", "exceptions.log") }),
+            ],
+            rejectionHandlers: [
+                new transports.File({ filename: path.join(__dirname, "logs", "rejections.log") }),
+            ],
+            exitOnError: false,
+        });
+    }
 
-module.exports = logger;
+    error(msg) {
+        this.logger.error(msg);
+    }
+    warn(msg) {
+        this.logger.warn(msg);
+    }
+    info(msg) {
+        this.logger.info(msg);
+    }
+    debug(msg) {
+        this.logger.debug(msg);
+    }
+    silly(msg) {
+        this.logger.silly(msg);
+    }
+    http(msg) {
+        this.logger.http(msg);
+    }
+    verbose(msg) {
+        this.logger.verbose(msg);
+    }
+}
+export default new logger();

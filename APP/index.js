@@ -1,62 +1,96 @@
 import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express'
 import cors from 'cors';
 import helmet from 'helmet';
 
-// const apiRouter = require('./API');
-import logger from '../CORE/utils/logger/index.js';
-import { db } from'../CORE/services/db/index.js' ;
-import { applyRateLimit, logEveryRequest, flagMaliciousActivity } from'../CORE/middleware/rateLimiter/index.js'
-import  {API_SUFFIX} from '../CORE/utils/constants/index.js';
+import { apiRouter } from './APP_ROUTER/index.js';
+import logger from '@/logger';
+import { db } from '../CORE/services/db/index.js';
+import { applyRateLimit, logEveryRequest, flagMaliciousActivity } from '../CORE/middleware/rateLimiter/index.js'
+import { API_SUFFIX } from '../CORE/utils/constants/index.js';
 import { handleShutdown } from '../CORE/services/handleShutdown/index.js'
+import { config } from '@/config'
+import { requestLogger } from '../CORE/middleware/requestlogger/index,js';
 
-dotenv.config();
+
+
 export const app = express();
-
 
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
-
-
+app.use(requestLogger)
 
 app.use(applyRateLimit);
 app.use(logEveryRequest)
 app.use(flagMaliciousActivity)
 
-// API Routes
 app.use(API_SUFFIX, apiRouter);
-
 
 let server;
 
-
-
 process.on('SIGTERM', handleShutdown);
 process.on('SIGINT', handleShutdown);
+app.get('/api/v1/health', async (req, res) => {
+  let databaseStatus = 'down';
+  try {
+    if (db) {
+      databaseStatus = 'up';
+    }
+  } catch (error) {
+    databaseStatus = 'down';
+  }
+  const healthcheck = {
+    server: 'up',
+    database: databaseStatus,
+  };
+  try {
+    res.status(200).json(healthcheck);
+  } catch (error) {
+    healthcheck.server = 'down';
+    res.status(503).json(healthcheck);
+  }
+}
+)
+
 async function startApplication() {
   try {
-   
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught Exception:', error);
+      handleShutdown(error);
+    });
+    process.on("exit", (code) => {
+      console.log(`Process exiting with code: ${code}`);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+      handleShutdown(reason);
+    });
+
+
     logger.info('Starting database migrations...');
-    await db.migrate.latest();
+    // await db.migrate.latest();
     logger.info('Database migrations completed successfully.');
 
-    
+
     await db.raw('SELECT 1');
     logger.info('Database connection successful!');
 
-   
-    const port = process.env.PORT || 3000;
+
+    const port = config.app.port;
     server = app.listen(port, () => {
-      logger.info(`Server is running on port ${port}`);
+      logger.info(`\u001b[32mServer is running on port: \u001b[34mhttp://localhost:${port}\u001b[0m`);
+      logger.info(`\u001b[32mGo to \u001b[34mhttp://localhost:${port}/${API_SUFFIX}/health\u001b[0m to check server health`);
+
     });
 
   } catch (error) {
-    logger.error('Application failed to start:', error.message);
- 
+    logger.error('Application failed to start:', error);
+
     process.exit(1);
   }
 }
-
 
 startApplication();

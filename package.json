@@ -2,11 +2,23 @@
   "name": "wonder-warps-backend",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "app.js",
+    "aliases": {
+    "@API": "./API",
+    "@APP": "./APP",
+    "@CORE": "./CORE",
+    "@controllers": "./APP/controllers",
+    "@models": "./APP/models",
+    "@services": "./APP/services",
+    "@/config": "./CORE/utils/config/index.js",
+    "@/db": "./CORE/services/db/index.js",
+    "@/logger": "./CORE/utils/logger/index.js",
+    "@middleware": "./APP/middleware"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-   "server": "nodemon --import ./register-aliases.js ./APP/index.js"
-
+    "server": "nodemon --loader esm-module-alias/loader ./APP/index.js"
   },
   "repository": {
     "type": "git",
@@ -25,6 +37,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
+    "esm-module-alias": "^2.2.1",
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.1",
     "helmet": "^8.1.0",

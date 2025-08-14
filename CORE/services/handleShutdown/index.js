@@ -1,7 +1,8 @@
-const logger = require('@logger')
+import logger from '@/logger'
+import { db } from '@/db'
 let server
 
- export function handleShutdown(signal) {
+export function handleShutdown(signal) {
     logger.info(`${signal} received. Starting graceful shutdown...`);
     if (server) {
         server.close(() => {

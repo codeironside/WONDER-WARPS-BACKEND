@@ -1,18 +1,19 @@
 import knex from 'knex';
-import{ config} from '../../utils/config/index.js'
+import {config }from '@/config'
 
 
-
-
-const db = knex({
+export const db = knex({
+   
     client: 'pg', // Postgres client
     connection: {
-        host: config.host,
-        user: config.user,
-        password: config.password,
-        database: config.database,
+        host: config.db.host,
+        user: config.db.user,
+        password: config.db.password,
+        database: config.db.database,
+    },
+    migrations: {
+        directory: './migrations'
     },
     pool: { min: 0, max: 7 },
 });
 
-module.exports = { db };

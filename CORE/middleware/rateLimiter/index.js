@@ -1,20 +1,21 @@
-const rateLimit = require('express-rate-limit');
-const winston = require('winston');
-const logger = require('@logger');
-
+import rateLimit from 'express-rate-limit';
+import logger from '@/logger';
+import winston from 'winston';
 
 const rateLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, 
-    max: 100,                 
+    windowMs: 1 * 60 * 1000,
+    max: 100,
     message: {
         status: 'error',
         message: 'Too many requests, please try again later.',
         data: null
     },
-    headers: true,        
-    onLimitReached: (req, res, options) => {
+    handler: (req, res, next, options) => {
         logger.warn(`Rate limit exceeded for IP: ${req.ip} - ${req.method} ${req.originalUrl}`);
-    }
+        res.status(options.statusCode).send(options.message);
+    },
+    legacyHeaders: false,
+    standardHeaders: true,
 });
 
 const logRequest = (req, res, next) => {
@@ -26,29 +27,20 @@ const logRequest = (req, res, next) => {
         timestamp: new Date().toISOString(),
     };
 
-  
     logger.info(`Request log: ${JSON.stringify(logDetails)}`);
 
-    if (res.statusCode === 429) {
-        logger.warn(`Suspicious request detected: IP ${req.ip} exceeded rate limit.`);
-    }
     next();
 };
-
 
 const flagMaliciousRequests = (req, res, next) => {
     if (req.method === 'POST' && req.originalUrl.includes('/login') && res.statusCode === 401) {
         const ip = req.ip;
-
         logger.warn(`Malicious activity detected: Multiple failed login attempts from IP: ${ip}`);
     }
 
     next();
 };
 
-
-const applyRateLimit = rateLimiter;
-const logEveryRequest = logRequest;
-const flagMaliciousActivity = flagMaliciousRequests;
-
-module.exports = { applyRateLimit, logEveryRequest, flagMaliciousActivity };
+export const applyRateLimit = rateLimiter;
+export const logEveryRequest = logRequest;
+export const flagMaliciousActivity = flagMaliciousRequests;
