@@ -4,7 +4,7 @@
   "description": "",
   "type": "module",
   "main": "app.js",
-    "aliases": {
+  "aliases": {
     "@API": "./API",
     "@APP": "./APP",
     "@CORE": "./CORE",
@@ -35,12 +35,14 @@
   },
   "homepage": "https://github.com/codeironside/WONDER-WARPS-BACKEND#readme",
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "esm-module-alias": "^2.2.1",
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.1",
     "helmet": "^8.1.0",
+    "joi": "^18.0.0",
     "jsonwebtoken": "^9.0.2",
     "module-alias": "^2.2.3",
     "pg": "^8.16.3",
@@ -57,6 +59,8 @@
     "@services": "./APP/services",
     "@config": "./CORE/utils/config/index.js",
     "@/logger": "./CORE/utils/logger/index.js",
+    "@/error": "./CORE/middleware/errorhandler/index.js",
+    "@/response": "./CORE/utils/response.handler/index.js",
     "@middleware": "./APP/middleware"
   },
   "devDependencies": {

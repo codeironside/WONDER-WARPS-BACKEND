@@ -81,10 +81,10 @@ class logger {
                 dailyTransport,
             ],
             exceptionHandlers: [
-                new transports.File({ filename: path.join(__dirname, "logs", "exceptions.log") }),
+                new transports.File({ filename: path.join(__dirname, "../../../logs", "exceptions.log") }),
             ],
             rejectionHandlers: [
-                new transports.File({ filename: path.join(__dirname, "logs", "rejections.log") }),
+                new transports.File({ filename: path.join(__dirname, "../../../logs", "rejections.log") }),
             ],
             exitOnError: false,
         });
