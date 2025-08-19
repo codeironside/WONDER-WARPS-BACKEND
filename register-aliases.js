@@ -10,7 +10,7 @@ addAliases({
     '@controllers': path.join(__dirname, 'APP/controllers'),
     '@models': path.join(__dirname, 'APP/models'),
     '@services': path.join(__dirname, 'APP/services'),
-    '@config': path.join(__dirname, 'CORE/utils/config/index.js'),
+    '@config': path.join(__dirname, './CORE/utils/config/index.js'),
     '@/logger': path.join(__dirname, './CORE/utils/logger/index.js'),
     '@middleware': path.join(__dirname, 'APP/middleware'),
 });

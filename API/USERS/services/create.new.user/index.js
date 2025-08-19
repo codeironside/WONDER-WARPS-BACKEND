@@ -3,6 +3,7 @@
 import User from '../../model/index.js';
 import ErrorHandler from '../../../../CORE/middleware/errorhandler/index.js';
 import { sendResponse } from '../../../../CORE/utils/response.handler/index.js';
+import logger from '../../../../CORE/utils/logger/index.js';
 
 export async function createUser(req, res, next) {
     const { email, password, firstName,lastName,phoneNumber } = req.body;
@@ -15,7 +16,7 @@ export async function createUser(req, res, next) {
             firstName: newUser.firstName,
             lastName:newUser.lastName
         });
-
+        logger.info(`user with email:-${email} has been created`)
     } catch (error) {
         if (error.message.includes('already exists')) {
             throw new ErrorHandler('User with this email or username already exists.', 409);

@@ -1,8 +1,7 @@
-// APP/models/UserModel.js
-
 import bcrypt from 'bcrypt';
 import knex from 'knex';
 import knexConfig from '../../../knexfile.js';
+import ErrorHandler from '../../../CORE/middleware/errorhandler/index.js';
 
 const db = knex(knexConfig.development);
 const SALT_ROUNDS = 10;
@@ -12,7 +11,10 @@ class User{
         return db('users').where({ id }).first();
     }
     static async findByEmail(email) {
-        return db('users').where({ email }).first();
+       
+        const user = db('users').where({ email }).first();
+        if (!user)
+            throw new ErrorHandler(`user not found`,404)
     }
     static async create(userData) {
         const hashedPassword = await bcrypt.hash(userData.password, SALT_ROUNDS);
