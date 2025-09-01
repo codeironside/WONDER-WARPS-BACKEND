@@ -1,9 +1,9 @@
 // File: knex_migrate.js
 
-exports.up = function (knex) {
+export function up(knex) {
     return knex.schema.createTable('book_templates', (table) => {
         table.increments('id').primary();
-        table.string('user_id').notNullable();
+        table.integer('user_id').notNullable();
         table.foreign('user_id').references('id').inTable('users');
         table.string('title').notNullable();
         table.text('description');
@@ -21,6 +21,6 @@ exports.up = function (knex) {
     });
 };
 
-exports.down = function (knex) {
+export function down(knex) {
     return knex.schema.dropTable('book_templates');
 };
