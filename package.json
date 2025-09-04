@@ -15,11 +15,12 @@
     "@/db": "./CORE/services/db/index.js",
     "@/logger": "./CORE/utils/logger/index.js",
     "@middleware": "./APP/middleware",
-    "@/Error":"./CORE/middleware/errorhandler/index.js"
+    "@/Error": "./CORE/middleware/errorhandler/index.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "server": "nodemon --loader esm-module-alias/loader ./APP/index.js"
+    "server": "nodemon --loader esm-module-alias/loader ./APP/index.js",
+    "lint": "eslint ."
   },
   "repository": {
     "type": "git",
@@ -54,6 +55,9 @@
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
+    "eslint": "^9.34.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
     "knex": "^3.1.0",
     "nodemon": "^3.1.10"
   }

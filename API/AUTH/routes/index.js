@@ -5,11 +5,10 @@ import { emailForForgetPassword } from "../services/email.for.forget.password/in
 import { verifyOtpAndResetPassword } from "../services/verify.otp/index.js";
 import { signOut } from "../services/log.out.a.user/index.js";
 
-
-export const UserRouter = Router()
+export const UserRouter = Router();
 //=======public routes
-UserRouter.post("/public/signup", createUser)
-UserRouter.post('/public/login', SignIn)
-UserRouter.post('/public/forgot-password', emailForForgetPassword)
-UserRouter.post('/public/verify-otp',verifyOtpAndResetPassword) 
-UserRouter.post('/public/logout',signOut)
+UserRouter.post("/public/signup", createUser);
+UserRouter.post("/public/login", SignIn);
+UserRouter.post("/public/forgot-password", emailForForgetPassword);
+UserRouter.post("/public/verify-otp", verifyOtpAndResetPassword);
+UserRouter.post("/public/logout", signOut);

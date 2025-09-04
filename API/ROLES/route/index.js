@@ -3,6 +3,4 @@ import { Router } from "express";
 
 export const RoleRouter = Router();
 
-
-
-RoleRouter.post('/createroles',createRole)
+RoleRouter.post("/createroles", createRole);

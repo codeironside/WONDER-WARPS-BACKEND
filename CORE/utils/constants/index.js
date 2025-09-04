@@ -1,1 +1,1 @@
-export const API_SUFFIX= "/api/v1"
+export const API_SUFFIX = "/api/v1";
