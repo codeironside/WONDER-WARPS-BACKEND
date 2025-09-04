@@ -15,18 +15,17 @@ import { requestLogger } from '../CORE/middleware/requestlogger/index,js';
 import knex from 'knex'; 
 import knexConfig from '../knexfile.js';
 import ErrorHandler from '../CORE/middleware/errorhandler/index.js';
+import { sendResponse } from '../CORE/utils/response.handler/index.js';
 export const app = express();
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
 app.use(requestLogger)
 
 app.use(applyRateLimit);
 app.use(logEveryRequest)
 app.use(flagMaliciousActivity)
-app.use(ErrorHandler)
-
+app.use(express.json());
 app.use(API_SUFFIX, apiRouter);
 
 let server;
@@ -90,6 +89,15 @@ async function startApplication() {
       const statusCode = err.statusCode || 500;
       const message = err.message || 'Internal Server Error';
       sendResponse(res, statusCode, message, null, 'error');
+    });
+
+    // Error handling middleware using ErrorHandler class
+    app.use((err, req, res, next) => {
+      let error = err;
+      if (!(err instanceof ErrorHandler)) {
+        error = new ErrorHandler(err.message || 'Internal Server Error', err.statusCode || 500);
+      }
+      sendResponse(res, error.statusCode, error.message, null, 'error');
     });
 
       app.listen(port, () => {

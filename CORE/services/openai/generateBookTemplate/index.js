@@ -1,87 +1,142 @@
-import { Configuration, OpenAIApi } from 'openai';
+import OpenAI from 'openai';
+import { config } from '@/config';
+import ErrorHandler from '@/Error';
 
 class StorybookGenerator {
-    constructor(apiKey) {
-        const configuration = new Configuration({
-            apiKey: apiKey,
-        });
-        this.openai = new OpenAIApi(configuration);
+    constructor() {
+        const apiKey = config.openai.API_KEY;
+        this.openai = new OpenAI({ apiKey });
     }
 
     async generateStory({
-        prompt,
-        name,
-        photo_url,
-        skin_tone,
-        hair_type,
-        hairstyle,
-        hair_color,
-        eye_color,
-        facial_features,
-        clothing,
-        dedication,
-        gender,
-        milestone_date
+        theme,
+        name = "",
+        photo_url = "",
+        skin_tone = "",
+        hair_type = "",
+        hairstyle = "",
+        hair_color = "",
+        eye_color = "",
+        facial_features = "",
+        clothing = "",
+        gender = "",
+        milestone_date = "",
+        age_min = 5,
+        age_max = 10,
+        prompt_message,
+        title = "Untitled Story"
     }) {
-        // Constructing a detailed prompt for the AI to generate a 750+ word story
-        const prompt = `
-            Write a personalized children's story with the following details:
-            - Name: ${name}
-            - Photo URL: ${photo_url}
-            - Skin tone: ${skin_tone}
-            - Hair type: ${hair_type}
-            - Hairstyle: ${hairstyle}
-            - Hair color: ${hair_color}
-            - Eye color: ${eye_color}
-            - Facial features: ${facial_features}
-            - Clothing: ${clothing}
-            - Dedication message: ${dedication}
-            - Gender: ${gender}
-            - Special date: ${milestone_date}
+        let prompt = `${theme}:\nWrite a full, detailed children’s storybook with the following details:\n`;
 
-            The story should be magical, imaginative, and fun, celebrating the child's special day. The narrative should incorporate the given details and make the child feel like the protagonist in an exciting adventure. Ensure that the story is at least 750 words long. Add descriptions of the environment, emotions, and actions, and keep the tone joyful and engaging. The story should have a clear plot that connects the child’s features and special day to the adventure.
-        `;
+        if (name) prompt += `- Name: ${name}\n`;
+        if (photo_url) prompt += `- Photo URL: ${photo_url}\n`;
+        if (skin_tone) prompt += `- Skin tone: ${skin_tone}\n`;
+        if (hair_type) prompt += `- Hair type: ${hair_type}\n`;
+        if (hairstyle) prompt += `- Hairstyle: ${hairstyle}\n`;
+        if (hair_color) prompt += `- Hair color: ${hair_color}\n`;
+        if (eye_color) prompt += `- Eye color: ${eye_color}\n`;
+        if (facial_features) prompt += `- Facial features: ${facial_features}\n`;
+        if (clothing) prompt += `- Clothing: ${clothing}\n`;
+        if (gender) prompt += `- Gender: ${gender}\n`;
+
+        prompt += `\n${prompt_message}\n`;
 
         try {
-            const response = await this.openai.createCompletion({
-                model: 'text-davinci-003',
-                prompt: prompt,
-                max_tokens: 1500, // Setting max_tokens for longer responses (adjust as necessary)
-                temperature: 0.7,  // Makes the response more creative and natural
+            const response = await this.openai.chat.completions.create({
+                model: 'gpt-3.5-turbo',
+                messages: [
+                    {
+                        role: 'system',
+                        content: `You are a helpful assistant that writes a children's storybook for ages ${age_min} to ${age_max}.
+                        You will return the story as a single JSON object with the following format:
+                        
+                        {
+                          "book_title": "The title of the book",
+                          "author": "${name}",
+                          "chapters": [
+                            {
+                              "chapter_title": "The title of chapter 1",
+                              "chapter_content": "The full content of chapter 1, formatted with Markdown.",
+                              "image_description": "A brief, vivid description for an illustration.",
+                              "image_position": "A description of the image's position (e.g., 'background' or 'full scene')"
+                            }
+                          ],
+                          "suggested_font": "Font name for the story"
+                        }`
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                max_tokens: 1500,
+                temperature: 0.7,
             });
 
-            const story = response.data.choices[0].text.trim();
+            const storyData = this.formatBookData(response.choices[0].message.content.trim());
 
-            // If the story is under 750 words, ask AI to expand
-            if (story.split(' ').length < 750) {
-                return this.generateStory({ ...arguments[0], prompt: prompt });
-            }
+            const images = await this.generateImagesForChapters(storyData.chapters, age_min, age_max);
+            const coverImage = await this.generateCoverImage(storyData);
 
-            // Return the generated story
-            return story;
+            const storybookContent = this.addImagesToStory(storyData, images);
+
+            return { ...storybookContent, coverImage, author: name, title };
+
         } catch (error) {
             console.error('Error generating story:', error);
-            throw new Error('Failed to generate the story.');
+            throw new ErrorHandler('Failed to generate the story.', 500);
         }
     }
 
-    async generateIllustrations(description) {
-        // Integrate with an image generation model (like DALL·E) to generate illustrations
-        // Here, we'll just provide a placeholder example
+    formatBookData(jsonString) {
         try {
-            const imageResponse = await this.openai.createImage({
-                prompt: description,
-                n: 3,  // Generate 3 different image variations
+            return JSON.parse(jsonString);
+        } catch (error) {
+            console.error("Failed to parse JSON string:", error);
+            return null;
+        }
+    }
+
+    async generateImagesForChapters(chapters, age_min, age_max) {
+        const imagePromises = chapters.map(async (chapter) => {
+            const imageDescription = chapter.image_description;
+            const backgroundStory = chapter.chapter_content;
+            const image = await this.openai.images.generate({
+                model: "dall-e-3",
+                response_format: "url",
+                prompt: `Using this background story: ${backgroundStory}, generate a cartoon image with the following features: ${imageDescription}. The story is for kids aged ${age_min} to ${age_max}.`,
+                n: 1,
+                quality: "standard",
                 size: '1024x1024',
             });
+            return image.data[0].url;
+        });
 
-            const illustrations = imageResponse.data.data.map(image => image.url);
-            return illustrations;
-        } catch (error) {
-            console.error('Error generating illustration:', error);
-            throw new Error('Failed to generate the illustration.');
-        }
+        return await Promise.all(imagePromises);
+    }
+
+    async generateCoverImage(storyData) {
+        const fullStoryText = storyData.chapters.map(chapter => chapter.chapter_content).join(' ');
+        const prompt = `Generate a cover image for a children's storybook titled "${storyData.book_title}". The story is about ${fullStoryText}. The image should be colorful and engaging for children, aged ${storyData.age_min} to ${storyData.age_max}.`;
+
+        const coverImage = await this.openai.images.generate({
+            model: "dall-e-3",
+            response_format: "url",
+            prompt,
+            n: 1,
+            quality: "hd",
+            size: '1024x1024',
+        });
+
+        return coverImage.data[0].url;
+    }
+
+    addImagesToStory(storyData, imageUrls) {
+        storyData.chapters.forEach((chapter, index) => {
+            chapter.image_url = imageUrls[index];
+        });
+        return storyData;
     }
 }
 
-export default StorybookGenerator;
+export default new StorybookGenerator();

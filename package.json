@@ -14,7 +14,8 @@
     "@/config": "./CORE/utils/config/index.js",
     "@/db": "./CORE/services/db/index.js",
     "@/logger": "./CORE/utils/logger/index.js",
-    "@middleware": "./APP/middleware"
+    "@middleware": "./APP/middleware",
+    "@/Error":"./CORE/middleware/errorhandler/index.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
