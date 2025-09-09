@@ -47,7 +47,10 @@ export async function SignIn(req, res, next) {
       next(error);
     } else {
       next(
-        new ErrorHandler("An unexpected error occurred during sign in.", 500),
+        new ErrorHandler(
+          `An unexpected error occurred during sign in.${error.message}`,
+          500,
+        ),
       );
     }
   }

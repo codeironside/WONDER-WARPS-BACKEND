@@ -1,73 +1,279 @@
 import knex from "knex";
-import ErrorHandler from "../../../CORE/middleware/errorhandler";
-import knexfile from "../../../knexfile";
+import Joi from "joi";
+import knexfile from "../../../knexfile.js";
+import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
+
 const db = knex(knexfile.development);
 
 class BookTemplate {
-  static table = "book_templates";
+  static tableName = "story_book_templates";
+
+  static validationSchema = Joi.object({
+    user_id: Joi.number().integer().positive().required(),
+    book_title: Joi.string().trim().min(3).max(255).required(),
+    suggested_font: Joi.string().trim().min(3).max(255).required(),
+    description: Joi.string().allow(null, "").optional(),
+    skin_tone: Joi.string().allow(null, "").optional(),
+    hair_type: Joi.string().required(),
+    hair_style: Joi.string().required(),
+    hair_color: Joi.string().allow(null, "").optional(),
+    eye_color: Joi.string().allow(null, "").optional(),
+    clothing: Joi.string().allow(null, "").optional(),
+    gender: Joi.string().required(),
+    age_min: Joi.string().required(),
+    age_max: Joi.string().allow(null, "").optional(),
+    cover_image: Joi.array().items(Joi.string().uri()).default([]),
+    genre: Joi.string().allow(null, "").optional(),
+    author: Joi.string().allow(null, "").optional(),
+    price: Joi.number().precision(2).positive().allow(null).optional(),
+    chapters: Joi.array()
+      .items(
+        Joi.object({
+          chapter_title: Joi.string().max(500).required(),
+          chapter_content: Joi.string().required(),
+          image_description: Joi.string().max(1000).allow(null, "").optional(),
+          image_position: Joi.string().max(50).allow(null, "").optional(),
+          image_url: Joi.string().uri().max(1000).allow(null, "").optional(),
+        }),
+      )
+      .default([]),
+    keywords: Joi.array().items(Joi.string()).allow(null).optional(),
+    is_personalizable: Joi.boolean().default(true),
+  }).unknown(false);
+
+  static async findByTitle(book_title, user_id = null) {
+    const query = db(this.tableName).where({ book_title });
+    if (user_id) query.andWhere({ user_id });
+    return query.first();
+  }
 
   static async create(data) {
+    const { error, value: validatedData } = this.validationSchema.validate(
+      data,
+      {
+        abortEarly: false,
+        stripUnknown: true,
+      },
+    );
+
+    if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
+
+    const existing = await this.findByTitle(
+      validatedData.book_title,
+      validatedData.user_id,
+    );
+    if (existing) {
+      throw new ErrorHandler(
+        "A book template with this title already exists",
+        409,
+      );
+    }
+
+    if (
+      Array.isArray(validatedData.keywords) &&
+      validatedData.keywords.length === 0
+    ) {
+      validatedData.keywords = null;
+    }
+
+    const trx = await db.transaction();
+
     try {
-      const [newTemplate] = await db(this.table).insert(data).returning("*");
-      return newTemplate;
-    } catch (error) {
-      console.error("Error creating book template:", error);
-      throw new ErrorHandler("Failed to create book template", 500);
+      const insertData = {
+        ...validatedData,
+        chapters: JSON.stringify(validatedData.chapters || []),
+        cover_image: JSON.stringify(validatedData.cover_image || []),
+      };
+
+      const [newTemplate] = await trx(this.tableName)
+        .insert(insertData)
+        .returning("*");
+
+      if (validatedData.chapters && validatedData.chapters.length > 0) {
+        const chaptersWithTemplateId = validatedData.chapters.map(
+          (chapter) => ({
+            chapter_title: chapter.chapter_title?.substring(0, 500) || "",
+            chapter_content: chapter.chapter_content || "",
+            image_description:
+              chapter.image_description?.substring(0, 1000) || null,
+            image_position: chapter.image_position?.substring(0, 50) || null,
+            image_url: chapter.image_url?.substring(0, 1000) || null,
+            book_template_id: newTemplate.id,
+          }),
+        );
+
+        await trx("chapters").insert(chaptersWithTemplateId);
+      }
+
+      await trx.commit();
+
+      const completeTemplate = await this.findByIdWithChapters(newTemplate.id);
+      return completeTemplate;
+    } catch (err) {
+      await trx.rollback();
+      throw new ErrorHandler(err.message, 500);
     }
   }
 
   static async findById(id) {
-    try {
-      const template = await db(this.table).where({ id }).first();
-      return template || null;
-    } catch (error) {
-      console.error("Error finding book template by ID:", error);
-      throw new ErrorHandler("Failed to find book template", 404);
+    const template = await db(this.tableName).where({ id }).first();
+    if (template) {
+      return {
+        ...template,
+        chapters:
+          typeof template.chapters === "string"
+            ? JSON.parse(template.chapters)
+            : template.chapters,
+        cover_image:
+          typeof template.cover_image === "string"
+            ? JSON.parse(template.cover_image)
+            : template.cover_image,
+      };
     }
+    return null;
+  }
+
+  static async findByIdWithChapters(id) {
+    const template = await this.findById(id);
+    if (!template) return null;
+
+    const chapters = await db("chapters")
+      .where({ book_template_id: id })
+      .orderBy("id", "asc");
+
+    return { ...template, chapters };
   }
 
   static async findAll() {
-    try {
-      return db(this.table).select("*");
-    } catch (error) {
-      console.error("Error finding all book templates:", error);
-      throw new ErrorHandler("Failed to retrieve book templates", 500);
-    }
+    const templates = await db(this.tableName).select("*");
+    return templates.map((template) => ({
+      ...template,
+      chapters:
+        typeof template.chapters === "string"
+          ? JSON.parse(template.chapters)
+          : template.chapters,
+      cover_image:
+        typeof template.cover_image === "string"
+          ? JSON.parse(template.cover_image)
+          : template.cover_image,
+    }));
   }
 
   static async findByKeywords(keywords) {
     try {
-      return db(this.table).whereRaw(
-        "keywords ?| array[" + keywords.map(() => "?").join(",") + "]",
+      const { error } = Joi.array()
+        .items(Joi.string().trim().min(1))
+        .validate(keywords);
+
+      if (error)
+        throw new ErrorHandler(
+          "Keywords must be an array of non-empty strings",
+          400,
+        );
+
+      return db(this.tableName).whereRaw(
+        `keywords ?| array[${keywords.map(() => "?").join(",")}]`,
         keywords,
       );
     } catch (error) {
-      console.error("Error finding book templates by keywords:", error);
-      throw new ErrorHandler("Failed to find book templates by keywords", 404);
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to find book templates by keywords", 500);
     }
   }
 
   static async update(id, data) {
+    const { error, value: validatedData } = this.validationSchema.validate(
+      data,
+      {
+        abortEarly: false,
+        stripUnknown: true,
+      },
+    );
+
+    if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
+
+    const existing = await this.findById(id);
+    if (!existing) throw new ErrorHandler("Book template not found", 404);
+
+    if (
+      validatedData.book_title &&
+      validatedData.book_title !== existing.book_title
+    ) {
+      const titleExists = await this.findByTitle(
+        validatedData.book_title,
+        validatedData.user_id,
+      );
+      if (titleExists)
+        throw new ErrorHandler(
+          "A book template with this title already exists",
+          409,
+        );
+    }
+
+    const trx = await db.transaction();
+
     try {
-      const updatedCount = await db(this.table).where({ id }).update(data);
-      if (updatedCount > 0) {
-        return this.findById(id);
+      const updateData = {
+        ...validatedData,
+        chapters: JSON.stringify(validatedData.chapters || []),
+        cover_image: JSON.stringify(validatedData.cover_image || []),
+      };
+
+      const updatedCount = await trx(this.tableName)
+        .where({ id })
+        .update(updateData);
+
+      if (validatedData.chapters) {
+        await trx("chapters").where({ book_template_id: id }).delete();
+
+        if (validatedData.chapters.length > 0) {
+          const chaptersWithTemplateId = validatedData.chapters.map(
+            (chapter) => ({
+              chapter_title: chapter.chapter_title?.substring(0, 500) || "",
+              chapter_content: chapter.chapter_content || "",
+              image_description:
+                chapter.image_description?.substring(0, 1000) || null,
+              image_position: chapter.image_position?.substring(0, 50) || null,
+              image_url: chapter.image_url?.substring(0, 1000) || null,
+              book_template_id: id,
+            }),
+          );
+
+          await trx("chapters").insert(chaptersWithTemplateId);
+        }
       }
-      return null;
-    } catch (error) {
-      console.error("Error updating book template:", error);
+
+      await trx.commit();
+
+      if (updatedCount === 0) return null;
+      return this.findByIdWithChapters(id);
+    } catch (err) {
+      await trx.rollback();
       throw new ErrorHandler("Failed to update book template", 500);
     }
   }
 
   static async delete(id) {
+    const trx = await db.transaction();
+
     try {
-      const deletedCount = await db(this.table).where({ id }).del();
-      return deletedCount > 0;
+      await trx("chapters").where({ book_template_id: id }).delete();
+      const deletedCount = await trx(this.tableName).where({ id }).del();
+
+      await trx.commit();
+
+      if (deletedCount === 0)
+        throw new ErrorHandler("Book template not found", 404);
+      return true;
     } catch (error) {
-      console.error("Error deleting book template:", error);
+      await trx.rollback();
+      if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to delete book template", 500);
     }
+  }
+
+  static formatValidationError(error) {
+    return error.details.map((detail) => detail.message).join(", ");
   }
 }
 

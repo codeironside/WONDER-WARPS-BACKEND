@@ -15,7 +15,7 @@ import {
 import { API_SUFFIX } from "../CORE/utils/constants/index.js";
 import { handleShutdown } from "../CORE/services/handleShutdown/index.js";
 import { config } from "@/config";
-import { requestLogger } from "../CORE/middleware/requestlogger/index,js";
+import { requestLogger } from "../CORE/middleware/requestlogger/index.js";
 import knex from "knex";
 import knexConfig from "../knexfile.js";
 import ErrorHandler from "../CORE/middleware/errorhandler/index.js";

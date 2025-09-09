@@ -9,6 +9,7 @@ const JWT_SECRET = config.app.JWT_SECRET;
 export const authorize = (allowedRoles) => {
   return async (req, res, next) => {
     const authHeader = req.headers.authorization;
+    console.log("auth", authHeader);
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       throw new ErrorHandler(
         "Authorization header is missing or invalid.",
@@ -40,6 +41,7 @@ export const authorize = (allowedRoles) => {
       req.user = user;
       next();
     } catch (error) {
+      console.log(error);
       if (error.name === "TokenExpiredError") {
         throw new ErrorHandler("Access token has expired.", 401);
       } else if (error.name === "JsonWebTokenError") {
