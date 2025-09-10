@@ -2,11 +2,12 @@ import knex from "knex";
 import Joi from "joi";
 import knexfile from "../../../knexfile.js";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
-
+import S3Service from "../../../CORE/services/s3/index.js";
 const db = knex(knexfile.development);
 
 class BookTemplate {
   static tableName = "story_book_templates";
+  static s3Service = new S3Service();
 
   static validationSchema = Joi.object({
     user_id: Joi.number().integer().positive().required(),
@@ -76,6 +77,13 @@ class BookTemplate {
       validatedData.keywords = null;
     }
 
+    // Upload images to S3 before saving
+    try {
+      await this.uploadImagesToS3(validatedData);
+    } catch (error) {
+      throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
+    }
+
     const trx = await db.transaction();
 
     try {
@@ -112,6 +120,57 @@ class BookTemplate {
     } catch (err) {
       await trx.rollback();
       throw new ErrorHandler(err.message, 500);
+    }
+  }
+
+  static async uploadImagesToS3(templateData) {
+    // Upload cover images to S3
+    if (templateData.cover_image && Array.isArray(templateData.cover_image)) {
+      const uploadedCoverImages = [];
+
+      for (const imageUrl of templateData.cover_image) {
+        if (!imageUrl) continue;
+
+        try {
+          const s3Key = this.s3Service.generateImageKey(
+            `books/${templateData.book_title}/covers`,
+            imageUrl,
+          );
+          const s3Url = await this.s3Service.uploadImageFromUrl(
+            imageUrl,
+            s3Key,
+          );
+          uploadedCoverImages.push(s3Url);
+        } catch (error) {
+          console.error(`Failed to upload cover image: ${error.message}`);
+          // Keep the original URL if upload fails
+          uploadedCoverImages.push(imageUrl);
+        }
+      }
+
+      templateData.cover_image = uploadedCoverImages;
+    }
+
+    // Upload chapter images to S3
+    if (templateData.chapters && Array.isArray(templateData.chapters)) {
+      for (const chapter of templateData.chapters) {
+        if (!chapter.image_url) continue;
+
+        try {
+          const s3Key = this.s3Service.generateImageKey(
+            `books/${templateData.book_title}/chapters`,
+            chapter.image_url,
+          );
+          const s3Url = await this.s3Service.uploadImageFromUrl(
+            chapter.image_url,
+            s3Key,
+          );
+          chapter.image_url = s3Url;
+        } catch (error) {
+          console.error(`Failed to upload chapter image: ${error.message}`);
+          // Keep the original URL if upload fails
+        }
+      }
     }
   }
 
@@ -208,6 +267,13 @@ class BookTemplate {
           "A book template with this title already exists",
           409,
         );
+    }
+
+    // Upload new images to S3 before updating
+    try {
+      await this.uploadImagesToS3(validatedData);
+    } catch (error) {
+      throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
     }
 
     const trx = await db.transaction();

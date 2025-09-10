@@ -17,10 +17,10 @@
     "@middleware": "./APP/middleware",
     "@/Error": "./CORE/middleware/errorhandler/index.js"
   },
-"scripts": {
-  "server": "nodemon --loader esm-module-alias/loader ./APP/index.js",
-  "lint": "eslint ."
-},
+  "scripts": {
+    "server": "nodemon --loader esm-module-alias/loader ./APP/index.js",
+    "lint": "eslint ."
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/codeironside/WONDER-WARPS-BACKEND.git"
@@ -36,6 +36,7 @@
   },
   "homepage": "https://github.com/codeironside/WONDER-WARPS-BACKEND#readme",
   "dependencies": {
+    "aws-sdk": "^2.1692.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
@@ -47,6 +48,7 @@
     "joi": "^18.0.1",
     "jsonwebtoken": "^9.0.2",
     "module-alias": "^2.2.3",
+    "node-fetch": "^3.3.2",
     "openai": "^5.16.0",
     "pg": "^8.16.3",
     "sequelize": "^6.37.7",

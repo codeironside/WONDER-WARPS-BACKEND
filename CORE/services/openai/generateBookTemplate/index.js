@@ -47,26 +47,34 @@ class StorybookGenerator {
         messages: [
           {
             role: "system",
-            content: `You are a helpful assistant that writes a children's storybook for ages ${age_min} to ${age_max}.
-                        You will return the story as a single JSON object with the following format:
-                        
-                        {
-                          "book_title": "The title of the book",
-                          "author": "${name}",
-                          "chapters": [
-                            {
-                              "chapter_title": "The title of chapter 1",
-                              "chapter_content": "The full content of chapter 1, formatted with Markdown.",
-                              "image_description": "A brief, vivid description for an illustration.",
-                              "image_position": "A description of the image's position (e.g., 'background' or 'full scene')"
-                            }
-                          ],
-                          "suggested_font": "Font name for the story"
-                        }`,
+            content: `You are a professional children's storyteller. You will write a fun, magical, and joyful story for a child aged ${age_min} to ${age_max}, the gender is ${gender}.
+
+**Story Rules:**
+* The story must have a clear beginning, middle, and end.
+* It must be at least **three chapters** long.
+* The tone should be similar to a whimsical Studio Ghibli film, full of imagination and wonder.
+
+You will return the story as a single JSON object with the following format:
+{
+  "book_title": "The title of the book",
+  "author": "${name}",
+  "chapters": [
+    {
+      "chapter_title": "The title of chapter 1",
+      "chapter_content": "The full content of chapter 1, formatted with Markdown.",
+      "image_description": "A brief, vivid description for an illustration.",
+      "image_position": "A description of the image's position (e.g., 'background' or 'full scene')"
+    }
+  ],
+  "suggested_font": "Font name for the story"
+}`,
           },
           {
             role: "user",
-            content: prompt,
+            content: `Using the details below, weave a captivating story with a magical adventure. Make sure the child feels like the protagonist.
+            
+            Details for the story:
+            ${prompt}`,
           },
         ],
         max_tokens: 1500,
@@ -81,8 +89,9 @@ class StorybookGenerator {
         storyData.chapters,
         age_min,
         age_max,
+        gender,
       );
-      const coverImage = await this.generateCoverImage(storyData);
+      const coverImage = await this.generateCoverImage(storyData, gender);
 
       const storybookContent = this.addImagesToStory(storyData, images);
 
@@ -102,14 +111,14 @@ class StorybookGenerator {
     }
   }
 
-  async generateImagesForChapters(chapters, age_min, age_max) {
+  async generateImagesForChapters(chapters, age_min, age_max, gender) {
     const imagePromises = chapters.map(async (chapter) => {
       const imageDescription = chapter.image_description;
       const backgroundStory = chapter.chapter_content;
       const image = await this.openai.images.generate({
         model: "dall-e-3",
         response_format: "url",
-        prompt: `Using this background story: ${backgroundStory}, generate a cartoon image with the following features: ${imageDescription}. The story is for kids aged ${age_min} to ${age_max}.`,
+        prompt: `A beautiful and whimsical children's story illustration in the style of Studio Ghibli, with no text, words, or lettering. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. Focus on lush, hand-drawn nature, soft, magical lighting, and a sense of wonder.`,
         n: 1,
         quality: "standard",
         size: "1024x1024",
@@ -120,11 +129,12 @@ class StorybookGenerator {
     return await Promise.all(imagePromises);
   }
 
-  async generateCoverImage(storyData) {
+  async generateCoverImage(storyData, gender) {
+    console.log(gender);
     const fullStoryText = storyData.chapters
       .map((chapter) => chapter.chapter_content)
       .join(" ");
-    const prompt = `Generate a cover image for a children's storybook titled "${storyData.book_title}". The story is about ${fullStoryText}. The image should be colorful and engaging for children, aged ${storyData.age_min} to ${storyData.age_max}.`;
+    const prompt = `A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere.`;
 
     const coverImage = await this.openai.images.generate({
       model: "dall-e-3",
@@ -146,4 +156,4 @@ class StorybookGenerator {
   }
 }
 
-export default new StorybookGenerator();
+export default StorybookGenerator;

@@ -3,6 +3,8 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 import logger from "../../../../../CORE/utils/logger/index.js";
 import BookTemplate from "../../../model/index.js";
 
+// Remove this line: const bookTemplate = new BookTemplate();
+
 export const saveBookTemplate = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -38,6 +40,7 @@ export const saveBookTemplate = async (req, res, next) => {
       suggested_font: story.suggested_font,
     };
 
+    // Use the static method directly
     const newTemplate = await BookTemplate.create(bookTemplateData);
 
     logger.info(`Book template created by user ${userId}: ${story.book_title}`);
