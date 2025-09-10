@@ -51,8 +51,9 @@ class StorybookGenerator {
 
 **Story Rules:**
 * The story must have a clear beginning, middle, and end.
-* It must be at least **three chapters** long.
+* It must be at least **three chapters** long, and 10 chapters at most.
 * The tone should be similar to a whimsical Studio Ghibli film, full of imagination and wonder.
+* The story must confirm to the age range
 
 You will return the story as a single JSON object with the following format:
 {
@@ -115,14 +116,16 @@ You will return the story as a single JSON object with the following format:
     const imagePromises = chapters.map(async (chapter) => {
       const imageDescription = chapter.image_description;
       const backgroundStory = chapter.chapter_content;
+
       const image = await this.openai.images.generate({
         model: "dall-e-3",
         response_format: "url",
-        prompt: `A beautiful and whimsical children's story illustration in the style of Studio Ghibli, with no text, words, or lettering. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. Focus on lush, hand-drawn nature, soft, magical lighting, and a sense of wonder.`,
+        prompt: `A beautiful and whimsical children's story illustration in the style of Studio Ghibli, with no text, words, or lettering in the image. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. Focus on lush, hand-drawn nature, soft, magical lighting, and a sense of wonder. Absolutely no text, words, or letters should be present in any part of the image.`,
         n: 1,
         quality: "standard",
         size: "1024x1024",
       });
+
       return image.data[0].url;
     });
 
@@ -134,7 +137,8 @@ You will return the story as a single JSON object with the following format:
     const fullStoryText = storyData.chapters
       .map((chapter) => chapter.chapter_content)
       .join(" ");
-    const prompt = `A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere.`;
+
+    const prompt = `A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli, with no text, words, or lettering in the image. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
 
     const coverImage = await this.openai.images.generate({
       model: "dall-e-3",

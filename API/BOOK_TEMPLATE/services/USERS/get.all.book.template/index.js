@@ -3,9 +3,9 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 import logger from "../../../../../CORE/utils/logger/index.js";
 import BookTemplate from "../../../model/index.js";
 
-export const getAllbookTemplates = async (req, res, next) => {
+export const getAllbookTemplatesForUsers = async (req, res, next) => {
   try {
-    const templates = await BookTemplate.findAll();
+    const templates = await BookTemplate.findAllByUser();
 
     sendResponse(res, 200, "Book templates retrieved successfully", templates);
   } catch (error) {

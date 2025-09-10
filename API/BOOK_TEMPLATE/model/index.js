@@ -3,6 +3,7 @@ import Joi from "joi";
 import knexfile from "../../../knexfile.js";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import S3Service from "../../../CORE/services/s3/index.js";
+
 const db = knex(knexfile.development);
 
 class BookTemplate {
@@ -23,7 +24,7 @@ class BookTemplate {
     gender: Joi.string().required(),
     age_min: Joi.string().required(),
     age_max: Joi.string().allow(null, "").optional(),
-    cover_image: Joi.array().items(Joi.string().uri()).default([]),
+    cover_image: Joi.array().items(Joi.string().uri()).min(1).required(),
     genre: Joi.string().allow(null, "").optional(),
     author: Joi.string().allow(null, "").optional(),
     price: Joi.number().precision(2).positive().allow(null).optional(),
@@ -59,6 +60,11 @@ class BookTemplate {
 
     if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
 
+    // Validate that cover_image is not empty
+    if (!validatedData.cover_image || validatedData.cover_image.length === 0) {
+      throw new ErrorHandler("Cover image is required", 400);
+    }
+
     const existing = await this.findByTitle(
       validatedData.book_title,
       validatedData.user_id,
@@ -81,6 +87,7 @@ class BookTemplate {
     try {
       await this.uploadImagesToS3(validatedData);
     } catch (error) {
+      console.error("Error uploading images to S3:", error);
       throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
     }
 
@@ -119,19 +126,25 @@ class BookTemplate {
       return completeTemplate;
     } catch (err) {
       await trx.rollback();
+      console.error("Database error:", err);
       throw new ErrorHandler(err.message, 500);
     }
   }
 
   static async uploadImagesToS3(templateData) {
+    console.log("Uploading images to S3...");
+
     // Upload cover images to S3
     if (templateData.cover_image && Array.isArray(templateData.cover_image)) {
       const uploadedCoverImages = [];
 
       for (const imageUrl of templateData.cover_image) {
-        if (!imageUrl) continue;
+        if (!imageUrl) {
+          throw new ErrorHandler("Cover image URL cannot be empty", 400);
+        }
 
         try {
+          console.log(`Uploading cover image: ${imageUrl}`);
           const s3Key = this.s3Service.generateImageKey(
             `books/${templateData.book_title}/covers`,
             imageUrl,
@@ -140,15 +153,20 @@ class BookTemplate {
             imageUrl,
             s3Key,
           );
+          console.log(`Cover image uploaded to: ${s3Url}`);
           uploadedCoverImages.push(s3Url);
         } catch (error) {
           console.error(`Failed to upload cover image: ${error.message}`);
-          // Keep the original URL if upload fails
-          uploadedCoverImages.push(imageUrl);
+          throw new ErrorHandler(
+            `Failed to upload cover image: ${error.message}`,
+            500,
+          );
         }
       }
 
       templateData.cover_image = uploadedCoverImages;
+    } else {
+      throw new ErrorHandler("Cover image is required", 400);
     }
 
     // Upload chapter images to S3
@@ -157,6 +175,7 @@ class BookTemplate {
         if (!chapter.image_url) continue;
 
         try {
+          console.log(`Uploading chapter image: ${chapter.image_url}`);
           const s3Key = this.s3Service.generateImageKey(
             `books/${templateData.book_title}/chapters`,
             chapter.image_url,
@@ -165,6 +184,7 @@ class BookTemplate {
             chapter.image_url,
             s3Key,
           );
+          console.log(`Chapter image uploaded to: ${s3Url}`);
           chapter.image_url = s3Url;
         } catch (error) {
           console.error(`Failed to upload chapter image: ${error.message}`);
@@ -217,6 +237,20 @@ class BookTemplate {
           : template.cover_image,
     }));
   }
+  static async findAllForUser() {
+    const templates = await db(this.tableName).select("*");
+    return templates.map((template) => ({
+      ...template,
+      chapters:
+        typeof template.chapters === "string"
+          ? JSON.parse(template.chapters)
+          : template.chapters,
+      cover_image:
+        typeof template.cover_image === "string"
+          ? JSON.parse(template.cover_image)
+          : template.cover_image,
+    }));
+  }
 
   static async findByKeywords(keywords) {
     try {
@@ -250,6 +284,11 @@ class BookTemplate {
     );
 
     if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
+
+    // Validate that cover_image is not empty
+    if (!validatedData.cover_image || validatedData.cover_image.length === 0) {
+      throw new ErrorHandler("Cover image is required", 400);
+    }
 
     const existing = await this.findById(id);
     if (!existing) throw new ErrorHandler("Book template not found", 404);
@@ -335,6 +374,107 @@ class BookTemplate {
       await trx.rollback();
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to delete book template", 500);
+    }
+  }
+
+  static async findAllByUser(userId, options = {}) {
+    try {
+      const {
+        limit = 20,
+        offset = 0,
+        includeChapters = false,
+        minimal = false,
+      } = options;
+
+      let query = db(this.tableName)
+        .where({ user_id: userId })
+        .orderBy("created_at", "desc")
+        .limit(limit)
+        .offset(offset);
+
+      const templates = await query;
+
+      return templates.map((template) => {
+        // Parse JSON fields
+        const parsedTemplate = {
+          ...template,
+          cover_image:
+            typeof template.cover_image === "string"
+              ? JSON.parse(template.cover_image)
+              : template.cover_image,
+        };
+
+        // If minimal response is requested, return only essential fields
+        if (minimal) {
+          return {
+            id: parsedTemplate.id,
+            book_title: parsedTemplate.book_title,
+            cover_image: parsedTemplate.cover_image,
+            genre: parsedTemplate.genre,
+            age_min: parsedTemplate.age_min,
+            age_max: parsedTemplate.age_max,
+            price: parsedTemplate.price,
+            is_personalizable: parsedTemplate.is_personalizable,
+            created_at: parsedTemplate.created_at,
+            updated_at: parsedTemplate.updated_at,
+          };
+        }
+
+        // Include chapters if requested
+        if (includeChapters) {
+          parsedTemplate.chapters =
+            typeof template.chapters === "string"
+              ? JSON.parse(template.chapters)
+              : template.chapters;
+        } else {
+          // Just include chapter count instead of full chapters
+          parsedTemplate.chapter_count = template.chapters
+            ? typeof template.chapters === "string"
+              ? JSON.parse(template.chapters).length
+              : template.chapters.length
+            : 0;
+          delete parsedTemplate.chapters;
+        }
+
+        // Remove sensitive or unnecessary fields
+        delete parsedTemplate.user_id;
+        delete parsedTemplate.keywords;
+
+        return parsedTemplate;
+      });
+    } catch (error) {
+      throw new ErrorHandler("Failed to fetch user templates", 500);
+    }
+  }
+
+  static async findByIdForUser(id, userId) {
+    try {
+      const template = await db(this.tableName)
+        .where({ id, user_id: userId })
+        .first();
+
+      if (!template) {
+        throw new ErrorHandler("Book template not found", 404);
+      }
+      const parsedTemplate = {
+        ...template,
+        chapters:
+          typeof template.chapters === "string"
+            ? JSON.parse(template.chapters)
+            : template.chapters,
+        cover_image:
+          typeof template.cover_image === "string"
+            ? JSON.parse(template.cover_image)
+            : template.cover_image,
+      };
+
+      // Remove sensitive fields
+      delete parsedTemplate.user_id;
+
+      return parsedTemplate;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to fetch template", 500);
     }
   }
 

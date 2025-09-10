@@ -3,8 +3,6 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 import logger from "../../../../../CORE/utils/logger/index.js";
 import BookTemplate from "../../../model/index.js";
 
-// Remove this line: const bookTemplate = new BookTemplate();
-
 export const saveBookTemplate = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -12,6 +10,13 @@ export const saveBookTemplate = async (req, res, next) => {
 
     if (!story || !story.book_title) {
       throw new ErrorHandler("Story data with book title is required", 400);
+    }
+    if (
+      !story.cover_image ||
+      !Array.isArray(story.cover_image) ||
+      story.cover_image.length === 0
+    ) {
+      throw new ErrorHandler("Cover image is required", 400);
     }
 
     const bookTemplateData = {
@@ -26,7 +31,7 @@ export const saveBookTemplate = async (req, res, next) => {
       gender: story.gender,
       age_min: story.age_min,
       age_max: story.age_max || null,
-      cover_image: Array.isArray(story.cover_image) ? story.cover_image : [],
+      cover_image: story.cover_image, // This is now required
       genre: story.genre || null,
       author: story.author || null,
       price: story.price ? parseFloat(story.price) : null,
@@ -40,7 +45,6 @@ export const saveBookTemplate = async (req, res, next) => {
       suggested_font: story.suggested_font,
     };
 
-    // Use the static method directly
     const newTemplate = await BookTemplate.create(bookTemplateData);
 
     logger.info(`Book template created by user ${userId}: ${story.book_title}`);

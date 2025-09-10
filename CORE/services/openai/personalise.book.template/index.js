@@ -3,6 +3,7 @@ import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 import PersonalizedBook from "./personalizedBook.js";
+import S3Service from "../../s3/index.js";
 
 class StoryPersonalizer {
   constructor() {
@@ -12,6 +13,7 @@ class StoryPersonalizer {
     }
 
     this.openai = new OpenAI({ apiKey });
+    this.s3Service = new S3Service();
   }
 
   async personalizeStory(templateId, personalizationDetails) {
@@ -181,6 +183,7 @@ class StoryPersonalizer {
       eyeColor,
       clothing,
       gender,
+      childName,
     } = personalizationDetails;
 
     const imagePromises = originalChapters.map(
@@ -199,7 +202,19 @@ class StoryPersonalizer {
             n: 1,
           });
 
-          return image.data[0].url;
+          const imageUrl = image.data[0].url;
+
+          // Upload to S3
+          const s3Key = this.s3Service.generateImageKey(
+            `personalized-books/${childName}/chapters`,
+            imageUrl,
+          );
+          const s3Url = await this.s3Service.uploadImageFromUrl(
+            imageUrl,
+            s3Key,
+          );
+
+          return s3Url;
         } catch (error) {
           console.error(
             `Error generating personalized image for chapter ${index + 1}:`,
@@ -248,7 +263,7 @@ class StoryPersonalizer {
     try {
       const { childName } = personalizationDetails;
 
-      const prompt = `Create a children's book cover with NO TEXT of any kind. Maintain the same composition and style as the original but with these character changes:
+      const prompt = `Create a children's book image with NO TEXT of any kind. Maintain the same composition and style as the original but with these character changes:
       
       Book title: "${storyData.book_title}"
       
@@ -274,7 +289,16 @@ class StoryPersonalizer {
         n: 1,
       });
 
-      return coverImage.data[0].url;
+      const imageUrl = coverImage.data[0].url;
+
+      // Upload to S3
+      const s3Key = this.s3Service.generateImageKey(
+        `personalized-books/${childName}/covers`,
+        imageUrl,
+      );
+      const s3Url = await this.s3Service.uploadImageFromUrl(imageUrl, s3Key);
+
+      return s3Url;
     } catch (error) {
       console.error("Error generating personalized cover image:", error);
       return null;
