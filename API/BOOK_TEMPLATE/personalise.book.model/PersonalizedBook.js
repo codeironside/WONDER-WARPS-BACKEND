@@ -1,7 +1,7 @@
 import knex from "knex";
 import Joi from "joi";
-import knexfile from "../../../../knexfile.js";
-import ErrorHandler from "../../../middleware/errorhandler/index.js";
+import knexfile from "../../../knexfile.js";
+import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 
 const db = knex(knexfile.development);
 
