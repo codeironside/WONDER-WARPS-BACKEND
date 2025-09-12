@@ -39,7 +39,7 @@ export async function SignIn(req, res, next) {
         lastName: user.last_name,
         username: user.username,
         phonenumber: user.phonenumber,
-        role:user.role
+        role: user.role,
       },
     });
     logger.info(`user with email:-${email} signed in successfully`);

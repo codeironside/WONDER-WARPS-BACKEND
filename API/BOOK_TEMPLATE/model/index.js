@@ -497,7 +497,27 @@ class BookTemplate {
   }
 
   static async update(id, data) {
-    const { error, value: validatedData } = this.validationSchema.validate(
+    const updateValidationSchema = Joi.object({
+      book_title: Joi.string().trim().min(3).max(255).optional(),
+      suggested_font: Joi.string().trim().min(3).max(255).optional(),
+      description: Joi.string().allow(null, "").optional(),
+      skin_tone: Joi.string().allow(null, "").optional(),
+      hair_type: Joi.string().optional(),
+      hair_style: Joi.string().optional(),
+      hair_color: Joi.string().allow(null, "").optional(),
+      eye_color: Joi.string().allow(null, "").optional(),
+      clothing: Joi.string().allow(null, "").optional(),
+      gender: Joi.string().optional(),
+      age_min: Joi.string().optional(),
+      age_max: Joi.string().allow(null, "").optional(),
+      genre: Joi.string().allow(null, "").optional(),
+      author: Joi.string().allow(null, "").optional(),
+      price: Joi.number().precision(2).positive().allow(null).optional(),
+      keywords: Joi.array().items(Joi.string()).optional(),
+      is_personalizable: Joi.boolean().optional(),
+      is_public: Joi.boolean().optional(),
+    }).unknown(false);
+    const { error, value: validatedData } = updateValidationSchema.validate(
       data,
       {
         abortEarly: false,
@@ -507,21 +527,15 @@ class BookTemplate {
 
     if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
 
-    // Validate that cover_image is not empty
-    if (!validatedData.cover_image || validatedData.cover_image.length === 0) {
-      throw new ErrorHandler("Cover image is required", 400);
-    }
-
     const existing = await BookTemplateModel.findById(id);
     if (!existing) throw new ErrorHandler("Book template not found", 404);
-
     if (
       validatedData.book_title &&
       validatedData.book_title !== existing.book_title
     ) {
       const titleExists = await this.findByTitle(
         validatedData.book_title,
-        validatedData.user_id,
+        validatedData.user_id || existing.user_id,
       );
       if (titleExists) {
         throw new ErrorHandler(
@@ -530,62 +544,35 @@ class BookTemplate {
         );
       }
     }
-
-    // Upload new images to S3 before updating
-    try {
-      await this.uploadImagesToS3(validatedData);
-    } catch (error) {
-      throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
+    if (validatedData.cover_image) {
+      try {
+        await this.uploadImagesToS3(validatedData);
+      } catch (error) {
+        throw new ErrorHandler(
+          `Failed to upload images: ${error.message}`,
+          500,
+        );
+      }
     }
 
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
-      // Update the book template
+      // Update only the provided fields
       const updatedTemplate = await BookTemplateModel.findByIdAndUpdate(
         id,
-        validatedData,
-        { new: true, runValidators: true, session },
+        { $set: validatedData },
+        { new: true, runValidators: true },
       );
 
-      // Update chapters if provided
-      if (validatedData.chapters) {
-        // Delete existing chapters
-        await Chapter.deleteMany({ book_template_id: id }, { session });
-
-        // Create new chapters
-        if (validatedData.chapters.length > 0) {
-          const chapters = validatedData.chapters.map((chapter, index) => ({
-            chapter_title: chapter.chapter_title?.substring(0, 500) || "",
-            chapter_content: chapter.chapter_content || "",
-            image_description:
-              chapter.image_description?.substring(0, 1000) || null,
-            image_position:
-              chapter.image_position?.substring(0, 50) || "full scene",
-            image_url: chapter.image_url?.substring(0, 1000) || null,
-            book_template_id: id,
-            order: index,
-          }));
-
-          await Chapter.insertMany(chapters, { session });
-        }
-      }
-
-      await session.commitTransaction();
-      session.endSession();
-
-      return await this.findByIdWithChapters(id);
+      return updatedTemplate;
     } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
+      console.error("Database update error:", err);
       throw new ErrorHandler("Failed to update book template", 500);
     }
   }
   static async findPublicByIdWithChapters(id) {
     try {
       const template = await BookTemplateModel.findOne({
-        _id: mongoose.Schema.ObjectId(id),
+        _id: id,
         is_public: true,
       });
 
@@ -594,7 +581,7 @@ class BookTemplate {
       }
       const chapters = await Chapter.find({ book_template_id: id })
         .sort({ order: 1 })
-        .select("-book_template_id -__v");
+        .select("-book_template_id -__v -image_description");
 
       // Convert to object and remove unnecessary fields
       const templateObj = template.toObject();
@@ -803,6 +790,38 @@ class BookTemplate {
       { $inc: { popularity_score: 1 } },
       { new: true },
     );
+  }
+
+  static async findPopularTemplates(options = {}) {
+    const { page = 1, limit = 10, min_popularity = 0, filters = {} } = options;
+
+    const skip = (page - 1) * limit;
+
+    // Build base query
+    const query = {
+      ...filters,
+      popularity_score: { $gte: min_popularity },
+    };
+
+    // Get templates sorted by popularity
+    const templates = await BookTemplateModel.find(query)
+      .select("-chapters -__v -user_id") // Exclude unnecessary fields
+      .sort({ popularity_score: -1, createdAt: -1 }) // Sort by popularity then date
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await BookTemplateModel.countDocuments(query);
+
+    return {
+      templates,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
   }
 }
 

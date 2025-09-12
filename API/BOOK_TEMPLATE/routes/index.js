@@ -7,8 +7,10 @@ import { getAllbookTemplates } from "../services/ADMIN/get.all.book.template/ind
 import { getAllbookTemplatesforadmin } from "../services/ADMIN/get.all.templates.by.admin/index.js";
 
 import { getOneBookWithChapterForAdmin } from "../services/ADMIN/get.one.book.with.chapter/index.js";
-import { getPublicTemplateWithChapters } from "../services/USERS/get.all.book.with.chapter/index.js";
+import { getPublicTemplateWithChapters } from "../services/USERS/get.book.with.chapter/index.js";
 import { getPublicTemplates } from "../services/USERS/get.all.book.template/index.js";
+import { updateBookTemplate } from "../services/ADMIN/update.a.book.template/index.js";
+import { getPopularTemplates } from "../services/USERS/getpopulartemplates/index.js";
 
 export const BookTemplateRouter = Router();
 
@@ -61,3 +63,10 @@ BookTemplateRouter.get(
   authorize(["Admin", "User"]),
   getPublicTemplateWithChapters,
 );
+BookTemplateRouter.put(
+  "/updateBookTemplates/:id",
+  authorize(["Admin"]),
+  updateBookTemplate,
+);
+
+BookTemplateRouter.get("/getpopularTemplates", getPopularTemplates);
