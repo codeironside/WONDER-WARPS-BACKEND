@@ -25,3 +25,7 @@ export function up(knex) {
     table.timestamps(true, true);
   });
 }
+
+export function down(knex) {
+  return knex.schema.dropTableIfExists("story_book_templates");
+}
