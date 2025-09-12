@@ -223,8 +223,12 @@ class BookTemplate {
     return { ...template, chapters };
   }
 
-  static async findAll() {
-    const templates = await db(this.tableName).select("*");
+  static async findAll(options = {}) {
+    const { limit = 20, offset = 0 } = options;
+    const templates = await db(this.tableName)
+      .select("*")
+      .limit(limit)
+      .offset(offset);
     return templates.map((template) => ({
       ...template,
       chapters:
@@ -395,7 +399,6 @@ class BookTemplate {
       const templates = await query;
 
       return templates.map((template) => {
-        // Parse JSON fields
         const parsedTemplate = {
           ...template,
           cover_image:
@@ -403,8 +406,6 @@ class BookTemplate {
               ? JSON.parse(template.cover_image)
               : template.cover_image,
         };
-
-        // If minimal response is requested, return only essential fields
         if (minimal) {
           return {
             id: parsedTemplate.id,

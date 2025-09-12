@@ -5,7 +5,18 @@ import BookTemplate from "../../../model/index.js";
 
 export const getAllbookTemplates = async (req, res, next) => {
   try {
-    const templates = await BookTemplate.findAll();
+    const {
+      limit = 20,
+      offset = 0,
+      includeChapters = false,
+      minimal = false,
+    } = req.query;
+    const templates = await BookTemplate.findAll({
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      includeChapters: includeChapters === "true",
+      minimal: minimal === "true",
+    });
 
     sendResponse(res, 200, "Book templates retrieved successfully", templates);
   } catch (error) {
