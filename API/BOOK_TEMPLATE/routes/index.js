@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authorize } from "../../../CORE/middleware/authmiddleware/index.js";
 import { createBookTemplate } from "../services/ADMIN/create.book.template/index.js";
 import { saveBookTemplate } from "../services/ADMIN/save.book.template/index.js";
-import { personalizeBook } from "../services/USERS/personalised.book.template/index.js";
+import { personalizeBook } from "../../PERSONALISATION/services/USERS/personalised.book.template/index.js";
 import { getAllbookTemplates } from "../services/ADMIN/get.all.book.template/index.js";
 import { getAllbookTemplatesforadmin } from "../services/ADMIN/get.all.templates.by.admin/index.js";
 
