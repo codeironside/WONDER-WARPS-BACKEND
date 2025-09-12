@@ -584,17 +584,14 @@ class BookTemplate {
   }
   static async findPublicByIdWithChapters(id) {
     try {
-      // Find public template by ID
       const template = await BookTemplateModel.findOne({
-        _id: id,
+        _id: mongoose.Schema.ObjectId(id),
         is_public: true,
       });
 
       if (!template) {
         throw new ErrorHandler("Public book template not found", 404);
       }
-
-      // Get chapters for the template
       const chapters = await Chapter.find({ book_template_id: id })
         .sort({ order: 1 })
         .select("-book_template_id -__v");
@@ -610,11 +607,11 @@ class BookTemplate {
       throw new ErrorHandler("Failed to fetch public template", 500);
     }
   }
-  static async incrementPopularity(id) {
+  static async incrementPersonalizationCount(id) {
     try {
       const updatedTemplate = await BookTemplateModel.findByIdAndUpdate(
         id,
-        { $inc: { popularity_score: 1 } },
+        { $inc: { personalization_count: 1 } },
         { new: true },
       ).select("-chapters -__v -user_id");
 
@@ -625,7 +622,7 @@ class BookTemplate {
       return updatedTemplate;
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler("Failed to update template popularity", 500);
+      throw new ErrorHandler("Failed to update personalization count", 500);
     }
   }
   static async findAllPublicTemplates(options = {}) {
@@ -800,7 +797,6 @@ class BookTemplate {
     return error.details.map((detail) => detail.message).join(", ");
   }
 
-  // Method to increment popularity score (for tracking popular templates)
   static async incrementPopularity(id) {
     return await BookTemplateModel.findByIdAndUpdate(
       id,

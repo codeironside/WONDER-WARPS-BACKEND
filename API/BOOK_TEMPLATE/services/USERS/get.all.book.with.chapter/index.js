@@ -10,11 +10,12 @@ export const getPublicTemplateWithChapters = async (req, res, next) => {
     if (!id) {
       throw new ErrorHandler("Template ID is required", 400);
     }
-
+    
     const template = await BookTemplate.findPublicByIdWithChapters(id);
 
     sendResponse(res, 200, "Public template retrieved successfully", template);
   } catch (error) {
+    
     logger.error(`Failed to get public template: ${error.message}`);
     next(error);
   }
