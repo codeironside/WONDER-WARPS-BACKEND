@@ -1,74 +1,91 @@
+import mongoose from "mongoose";
 import bcrypt from "bcrypt";
-import knex from "knex";
-import knexConfig from "../../../knexfile.js";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import RoleModel from "../../ROLES/model/index.js";
 
-const db = knex(knexConfig.development);
 const SALT_ROUNDS = 10;
 
-class User {
-  static async findById(id) {
-    return db("users").where({ id }).first();
+const userSchema = new mongoose.Schema(
+  {
+    username: { type: String, required: true, unique: true },
+    firstname: { type: String, required: true },
+    lastname: { type: String, required: true },
+    phonenumber: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    role: { type: Number, required: true, ref: "roles" },
+  },
+  { timestamps: true },
+);
+
+userSchema.pre("save", async function (next) {
+  if (this.isModified("password")) {
+    this.password = await bcrypt.hash(this.password, SALT_ROUNDS);
   }
-  static async findUser(identifier) {
-    const user = await db("users")
-      .where("email", identifier)
-      .orWhere("username", identifier)
-      .orWhere("phonenumber", identifier)
-      .first();
+  next();
+});
+
+userSchema.methods.comparePassword = async function (password) {
+  return bcrypt.compare(password, this.password);
+};
+
+userSchema.statics.findUser = async function (identifier) {
+  return this.findOne({
+    $or: [
+      { email: identifier },
+      { username: identifier },
+      { phonenumber: identifier },
+    ],
+  });
+};
+
+userSchema.statics.signIn = async function (identifier, password) {
+  const user = await this.findUser(identifier);
+  if (user && (await user.comparePassword(password))) {
     return user;
   }
-  static async signIn(identifier, password) {
-    const user = await this.findUser(identifier);
-    if (user && (await bcrypt.compare(password, user.password))) {
-      return user;
+  return null;
+};
+
+userSchema.statics.createUser = async function (userData) {
+  const existingUser = await this.findOne({
+    $or: [
+      { email: userData.email },
+      { username: userData.userName },
+      { phonenumber: userData.phoneNumber },
+    ],
+  });
+  if (existingUser) {
+    if (existingUser.email === userData.email) {
+      throw new ErrorHandler("Email is already in use.", 406);
     }
-    return null;
-  }
-  static async create(userData) {
-    const existingUser = await db("users")
-      .where("email", userData.email)
-      .orWhere("username", userData.userName)
-      .orWhere("phonenumber", userData.phoneNumber)
-      .first();
-    if (existingUser) {
-      if (existingUser.email === userData.email) {
-        throw new ErrorHandler("Email is already in use.", 406);
-      }
-      if (existingUser.username === userData.userName) {
-        throw new ErrorHandler("Username is already in use.", 406);
-      }
-      if (existingUser.phonenumber === userData.phoneNumber) {
-        throw new ErrorHandler("Phone number is already in use.", 406);
-      }
+    if (existingUser.username === userData.userName) {
+      throw new ErrorHandler("Username is already in use.", 406);
     }
-    const getRoleId = await RoleModel.getRoleName(userData.role);
-    const hashedPassword = await bcrypt.hash(userData.password, SALT_ROUNDS);
-
-    const [newUser] = await db("users")
-      .insert({
-        email: userData.email,
-        username: userData.userName,
-        firstname: userData.firstName,
-        lastname: userData.lastName,
-        phonenumber: userData.phoneNumber,
-        password: hashedPassword,
-        role: getRoleId,
-      })
-      .returning(["email", "username", "firstname", "lastname", "phonenumber"]);
-
-    return newUser;
+    if (existingUser.phonenumber === userData.phoneNumber) {
+      throw new ErrorHandler("Phone number is already in use.", 406);
+    }
   }
+  const getRoleId = await RoleModel.getRoleName(userData.role);
+  const newUser = new this({
+    email: userData.email,
+    username: userData.userName,
+    firstname: userData.firstName,
+    lastname: userData.lastName,
+    phonenumber: userData.phoneNumber,
+    password: userData.password,
+    role: getRoleId,
+  });
+  await newUser.save();
+  return {
+    email: newUser.email,
+    username: newUser.username,
+    firstname: newUser.firstname,
+    lastname: newUser.lastname,
+    phonenumber: newUser.phonenumber,
+  };
+};
 
-  static async update(id, updates) {
-    await db("users").where({ id }).update(updates);
-    return this.findById(id);
-  }
-  static async delete(id) {
-    const deletedCount = await db("users").where({ id }).del();
-    return deletedCount > 0;
-  }
-}
+const User = mongoose.model("User", userSchema);
 
 export default User;

@@ -1,5 +1,5 @@
 import logger from "@/logger";
-import { db } from "@/db";
+// import { db } from "@/db";
 let server;
 
 export function handleShutdown(signal) {
@@ -7,15 +7,15 @@ export function handleShutdown(signal) {
   if (server) {
     server.close(() => {
       logger.info("HTTP server closed.");
-      db.destroy()
-        .then(() => {
-          logger.info("Database connection closed.");
-          process.exit(0);
-        })
-        .catch((err) => {
-          logger.error("Error closing database connection:", err);
-          process.exit(1);
-        });
+      // db.destroy()
+      //   .then(() => {
+      //     logger.info("Database connection closed.");
+      //     process.exit(0);
+      //   })
+      // .catch((err) => {
+      //   logger.error("Error closing database connection:", err);
+      //   process.exit(1);
+      // });
     });
   } else {
     db.destroy()

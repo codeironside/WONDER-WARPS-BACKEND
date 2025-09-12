@@ -5,12 +5,12 @@ import logger from "../../../../CORE/utils/logger/index.js";
 
 export const createRole = async (req, res, next) => {
   const { role_id, role_name, level, description } = req.body;
-
+  const id = parseInt(role_id);
   try {
     if ((!role_id, !role_name))
       throw new ErrorHandler("body can not be empty", 402);
     const newRole = await RoleModel.createRole({
-      role_id,
+      role_id: id,
       role_name,
       level,
       description,

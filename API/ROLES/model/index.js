@@ -1,28 +1,35 @@
-import knex from "knex";
-import knexfile from "../../../knexfile.js";
+import mongoose from "mongoose";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
-const db = knex(knexfile.development);
+
+const roleSchema = new mongoose.Schema(
+  {
+    role_id: { type: Number, required: true, unique: true },
+    role_name: { type: String, required: true, unique: true },
+    description: { type: String },
+    level: { type: String, required: true },
+  },
+  { timestamps: true },
+);
+
+const Role = mongoose.model("Role", roleSchema);
 
 export default class RoleModel {
   static async createRole({ role_id, role_name, description, level }) {
     try {
-      const existingRole = await db("roles")
-        .where({ role_id })
-        .orWhere({ role_name })
-        .first();
+      const existingRole = await Role.findOne({
+        $or: [{ role_id }, { role_name }],
+      });
 
       if (existingRole) {
         throw new ErrorHandler("Role with this ID or name already exists", 403);
       }
-      const [newRole] = await db("roles")
-        .insert({
-          role_id,
-          role_name,
-          description,
-          level,
-        })
-        .returning("*");
-
+      const newRole = new Role({
+        role_id,
+        role_name,
+        description,
+        level,
+      });
+      await newRole.save();
       return newRole;
     } catch (error) {
       throw new Error("Error creating role: " + error.message);
@@ -31,14 +38,14 @@ export default class RoleModel {
 
   static async getAllRoles() {
     try {
-      return await db("roles").select("*");
+      return await Role.find({});
     } catch (error) {
       throw new Error("Error fetching roles: " + error.message);
     }
   }
   static async getRoleName(name) {
     try {
-      const role = await db("roles").where({ role_name: name }).first();
+      const role = await Role.findOne({ role_name: name });
       if (!role) {
         throw new ErrorHandler("Role not found", 404);
       }
@@ -49,7 +56,7 @@ export default class RoleModel {
   }
   static async getByID(id) {
     try {
-      const role = await db("roles").where({ role_id: id }).first();
+      const role = await Role.findOne({ role_id: id });
       if (!role) {
         throw new ErrorHandler("Role not found", 404);
       }
@@ -60,34 +67,35 @@ export default class RoleModel {
   }
   static async updateRole(id, { role_id, role_name, description, level }) {
     try {
-      const updatedRole = await db("roles")
-        .where({ id })
-        .update({
+      const updatedRole = await Role.findByIdAndUpdate(
+        id,
+        {
           role_id,
           role_name,
           description,
           level,
-        })
-        .returning("*");
+        },
+        { new: true },
+      );
 
-      if (!updatedRole.length) {
+      if (!updatedRole) {
         throw new Error("Role not found");
       }
 
-      return updatedRole[0];
+      return updatedRole;
     } catch (error) {
       throw new Error("Error updating role: " + error.message);
     }
   }
   static async deleteRole(id) {
     try {
-      const deletedRole = await db("roles").where({ id }).del().returning("*");
+      const deletedRole = await Role.findByIdAndDelete(id);
 
-      if (!deletedRole.length) {
+      if (!deletedRole) {
         throw new Error("Role not found");
       }
 
-      return deletedRole[0];
+      return deletedRole;
     } catch (error) {
       throw new Error("Error deleting role: " + error.message);
     }

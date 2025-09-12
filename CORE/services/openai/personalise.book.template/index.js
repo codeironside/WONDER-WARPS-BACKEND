@@ -254,9 +254,9 @@ class StoryPersonalizer {
     ${clothing ? `- Clothing: ${clothing}` : ""}
     ${gender ? `- Gender: ${gender}` : ""}
     
-    Keep the same background, composition, and artistic style as the original illustration. Only change the character's appearance to match the new details.
+    Keep the same background, composition, and artistic style as the original illustration,A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli. Only change the character's appearance to match the new details.
     Absolutely NO TEXT of any kind in the image.
-    Style: Colorful, engaging, child-friendly cartoon illustration.`;
+    Style: Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
   }
 
   async generatePersonalizedCoverImage(storyData, personalizationDetails) {
@@ -277,9 +277,9 @@ class StoryPersonalizer {
       ${personalizationDetails.clothing ? `- Clothing: ${personalizationDetails.clothing}` : ""}
       ${personalizationDetails.gender ? `- Gender: ${personalizationDetails.gender}` : ""}
       
-      Keep the same background, composition, and artistic style as the original cover. Only change the character's appearance to match the new details.
+      Keep the same background, composition, and artistic style as the original cover,A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli. Only change the character's appearance to match the new details.
       Absolutely NO TEXT of any kind in the image.
-      Style: Colorful, engaging, professional children's book cover.`;
+      Style: Colorful, engaging, professional children's book, whimsical Studio Ghibli film, full of imagination and wonder`;
 
       const coverImage = await this.openai.images.generate({
         model: "dall-e-3",
@@ -346,7 +346,7 @@ class StoryPersonalizer {
       };
 
       const personalizedBook =
-        await PersonalizedBook.create(personalizedBookData);
+        await PersonalizedBook.createPersonaliseBook(personalizedBookData);
 
       return {
         personalizedBook,

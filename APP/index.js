@@ -3,10 +3,10 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import mongoose from "mongoose";
 
 import { apiRouter } from "./APP_ROUTER/index.js";
 import logger from "@/logger";
-// import db  from '../knexfile.js'; // REMOVE THIS LINE
 import {
   applyRateLimit,
   logEveryRequest,
@@ -16,8 +16,7 @@ import { API_SUFFIX } from "../CORE/utils/constants/index.js";
 import { handleShutdown } from "../CORE/services/handleShutdown/index.js";
 import { config } from "@/config";
 import { requestLogger } from "../CORE/middleware/requestlogger/index.js";
-import knex from "knex";
-import knexConfig from "../knexfile.js";
+import { connectDB } from "../CORE/services/db/index.js";
 import ErrorHandler from "../CORE/middleware/errorhandler/index.js";
 import { sendResponse } from "../CORE/utils/response.handler/index.js";
 export const app = express();
@@ -34,16 +33,12 @@ app.use(API_SUFFIX, apiRouter);
 
 let server;
 
-const db = knex(knexConfig.development);
-
 process.on("SIGTERM", handleShutdown);
 process.on("SIGINT", handleShutdown);
 app.get("/api/v1/health", async (req, res) => {
   let databaseStatus = "down";
   try {
-    if (db) {
-      // db is now the knex instance
-      await db.raw("SELECT 1"); // Use db to test connection
+    if (mongoose.connection.readyState === 1) {
       databaseStatus = "up";
     }
   } catch (error) {
@@ -76,11 +71,8 @@ async function startApplication() {
       handleShutdown(reason);
     });
 
-    logger.info("Starting database migrations...");
-    await db.migrate.latest(); // This will now work
-    logger.info("Database migrations completed successfully.");
-
-    await db.raw("SELECT 1");
+    logger.info("Connecting to database...");
+    await connectDB();
     logger.info("Database connection successful!");
 
     const port = config.app.port;
@@ -89,8 +81,6 @@ async function startApplication() {
       const message = err.message || "Internal Server Error";
       sendResponse(res, statusCode, message, null, "error");
     });
-
-    // Error handling middleware using ErrorHandler class
     app.use((err, req, res, next) => {
       let error = err;
       if (!(err instanceof ErrorHandler)) {

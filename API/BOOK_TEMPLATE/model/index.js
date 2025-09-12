@@ -1,17 +1,57 @@
-import knex from "knex";
+import mongoose from "mongoose";
 import Joi from "joi";
-import knexfile from "../../../knexfile.js";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import S3Service from "../../../CORE/services/s3/index.js";
 
-const db = knex(knexfile.development);
+const chapterSchema = new mongoose.Schema(
+  {
+    chapter_title: { type: String, maxlength: 500 },
+    chapter_content: { type: String },
+    image_description: { type: String, maxlength: 1000 },
+    image_position: { type: String, maxlength: 50 },
+    image_url: { type: String, maxlength: 1000 },
+    book_template_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "BookTemplate",
+    },
+  },
+  { timestamps: true },
+);
+
+const bookTemplateSchema = new mongoose.Schema(
+  {
+    user_id: { type: String, required: true, ref: "User" },
+    book_title: { type: String, required: true, maxlength: 255 },
+    suggested_font: { type: String, required: true, maxlength: 255 },
+    description: { type: String },
+    skin_tone: { type: String },
+    hair_type: { type: String, required: true },
+    hair_style: { type: String, required: true },
+    hair_color: { type: String },
+    eye_color: { type: String },
+    clothing: { type: String },
+    gender: { type: String, required: true },
+    age_min: { type: String, required: true },
+    age_max: { type: String },
+    cover_image: [{ type: String }],
+    genre: { type: String },
+    author: { type: String },
+    price: { type: Number },
+    keywords: [{ type: String }],
+    is_personalizable: { type: Boolean, default: true },
+  },
+  { timestamps: true },
+);
+
+const Chapter = mongoose.model("Chapter", chapterSchema);
+const BookTemplateModel = mongoose.model("BookTemplate", bookTemplateSchema);
 
 class BookTemplate {
   static tableName = "story_book_templates";
   static s3Service = new S3Service();
 
   static validationSchema = Joi.object({
-    user_id: Joi.number().integer().positive().required(),
+    user_id: Joi.string().trim().min(3).max(255).required(),
     book_title: Joi.string().trim().min(3).max(255).required(),
     suggested_font: Joi.string().trim().min(3).max(255).required(),
     description: Joi.string().allow(null, "").optional(),
@@ -44,9 +84,9 @@ class BookTemplate {
   }).unknown(false);
 
   static async findByTitle(book_title, user_id = null) {
-    const query = db(this.tableName).where({ book_title });
-    if (user_id) query.andWhere({ user_id });
-    return query.first();
+    const query = { book_title };
+    if (user_id) query.user_id = user_id;
+    return await BookTemplateModel.findOne(query);
   }
 
   static async create(data) {
@@ -91,41 +131,27 @@ class BookTemplate {
       throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
     }
 
-    const trx = await db.transaction();
-
     try {
-      const insertData = {
-        ...validatedData,
-        chapters: JSON.stringify(validatedData.chapters || []),
-        cover_image: JSON.stringify(validatedData.cover_image || []),
-      };
-
-      const [newTemplate] = await trx(this.tableName)
-        .insert(insertData)
-        .returning("*");
+      const newTemplate = new BookTemplateModel(validatedData);
+      await newTemplate.save();
 
       if (validatedData.chapters && validatedData.chapters.length > 0) {
-        const chaptersWithTemplateId = validatedData.chapters.map(
-          (chapter) => ({
-            chapter_title: chapter.chapter_title?.substring(0, 500) || "",
-            chapter_content: chapter.chapter_content || "",
-            image_description:
-              chapter.image_description?.substring(0, 1000) || null,
-            image_position: chapter.image_position?.substring(0, 50) || null,
-            image_url: chapter.image_url?.substring(0, 1000) || null,
-            book_template_id: newTemplate.id,
-          }),
-        );
+        const chapters = validatedData.chapters.map((chapter) => ({
+          chapter_title: chapter.chapter_title?.substring(0, 500) || "",
+          chapter_content: chapter.chapter_content || "",
+          image_description:
+            chapter.image_description?.substring(0, 1000) || null,
+          image_position: chapter.image_position?.substring(0, 50) || null,
+          image_url: chapter.image_url?.substring(0, 1000) || null,
+          book_template_id: newTemplate._id,
+        }));
 
-        await trx("chapters").insert(chaptersWithTemplateId);
+        await Chapter.insertMany(chapters);
       }
 
-      await trx.commit();
-
-      const completeTemplate = await this.findByIdWithChapters(newTemplate.id);
+      const completeTemplate = await this.findByIdWithChapters(newTemplate._id);
       return completeTemplate;
     } catch (err) {
-      await trx.rollback();
       console.error("Database error:", err);
       throw new ErrorHandler(err.message, 500);
     }
@@ -195,32 +221,18 @@ class BookTemplate {
   }
 
   static async findById(id) {
-    const template = await db(this.tableName).where({ id }).first();
-    if (template) {
-      return {
-        ...template,
-        chapters:
-          typeof template.chapters === "string"
-            ? JSON.parse(template.chapters)
-            : template.chapters,
-        cover_image:
-          typeof template.cover_image === "string"
-            ? JSON.parse(template.cover_image)
-            : template.cover_image,
-      };
-    }
-    return null;
+    return await BookTemplateModel.findById(id);
   }
 
   static async findByIdWithChapters(id) {
     const template = await this.findById(id);
     if (!template) return null;
 
-    const chapters = await db("chapters")
-      .where({ book_template_id: id })
-      .orderBy("id", "asc");
+    const chapters = await Chapter.find({ book_template_id: id }).sort({
+      createdAt: 1,
+    });
 
-    return { ...template, chapters };
+    return { ...template.toObject(), chapters };
   }
 
   static async findAll(options = {}) {

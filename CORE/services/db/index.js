@@ -1,16 +1,16 @@
-import knex from "knex";
+import mongoose from "mongoose";
 import { config } from "@/config";
 
-export const db = knex({
-  client: "pg", // Postgres client
-  connection: {
-    host: config.db.host,
-    user: config.db.user,
-    password: config.db.password,
-    database: config.db.database,
-  },
-  migrations: {
-    directory: "./migrations",
-  },
-  pool: { min: 0, max: 7 },
-});
+const mongoUri = config.db.MONGO_URI;
+
+export const connectDB = async () => {
+  try {
+    await mongoose.connect(mongoUri);
+    console.log("MongoDB connected");
+  } catch (error) {
+    console.error("MongoDB connection error:", error);
+    process.exit(1);
+  }
+};
+
+export default mongoose;

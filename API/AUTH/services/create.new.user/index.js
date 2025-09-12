@@ -11,7 +11,7 @@ export async function createUser(req, res, next) {
   try {
     if (!email || !password || !firstName || !lastName || !phoneNumber)
       throw new ErrorHandler("body can not be empty", 402);
-    const newUser = await User.create({
+    const newUser = await User.createUser({
       email,
       password,
       phoneNumber,
