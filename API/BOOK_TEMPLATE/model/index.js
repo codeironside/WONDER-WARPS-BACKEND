@@ -3,55 +3,181 @@ import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import S3Service from "../../../CORE/services/s3/index.js";
 
+// Define Chapter Schema
 const chapterSchema = new mongoose.Schema(
   {
-    chapter_title: { type: String, maxlength: 500 },
-    chapter_content: { type: String },
-    image_description: { type: String, maxlength: 1000 },
-    image_position: { type: String, maxlength: 50 },
-    image_url: { type: String, maxlength: 1000 },
+    chapter_title: {
+      type: String,
+      required: true,
+      maxlength: 500,
+      trim: true,
+    },
+    chapter_content: {
+      type: String,
+      required: true,
+    },
+    image_description: {
+      type: String,
+      maxlength: 1000,
+      default: null,
+    },
+    image_position: {
+      type: String,
+      maxlength: 50,
+      default: "full scene",
+    },
+    image_url: {
+      type: String,
+      maxlength: 1000,
+      default: null,
+    },
     book_template_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "BookTemplate",
+      required: true,
+      index: true,
+    },
+    order: {
+      type: Number,
+      default: 0,
+      index: true,
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
 
+// Define BookTemplate Schema
 const bookTemplateSchema = new mongoose.Schema(
   {
-    user_id: { type: String, required: true, ref: "User" },
-    book_title: { type: String, required: true, maxlength: 255 },
-    suggested_font: { type: String, required: true, maxlength: 255 },
-    description: { type: String },
-    skin_tone: { type: String },
-    hair_type: { type: String, required: true },
-    hair_style: { type: String, required: true },
-    hair_color: { type: String },
-    eye_color: { type: String },
-    clothing: { type: String },
-    gender: { type: String, required: true },
-    age_min: { type: String, required: true },
-    age_max: { type: String },
-    cover_image: [{ type: String }],
-    genre: { type: String },
-    author: { type: String },
-    price: { type: Number },
-    keywords: [{ type: String }],
-    is_personalizable: { type: Boolean, default: true },
+    user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      ref: "User",
+      index: true,
+    },
+    book_title: {
+      type: String,
+      required: true,
+      maxlength: 255,
+      trim: true,
+      index: true,
+    },
+    suggested_font: {
+      type: String,
+      required: true,
+      maxlength: 255,
+      trim: true,
+    },
+    description: {
+      type: String,
+      default: null,
+    },
+    skin_tone: {
+      type: String,
+      default: null,
+    },
+    hair_type: {
+      type: String,
+      required: true,
+    },
+    hair_style: {
+      type: String,
+      required: true,
+    },
+    hair_color: {
+      type: String,
+      default: null,
+    },
+    eye_color: {
+      type: String,
+      default: null,
+    },
+    clothing: {
+      type: String,
+      default: null,
+    },
+    gender: {
+      type: String,
+      required: true,
+    },
+    age_min: {
+      type: String,
+      required: true,
+    },
+    age_max: {
+      type: String,
+      default: null,
+    },
+    cover_image: [
+      {
+        type: String,
+        required: true,
+        validate: {
+          validator: function (v) {
+            return Array.isArray(v) && v.length > 0;
+          },
+          message: "At least one cover image is required",
+        },
+      },
+    ],
+    genre: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    author: {
+      type: String,
+      default: null,
+    },
+    price: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    keywords: [
+      {
+        type: String,
+        index: true,
+      },
+    ],
+    is_personalizable: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    is_public: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    popularity_score: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
 
+// Create indexes for better performance
+bookTemplateSchema.index({ user_id: 1, book_title: 1 }, { unique: true });
+bookTemplateSchema.index({ createdAt: -1 });
+bookTemplateSchema.index({ price: 1 });
+bookTemplateSchema.index({ age_min: 1, age_max: 1 });
+
+// Create models
 const Chapter = mongoose.model("Chapter", chapterSchema);
 const BookTemplateModel = mongoose.model("BookTemplate", bookTemplateSchema);
 
 class BookTemplate {
-  static tableName = "story_book_templates";
   static s3Service = new S3Service();
 
   static validationSchema = Joi.object({
-    user_id: Joi.string().trim().min(3).max(255).required(),
+    user_id: Joi.string().hex().length(24).required(),
     book_title: Joi.string().trim().min(3).max(255).required(),
     suggested_font: Joi.string().trim().min(3).max(255).required(),
     description: Joi.string().allow(null, "").optional(),
@@ -67,7 +193,7 @@ class BookTemplate {
     cover_image: Joi.array().items(Joi.string().uri()).min(1).required(),
     genre: Joi.string().allow(null, "").optional(),
     author: Joi.string().allow(null, "").optional(),
-    price: Joi.number().precision(2).positive().allow(null).optional(),
+    price: Joi.number().precision(2).min(0).allow(null).optional(),
     chapters: Joi.array()
       .items(
         Joi.object({
@@ -79,8 +205,9 @@ class BookTemplate {
         }),
       )
       .default([]),
-    keywords: Joi.array().items(Joi.string()).allow(null).optional(),
+    keywords: Joi.array().items(Joi.string()).default([]),
     is_personalizable: Joi.boolean().default(true),
+    is_public: Joi.boolean().default(false),
   }).unknown(false);
 
   static async findByTitle(book_title, user_id = null) {
@@ -100,11 +227,7 @@ class BookTemplate {
 
     if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
 
-    // Validate that cover_image is not empty
-    if (!validatedData.cover_image || validatedData.cover_image.length === 0) {
-      throw new ErrorHandler("Cover image is required", 400);
-    }
-
+    // Check if template with same title exists for this user
     const existing = await this.findByTitle(
       validatedData.book_title,
       validatedData.user_id,
@@ -116,13 +239,6 @@ class BookTemplate {
       );
     }
 
-    if (
-      Array.isArray(validatedData.keywords) &&
-      validatedData.keywords.length === 0
-    ) {
-      validatedData.keywords = null;
-    }
-
     // Upload images to S3 before saving
     try {
       await this.uploadImagesToS3(validatedData);
@@ -131,27 +247,39 @@ class BookTemplate {
       throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
     }
 
-    try {
-      const newTemplate = new BookTemplateModel(validatedData);
-      await newTemplate.save();
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
+    try {
+      // Create the book template
+      const newTemplate = new BookTemplateModel(validatedData);
+      await newTemplate.save({ session });
+
+      // Create chapters if provided
       if (validatedData.chapters && validatedData.chapters.length > 0) {
-        const chapters = validatedData.chapters.map((chapter) => ({
+        const chapters = validatedData.chapters.map((chapter, index) => ({
           chapter_title: chapter.chapter_title?.substring(0, 500) || "",
           chapter_content: chapter.chapter_content || "",
           image_description:
             chapter.image_description?.substring(0, 1000) || null,
-          image_position: chapter.image_position?.substring(0, 50) || null,
+          image_position:
+            chapter.image_position?.substring(0, 50) || "full scene",
           image_url: chapter.image_url?.substring(0, 1000) || null,
           book_template_id: newTemplate._id,
+          order: index,
         }));
 
-        await Chapter.insertMany(chapters);
+        await Chapter.insertMany(chapters, { session });
       }
 
-      const completeTemplate = await this.findByIdWithChapters(newTemplate._id);
-      return completeTemplate;
+      await session.commitTransaction();
+      session.endSession();
+
+      // Return the complete template with chapters
+      return await this.findByIdWithChapters(newTemplate._id);
     } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
       console.error("Database error:", err);
       throw new ErrorHandler(err.message, 500);
     }
@@ -225,65 +353,143 @@ class BookTemplate {
   }
 
   static async findByIdWithChapters(id) {
-    const template = await this.findById(id);
+    const template = await BookTemplateModel.findById(id);
     if (!template) return null;
 
-    const chapters = await Chapter.find({ book_template_id: id }).sort({
-      createdAt: 1,
-    });
+    const chapters = await Chapter.find({ book_template_id: id })
+      .sort({ order: 1 })
+      .select("-book_template_id -__v");
 
-    return { ...template.toObject(), chapters };
+    return {
+      ...template.toObject(),
+      chapters,
+    };
   }
 
   static async findAll(options = {}) {
-    const { limit = 20, offset = 0 } = options;
-    const templates = await db(this.tableName)
-      .select("*")
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      filters = {},
+    } = options;
+
+    const skip = (page - 1) * limit;
+    const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+
+    // Build query based on filters
+    const query = {};
+    if (filters.genre) query.genre = filters.genre;
+    if (filters.age_min) query.age_min = filters.age_min;
+    if (filters.age_max) query.age_max = filters.age_max;
+    if (filters.is_personalizable !== undefined)
+      query.is_personalizable = filters.is_personalizable;
+    if (filters.is_public !== undefined) query.is_public = filters.is_public;
+    if (filters.keywords) query.keywords = { $in: filters.keywords };
+
+    const templates = await BookTemplateModel.find(query)
+      .select("-chapters -__v")
+      .sort(sort)
+      .skip(skip)
       .limit(limit)
-      .offset(offset);
-    return templates.map((template) => ({
-      ...template,
-      chapters:
-        typeof template.chapters === "string"
-          ? JSON.parse(template.chapters)
-          : template.chapters,
-      cover_image:
-        typeof template.cover_image === "string"
-          ? JSON.parse(template.cover_image)
-          : template.cover_image,
-    }));
-  }
-  static async findAllForUser() {
-    const templates = await db(this.tableName).select("*");
-    return templates.map((template) => ({
-      ...template,
-      chapters:
-        typeof template.chapters === "string"
-          ? JSON.parse(template.chapters)
-          : template.chapters,
-      cover_image:
-        typeof template.cover_image === "string"
-          ? JSON.parse(template.cover_image)
-          : template.cover_image,
-    }));
+      .lean();
+    const total = await BookTemplateModel.countDocuments(query);
+
+    return {
+      templates,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
   }
 
-  static async findByKeywords(keywords) {
+  static async findAllForUser(userId, options = {}) {
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      includePublic = false,
+    } = options;
+
+    const skip = (page - 1) * limit;
+    const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+
+    // Build query - user's templates plus public templates if requested
+    const query = includePublic
+      ? { $or: [{ user_id: userId }, { is_public: true }] }
+      : { user_id: userId };
+
+    const templates = await BookTemplateModel.find(query)
+      .select("-chapters -__v")
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await BookTemplateModel.countDocuments(query);
+
+    return {
+      templates,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  static async findByKeywords(keywords, options = {}) {
     try {
       const { error } = Joi.array()
         .items(Joi.string().trim().min(1))
         .validate(keywords);
 
-      if (error)
+      if (error) {
         throw new ErrorHandler(
           "Keywords must be an array of non-empty strings",
           400,
         );
+      }
 
-      return db(this.tableName).whereRaw(
-        `keywords ?| array[${keywords.map(() => "?").join(",")}]`,
-        keywords,
-      );
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "popularity_score",
+        sortOrder = "desc",
+      } = options;
+
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+
+      const query = {
+        keywords: { $in: keywords },
+        is_public: true, // Only search public templates
+      };
+
+      const templates = await BookTemplateModel.find(query)
+        .select("-chapters -__v")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const total = await BookTemplateModel.countDocuments(query);
+
+      return {
+        templates,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to find book templates by keywords", 500);
@@ -306,7 +512,7 @@ class BookTemplate {
       throw new ErrorHandler("Cover image is required", 400);
     }
 
-    const existing = await this.findById(id);
+    const existing = await BookTemplateModel.findById(id);
     if (!existing) throw new ErrorHandler("Book template not found", 404);
 
     if (
@@ -317,11 +523,12 @@ class BookTemplate {
         validatedData.book_title,
         validatedData.user_id,
       );
-      if (titleExists)
+      if (titleExists) {
         throw new ErrorHandler(
           "A book template with this title already exists",
           409,
         );
+      }
     }
 
     // Upload new images to S3 before updating
@@ -331,168 +538,275 @@ class BookTemplate {
       throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
     }
 
-    const trx = await db.transaction();
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
     try {
-      const updateData = {
-        ...validatedData,
-        chapters: JSON.stringify(validatedData.chapters || []),
-        cover_image: JSON.stringify(validatedData.cover_image || []),
-      };
+      // Update the book template
+      const updatedTemplate = await BookTemplateModel.findByIdAndUpdate(
+        id,
+        validatedData,
+        { new: true, runValidators: true, session },
+      );
 
-      const updatedCount = await trx(this.tableName)
-        .where({ id })
-        .update(updateData);
-
+      // Update chapters if provided
       if (validatedData.chapters) {
-        await trx("chapters").where({ book_template_id: id }).delete();
+        // Delete existing chapters
+        await Chapter.deleteMany({ book_template_id: id }, { session });
 
+        // Create new chapters
         if (validatedData.chapters.length > 0) {
-          const chaptersWithTemplateId = validatedData.chapters.map(
-            (chapter) => ({
-              chapter_title: chapter.chapter_title?.substring(0, 500) || "",
-              chapter_content: chapter.chapter_content || "",
-              image_description:
-                chapter.image_description?.substring(0, 1000) || null,
-              image_position: chapter.image_position?.substring(0, 50) || null,
-              image_url: chapter.image_url?.substring(0, 1000) || null,
-              book_template_id: id,
-            }),
-          );
+          const chapters = validatedData.chapters.map((chapter, index) => ({
+            chapter_title: chapter.chapter_title?.substring(0, 500) || "",
+            chapter_content: chapter.chapter_content || "",
+            image_description:
+              chapter.image_description?.substring(0, 1000) || null,
+            image_position:
+              chapter.image_position?.substring(0, 50) || "full scene",
+            image_url: chapter.image_url?.substring(0, 1000) || null,
+            book_template_id: id,
+            order: index,
+          }));
 
-          await trx("chapters").insert(chaptersWithTemplateId);
+          await Chapter.insertMany(chapters, { session });
         }
       }
 
-      await trx.commit();
+      await session.commitTransaction();
+      session.endSession();
 
-      if (updatedCount === 0) return null;
-      return this.findByIdWithChapters(id);
+      return await this.findByIdWithChapters(id);
     } catch (err) {
-      await trx.rollback();
+      await session.abortTransaction();
+      session.endSession();
       throw new ErrorHandler("Failed to update book template", 500);
     }
   }
+  static async findPublicByIdWithChapters(id) {
+    try {
+      // Find public template by ID
+      const template = await BookTemplateModel.findOne({
+        _id: id,
+        is_public: true,
+      });
 
+      if (!template) {
+        throw new ErrorHandler("Public book template not found", 404);
+      }
+
+      // Get chapters for the template
+      const chapters = await Chapter.find({ book_template_id: id })
+        .sort({ order: 1 })
+        .select("-book_template_id -__v");
+
+      // Convert to object and remove unnecessary fields
+      const templateObj = template.toObject();
+      delete templateObj.__v;
+      delete templateObj.user_id; // Remove user_id for public access
+
+      return { ...templateObj, chapters };
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to fetch public template", 500);
+    }
+  }
+  static async incrementPopularity(id) {
+    try {
+      const updatedTemplate = await BookTemplateModel.findByIdAndUpdate(
+        id,
+        { $inc: { popularity_score: 1 } },
+        { new: true },
+      ).select("-chapters -__v -user_id");
+
+      if (!updatedTemplate) {
+        throw new ErrorHandler("Template not found", 404);
+      }
+
+      return updatedTemplate;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to update template popularity", 500);
+    }
+  }
+  static async findAllPublicTemplates(options = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "popularity_score",
+        sortOrder = "desc",
+        filters = {},
+      } = options;
+
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+      const query = { is_public: true };
+      if (filters.genre) query.genre = filters.genre;
+      if (filters.age_min) query.age_min = filters.age_min;
+      if (filters.age_max) query.age_max = filters.age_max;
+      if (filters.is_personalizable !== undefined)
+        query.is_personalizable = filters.is_personalizable;
+      if (filters.keywords) query.keywords = { $in: filters.keywords };
+
+      // Get public templates with pagination
+      const templates = await BookTemplateModel.find(query)
+        .select("-chapters -__v -user_id") // Exclude sensitive/private fields
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const total = await BookTemplateModel.countDocuments(query);
+
+      return {
+        templates,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      throw new ErrorHandler("Failed to fetch public templates", 500);
+    }
+  }
   static async delete(id) {
-    const trx = await db.transaction();
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
     try {
-      await trx("chapters").where({ book_template_id: id }).delete();
-      const deletedCount = await trx(this.tableName).where({ id }).del();
-
-      await trx.commit();
-
-      if (deletedCount === 0)
+      // Delete the template
+      const template = await BookTemplateModel.findByIdAndDelete(id, {
+        session,
+      });
+      if (!template) {
         throw new ErrorHandler("Book template not found", 404);
+      }
+
+      // Delete associated chapters
+      await Chapter.deleteMany({ book_template_id: id }, { session });
+
+      await session.commitTransaction();
+      session.endSession();
+
       return true;
     } catch (error) {
-      await trx.rollback();
+      await session.abortTransaction();
+      session.endSession();
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to delete book template", 500);
     }
   }
 
   static async findAllByUser(userId, options = {}) {
-    try {
-      const {
-        limit = 20,
-        offset = 0,
-        includeChapters = false,
-        minimal = false,
-      } = options;
+    const {
+      page = 1,
+      limit = 20,
+      includeChapters = false,
+      minimal = false,
+    } = options;
 
-      let query = db(this.tableName)
-        .where({ user_id: userId })
-        .orderBy("created_at", "desc")
-        .limit(limit)
-        .offset(offset);
+    const skip = (page - 1) * limit;
 
-      const templates = await query;
-
-      return templates.map((template) => {
-        const parsedTemplate = {
-          ...template,
-          cover_image:
-            typeof template.cover_image === "string"
-              ? JSON.parse(template.cover_image)
-              : template.cover_image,
-        };
-        if (minimal) {
-          return {
-            id: parsedTemplate.id,
-            book_title: parsedTemplate.book_title,
-            cover_image: parsedTemplate.cover_image,
-            genre: parsedTemplate.genre,
-            age_min: parsedTemplate.age_min,
-            age_max: parsedTemplate.age_max,
-            price: parsedTemplate.price,
-            is_personalizable: parsedTemplate.is_personalizable,
-            created_at: parsedTemplate.created_at,
-            updated_at: parsedTemplate.updated_at,
-          };
-        }
-
-        // Include chapters if requested
-        if (includeChapters) {
-          parsedTemplate.chapters =
-            typeof template.chapters === "string"
-              ? JSON.parse(template.chapters)
-              : template.chapters;
-        } else {
-          // Just include chapter count instead of full chapters
-          parsedTemplate.chapter_count = template.chapters
-            ? typeof template.chapters === "string"
-              ? JSON.parse(template.chapters).length
-              : template.chapters.length
-            : 0;
-          delete parsedTemplate.chapters;
-        }
-
-        // Remove sensitive or unnecessary fields
-        delete parsedTemplate.user_id;
-        delete parsedTemplate.keywords;
-
-        return parsedTemplate;
-      });
-    } catch (error) {
-      throw new ErrorHandler("Failed to fetch user templates", 500);
+    // Build projection based on options
+    let projection = { __v: 0 };
+    if (minimal) {
+      projection = {
+        book_title: 1,
+        cover_image: 1,
+        genre: 1,
+        age_min: 1,
+        age_max: 1,
+        price: 1,
+        is_personalizable: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+    } else if (!includeChapters) {
+      projection.chapters = 0;
     }
+
+    const templates = await BookTemplateModel.find({ user_id: userId })
+      .select(projection)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await BookTemplateModel.countDocuments({ user_id: userId });
+
+    // Add chapter count if not including full chapters
+    if (!includeChapters && !minimal) {
+      for (const template of templates) {
+        template.chapter_count = await Chapter.countDocuments({
+          book_template_id: template._id,
+        });
+      }
+    }
+
+    return {
+      templates,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
   }
 
   static async findByIdForUser(id, userId) {
-    try {
-      const template = await db(this.tableName)
-        .where({ id, user_id: userId })
-        .first();
+    const template = await BookTemplateModel.findOne({
+      _id: id,
+      user_id: userId,
+    });
 
-      if (!template) {
-        throw new ErrorHandler("Book template not found", 404);
-      }
-      const parsedTemplate = {
-        ...template,
-        chapters:
-          typeof template.chapters === "string"
-            ? JSON.parse(template.chapters)
-            : template.chapters,
-        cover_image:
-          typeof template.cover_image === "string"
-            ? JSON.parse(template.cover_image)
-            : template.cover_image,
-      };
-
-      // Remove sensitive fields
-      delete parsedTemplate.user_id;
-
-      return parsedTemplate;
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler("Failed to fetch template", 500);
+    if (!template) {
+      throw new ErrorHandler("Book template not found", 404);
     }
+
+    const chapters = await Chapter.find({ book_template_id: id })
+      .sort({ order: 1 })
+      .select("-book_template_id -__v");
+
+    const templateObj = template.toObject();
+    delete templateObj.__v;
+
+    return { ...templateObj, chapters };
+  }
+
+  static async findPublicById(id) {
+    const template = await BookTemplateModel.findOne({
+      _id: id,
+      is_public: true,
+    });
+
+    if (!template) {
+      throw new ErrorHandler("Book template not found or not public", 404);
+    }
+
+    const chapters = await Chapter.find({ book_template_id: id })
+      .sort({ order: 1 })
+      .select("-book_template_id -__v");
+
+    const templateObj = template.toObject();
+    delete templateObj.__v;
+
+    return { ...templateObj, chapters };
   }
 
   static formatValidationError(error) {
     return error.details.map((detail) => detail.message).join(", ");
+  }
+
+  // Method to increment popularity score (for tracking popular templates)
+  static async incrementPopularity(id) {
+    return await BookTemplateModel.findByIdAndUpdate(
+      id,
+      { $inc: { popularity_score: 1 } },
+      { new: true },
+    );
   }
 }
 

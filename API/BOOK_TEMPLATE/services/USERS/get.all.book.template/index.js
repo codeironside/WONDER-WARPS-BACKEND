@@ -3,13 +3,45 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 import logger from "../../../../../CORE/utils/logger/index.js";
 import BookTemplate from "../../../model/index.js";
 
-export const getAllbookTemplatesForUsers = async (req, res, next) => {
+export const getPublicTemplates = async (req, res, next) => {
   try {
-    const templates = await BookTemplate.findAllByUser();
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = "popularity_score",
+      sortOrder = "desc",
+      genre,
+      age_min,
+      age_max,
+      personalizable,
+      keywords,
+    } = req.query;
+    const isPersonalizable = personalizable
+      ? personalizable === "true"
+      : undefined;
 
-    sendResponse(res, 200, "Book templates retrieved successfully", templates);
+    let keywordArray = [];
+    if (keywords) {
+      keywordArray = keywords.split(",").map((k) => k.trim());
+    }
+
+    const result = await BookTemplate.findAllPublicTemplates({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sortBy,
+      sortOrder,
+      filters: {
+        genre,
+        age_min,
+        age_max,
+        is_personalizable: isPersonalizable,
+        keywords: keywordArray.length > 0 ? keywordArray : undefined,
+      },
+    });
+
+    sendResponse(res, 200, "Public templates retrieved successfully", result);
   } catch (error) {
-    logger.error(`Failed to retrieve book templates: ${error.message}`);
-    next(new ErrorHandler("Failed to retrieve book templates.", 500));
+    logger.error(`Failed to get public templates: ${error.message}`);
+    next(error);
   }
 };

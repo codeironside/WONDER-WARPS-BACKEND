@@ -347,6 +347,15 @@ class StoryPersonalizer {
 
       const personalizedBook =
         await PersonalizedBook.createPersonaliseBook(personalizedBookData);
+      try {
+        await BookTemplate.incrementPopularity(templateId);
+        console.log(`Increased popularity for template ${templateId}`);
+      } catch (error) {
+        console.error(
+          `Failed to increment popularity for template ${templateId}:`,
+          error,
+        );
+      }
 
       return {
         personalizedBook,

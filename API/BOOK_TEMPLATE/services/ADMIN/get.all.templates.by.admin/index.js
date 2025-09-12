@@ -3,18 +3,13 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 import logger from "../../../../../CORE/utils/logger/index.js";
 import BookTemplate from "../../../model/index.js";
 
-export const getAllbookTemplates = async (req, res, next) => {
+export const getAllbookTemplatesforadmin = async (req, res, next) => {
   try {
-    const { limit, page, genre, is_public, sortBy } = req.query;
-    const result = await BookTemplate.findAll({
+    const { page, userId, limit, includePublic } = req.query;
+    const result = await BookTemplate.findAllForUser(userId, {
       page,
       limit,
-      sortBy,
-      sortOrder: "desc",
-      filters: {
-        genre,
-        is_public,
-      },
+      includePublic,
     });
 
     sendResponse(res, 200, "Book templates retrieved successfully", result);
