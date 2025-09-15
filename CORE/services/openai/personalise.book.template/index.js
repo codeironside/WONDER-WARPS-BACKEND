@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
-import PersonalizedBook from "../../../../API/PERSONALISATION/personalise.book.model/PersonalizedBook.js";
+import PersonalizedBook from "../../../../API/PERSONALISATION/model/index.js";
 import S3Service from "../../s3/index.js";
 
 class StoryPersonalizer {

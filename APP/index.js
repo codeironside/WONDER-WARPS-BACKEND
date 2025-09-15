@@ -19,10 +19,12 @@ import { requestLogger } from "../CORE/middleware/requestlogger/index.js";
 import { connectDB } from "../CORE/services/db/index.js";
 import ErrorHandler from "../CORE/middleware/errorhandler/index.js";
 import { sendResponse } from "../CORE/utils/response.handler/index.js";
+import CorsHandler from "../CORE/services/cors/index.js";
 export const app = express();
 
 app.use(helmet());
-app.use(cors());
+const corsHandler = new CorsHandler();
+app.use(...corsHandler.initialize());
 app.use(requestLogger);
 
 app.use(applyRateLimit);

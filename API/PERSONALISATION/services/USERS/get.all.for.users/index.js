@@ -1,7 +1,7 @@
 import ErrorHandler from "@/Error";
 import { sendResponse } from "../../../../../CORE/utils/response.handler/index.js";
 import logger from "../../../../../CORE/utils/logger/index.js";
-import PersonalizedBook from "../../../model/PersonalizedBook.js";
+import PersonalizedBook from "../../../model/index.js";
 export const getUserPersonalizedBooks = async (req, res, next) => {
   try {
     const userId = req.user.id;

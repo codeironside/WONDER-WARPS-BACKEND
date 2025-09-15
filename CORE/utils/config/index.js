@@ -21,4 +21,7 @@ export const config = {
     region: process.env.AWS_REGION || "us-east-1",
     s3Bucket: process.env.AWS_S3_BUCKET_NAME,
   },
+  url: {
+    frontendurl: process.env.FRONTEND_URL,
+  },
 };

@@ -120,7 +120,7 @@ You will return the story as a single JSON object with the following format:
       const image = await this.openai.images.generate({
         model: "dall-e-3",
         response_format: "url",
-        prompt: `A beautiful and whimsical children's story illustration in the style of Studio Ghibli, with no text, words, or lettering in the image. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. Focus on lush, hand-drawn nature, soft, magical lighting, and a sense of wonder. Absolutely no text, words, or letters should be present in any part of the image.`,
+        prompt: `A dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. The lighting should be intense and cinematic. Absolutely no text, words, or letters should be present in any part of the image.`,
         n: 1,
         quality: "standard",
         size: "1024x1024",

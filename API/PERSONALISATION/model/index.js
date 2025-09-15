@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
-import User from "../../USER/model/index.js";
+import User from "../../AUTH/model/index.js";
 
 const personalizedBookSchema = new mongoose.Schema(
   {
