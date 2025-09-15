@@ -35,8 +35,8 @@ export async function SignIn(req, res, next) {
     sendResponse(res, 200, "User signed in successfully.", {
       user: {
         email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
+        firstName: user.firstname,
+        lastName: user.lastname,
         username: user.username,
         phonenumber: user.phonenumber,
         role: user.role,

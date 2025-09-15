@@ -89,6 +89,7 @@ class CorsHandler {
         "X-Request-ID",
       ],
       exposedHeaders: [
+        "Authorization", // Added Authorization header to exposed headers
         "Content-Range",
         "X-Content-Range",
         "X-Request-ID",
@@ -114,6 +115,7 @@ class CorsHandler {
       }
     };
   }
+
   securityHeaders() {
     return (req, res, next) => {
       res.setHeader("X-Content-Type-Options", "nosniff");
@@ -132,6 +134,7 @@ class CorsHandler {
       this.securityHeaders(),
     ];
   }
+
   getAllowedOrigins() {
     return this.allowedOrigins;
   }
