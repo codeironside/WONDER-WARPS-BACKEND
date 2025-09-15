@@ -42,8 +42,9 @@ export async function SignIn(req, res, next) {
         role: user.role,
       },
     });
-    logger.info(`user with email:-${email} signed in successfully`);
+    logger.info(`user with email:-${user.email} signed in successfully`);
   } catch (error) {
+    console.log(error);
     if (error instanceof ErrorHandler) {
       next(error);
     } else {
