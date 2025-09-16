@@ -34,11 +34,6 @@ export async function SignIn(req, res, next) {
     res.setHeader("Authorization", `Bearer ${token}`);
     sendResponse(res, 200, "User signed in successfully.", {
       user: {
-        email: user.email,
-        firstName: user.firstname,
-        lastName: user.lastname,
-        username: user.username,
-        phonenumber: user.phonenumber,
         role: user.role,
       },
     });

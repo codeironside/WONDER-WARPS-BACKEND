@@ -9,12 +9,8 @@ const JWT_SECRET = config.app.JWT_SECRET;
 export const authorize = (allowedRoles) => {
   return async (req, res, next) => {
     const authHeader = req.headers.authorization;
-    console.log("auth", authHeader);
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new ErrorHandler(
-        "Authorization header is missing or invalid.",
-        401,
-      );
+      throw new ErrorHandler("Not Authorized", 401);
     }
 
     const token = authHeader.split(" ")[1];

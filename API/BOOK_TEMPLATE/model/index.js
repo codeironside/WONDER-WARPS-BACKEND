@@ -826,3 +826,4 @@ class BookTemplate {
 }
 
 export default BookTemplate;
+export { BookTemplateModel };
