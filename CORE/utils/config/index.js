@@ -21,6 +21,11 @@ export const config = {
     region: process.env.AWS_REGION || "us-east-1",
     s3Bucket: process.env.AWS_S3_BUCKET_NAME,
   },
+  ses: {
+    accessKeyId: process.env.SES_KEY_ID,
+    secretAccessKey: process.env.SES_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION || "us-east-1",
+  },
   url: {
     frontendurl: process.env.FRONTEND_URL,
   },

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import RoleModel from "../../ROLES/model/index.js";
+import TempUser from "../OTP/new.user/index.js";
 
 const SALT_ROUNDS = 10;
 
@@ -58,46 +59,111 @@ userSchema.statics.signIn = async function (identifier, password) {
   return null;
 };
 
-userSchema.statics.createUser = async function (userData) {
-  const existingUser = await this.findOne({
-    $or: [
-      { email: userData.email },
-      { username: userData.userName },
-      { phonenumber: userData.phoneNumber },
-    ],
-  });
-  if (existingUser) {
-    if (existingUser.email === userData.email) {
-      throw new ErrorHandler("Email is already in use.", 406);
+userSchema.statics.registerWithOTP = async function (userData) {
+  try {
+    // Check if user already exists in either TempUser or User collection
+    const existingTempUser = await TempUser.findOne({
+      $or: [
+        { email: userData.email },
+        { username: userData.username },
+        { phonenumber: userData.phonenumber },
+      ],
+    });
+
+    const existingUser = await this.findOne({
+      $or: [
+        { email: userData.email },
+        { username: userData.username },
+        { phonenumber: userData.phonenumber },
+      ],
+    });
+
+    if (existingUser || existingTempUser) {
+      if (
+        existingUser?.email === userData.email ||
+        existingTempUser?.email === userData.email
+      ) {
+        throw new ErrorHandler("Email is already in use.", 406);
+      }
+      if (
+        existingUser?.username === userData.username ||
+        existingTempUser?.username === userData.username
+      ) {
+        throw new ErrorHandler("Username is already in use.", 406);
+      }
+      if (
+        existingUser?.phonenumber === userData.phonenumber ||
+        existingTempUser?.phonenumber === userData.phonenumber
+      ) {
+        throw new ErrorHandler("Phone number is already in use.", 406);
+      }
     }
-    if (existingUser.username === userData.userName) {
-      throw new ErrorHandler("Username is already in use.", 406);
-    }
-    if (existingUser.phonenumber === userData.phoneNumber) {
-      throw new ErrorHandler("Phone number is already in use.", 406);
-    }
+
+    // Generate alphanumeric OTP
+    const otp = this.generateAlphanumericOTP(6); // 6-character alphanumeric OTP
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
+
+    // Create temporary user
+    const tempUser = new TempUser({
+      username: userData.username,
+      firstname: userData.firstName,
+      lastname: userData.lastName,
+      phonenumber: userData.phoneNumber,
+      email: userData.email,
+      password: userData.password,
+      role: await RoleModel.getRoleName(userData.role),
+      otp,
+      otpExpires,
+    });
+
+    await tempUser.save();
+
+    // In a real application, you would send the OTP via email or SMS here
+    console.log(`OTP for ${userData.email}: ${otp}`);
+
+    return {
+      message: "OTP sent to your email/phone",
+      tempUserId: tempUser._id,
+    };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to register user with OTP", 500);
   }
-  const getRoleId = await RoleModel.getRoleName(userData.role);
-  const newUser = new this({
-    email: userData.email,
-    username: userData.userName,
-    firstname: userData.firstName,
-    lastname: userData.lastName,
-    phonenumber: userData.phoneNumber,
-    password: userData.password,
-    role: getRoleId,
-  });
-  await newUser.save();
-  return {
-    email: newUser.email,
-    username: newUser.username,
-    firstname: newUser.firstname,
-    lastname: newUser.lastname,
-    phonenumber: newUser.phonenumber,
-  };
 };
 
-// Admin Dashboard Statistics Methods
+userSchema.statics.generateAlphanumericOTP = function (length) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnopqrstuvwxyz23456789";
+  let otp = "";
+
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * chars.length);
+    otp += chars[randomIndex];
+  }
+
+  return otp;
+};
+
+userSchema.statics.resendOTP = async function (tempUserId) {
+  try {
+    const tempUser = await TempUser.findById(tempUserId);
+
+    if (!tempUser) {
+      throw new ErrorHandler("Invalid request", 400);
+    }
+    const otp = this.generateAlphanumericOTP(6);
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    tempUser.otp = otp;
+    tempUser.otpExpires = otpExpires;
+    await tempUser.save();
+    console.log(`New OTP for ${tempUser.email}: ${otp}`);
+
+    return { message: "New OTP sent to your email/phone" };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to resend OTP", 500);
+  }
+};
+
 userSchema.statics.getDashboardStats = async function () {
   try {
     // Get all statistics in parallel for better performance
@@ -553,7 +619,7 @@ userSchema.statics.getUsersList = async function (filters = {}) {
   } catch (error) {
     throw new ErrorHandler("Failed to fetch users list", 500);
   }
-};// Add these methods to your existing User model
+}; // Add these methods to your existing User model
 
 userSchema.statics.getUserDashboard = async function (userId) {
   try {
@@ -563,15 +629,12 @@ userSchema.statics.getUserDashboard = async function (userId) {
       throw new ErrorHandler("User not found", 404);
     }
 
-    const [
-      userPersonalizedBooks,
-      userPaymentStats,
-      recentUserActivities,
-    ] = await Promise.all([
-      this.getUserPersonalizedBooks(userId),
-      this.getUserPaymentStatistics(userId),
-      this.getRecentUserActivities(userId),
-    ]);
+    const [userPersonalizedBooks, userPaymentStats, recentUserActivities] =
+      await Promise.all([
+        this.getUserPersonalizedBooks(userId),
+        this.getUserPaymentStatistics(userId),
+        this.getRecentUserActivities(userId),
+      ]);
 
     return {
       user_info: {
@@ -818,6 +881,161 @@ userSchema.statics.getRecentUserActivities = async function (userId) {
     };
   } catch (error) {
     throw new ErrorHandler("Failed to fetch recent user activities", 500);
+  }
+};
+
+userSchema.statics.updateProfile = async function (userId, updateData) {
+  try {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new ErrorHandler("User not found", 404);
+    }
+    if (updateData.email && updateData.email !== user.email) {
+      const existingUser = await this.findOne({ email: updateData.email });
+      if (existingUser) {
+        throw new ErrorHandler("Email is already in use.", 406);
+      }
+    }
+    if (updateData.username && updateData.username !== user.username) {
+      const existingUser = await this.findOne({
+        username: updateData.username,
+      });
+      if (existingUser) {
+        throw new ErrorHandler("Username is already in use.", 406);
+      }
+    }
+
+    // Check if phone number is being updated and if it's already taken
+    if (updateData.phonenumber && updateData.phonenumber !== user.phonenumber) {
+      const existingUser = await this.findOne({
+        phonenumber: updateData.phonenumber,
+      });
+      if (existingUser) {
+        throw new ErrorHandler("Phone number is already in use.", 406);
+      }
+    }
+
+    // Update allowed fields
+    const allowedUpdates = [
+      "firstname",
+      "lastname",
+      "email",
+      "username",
+      "phonenumber",
+      "bio",
+      "preferences",
+      "profilePicture",
+    ];
+
+    allowedUpdates.forEach((field) => {
+      if (updateData[field] !== undefined) {
+        user[field] = updateData[field];
+      }
+    });
+
+    await user.save();
+
+    // Return user without password
+    const userObject = user.toObject();
+    delete userObject.password;
+    return userObject;
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to update profile", 500);
+  }
+};
+
+userSchema.statics.updatePassword = async function (
+  userId,
+  currentPassword,
+  newPassword,
+) {
+  try {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    // Verify current password
+    const isPasswordValid = await user.comparePassword(currentPassword);
+    if (!isPasswordValid) {
+      throw new ErrorHandler("Current password is incorrect", 401);
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    return { message: "Password updated successfully" };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to update password", 500);
+  }
+};
+
+// Upload profile picture
+userSchema.statics.uploadProfilePicture = async function (userId, imageFile) {
+  try {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    // Delete old profile picture if it exists
+    if (user.profilePicture) {
+      try {
+        const oldImageKey = user.profilePicture.split("/").pop();
+        await this.s3Service.deleteImage(oldImageKey);
+      } catch (error) {
+        console.warn("Failed to delete old profile picture:", error.message);
+      }
+    }
+
+    // Upload new profile picture to S3
+    const imageKey = this.s3Service.generateImageKey(
+      `users/${userId}/profile`,
+      imageFile.originalname,
+    );
+    const imageUrl = await this.s3Service.uploadImage(
+      imageFile.buffer,
+      imageKey,
+      imageFile.mimetype,
+    );
+
+    // Update user profile picture
+    user.profilePicture = imageUrl;
+    await user.save();
+
+    return { profilePicture: imageUrl };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to upload profile picture", 500);
+  }
+};
+
+userSchema.statics.deleteProfilePicture = async function (userId) {
+  try {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    if (!user.profilePicture) {
+      throw new ErrorHandler("No profile picture to delete", 400);
+    }
+
+    // Delete from S3
+    const imageKey = user.profilePicture.split("/").pop();
+    await this.s3Service.deleteImage(imageKey);
+
+    // Remove profile picture reference
+    user.profilePicture = null;
+    await user.save();
+
+    return { message: "Profile picture deleted successfully" };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to delete profile picture", 500);
   }
 };
 const User = mongoose.model("User", userSchema);
