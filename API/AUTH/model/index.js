@@ -553,8 +553,273 @@ userSchema.statics.getUsersList = async function (filters = {}) {
   } catch (error) {
     throw new ErrorHandler("Failed to fetch users list", 500);
   }
+};// Add these methods to your existing User model
+
+userSchema.statics.getUserDashboard = async function (userId) {
+  try {
+    const userInfo = await this.findById(userId).select("-password");
+
+    if (!userInfo) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    const [
+      userPersonalizedBooks,
+      userPaymentStats,
+      recentUserActivities,
+    ] = await Promise.all([
+      this.getUserPersonalizedBooks(userId),
+      this.getUserPaymentStatistics(userId),
+      this.getRecentUserActivities(userId),
+    ]);
+
+    return {
+      user_info: {
+        id: userInfo._id,
+        username: userInfo.username,
+        firstname: userInfo.firstname,
+        lastname: userInfo.lastname,
+        email: userInfo.email,
+        phonenumber: userInfo.phonenumber,
+        role: userInfo.role,
+        lastLogin: userInfo.lastLogin,
+        createdAt: userInfo.createdAt,
+      },
+      personalized_books: userPersonalizedBooks,
+      payment_statistics: userPaymentStats,
+      recent_activities: recentUserActivities,
+    };
+  } catch (error) {
+    console.log(error);
+    throw new ErrorHandler("Failed to fetch user dashboard statistics", 500);
+  }
 };
 
+userSchema.statics.getUserPersonalizedBooks = async function (userId) {
+  try {
+    const PersonalizedBookModel = mongoose.model("PersonalizedBook");
+
+    const totalPersonalizedBooks = await PersonalizedBookModel.countDocuments({
+      user_id: userId,
+    });
+
+    const paidBooks = await PersonalizedBookModel.countDocuments({
+      user_id: userId,
+      is_paid: true,
+    });
+
+    const unpaidBooks = await PersonalizedBookModel.countDocuments({
+      user_id: userId,
+      is_paid: false,
+    });
+
+    // Personalized books by genre for this user
+    const booksByGenre = await PersonalizedBookModel.aggregate([
+      {
+        $match: { user_id: userId },
+      },
+      {
+        $group: {
+          _id: "$personalized_content.genre",
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          genre: "$_id",
+          count: 1,
+          _id: 0,
+        },
+      },
+      {
+        $sort: { count: -1 },
+      },
+    ]);
+
+    const booksByGender = await PersonalizedBookModel.aggregate([
+      {
+        $match: { user_id: userId },
+      },
+      {
+        $group: {
+          _id: "$gender_preference",
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          gender: "$_id",
+          count: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    const ageStats = await PersonalizedBookModel.aggregate([
+      {
+        $match: {
+          user_id: userId,
+          child_age: { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          avg_age: { $avg: "$child_age" },
+          min_age: { $min: "$child_age" },
+          max_age: { $max: "$child_age" },
+        },
+      },
+    ]);
+
+    const recentPersonalizedBooks = await PersonalizedBookModel.find({
+      user_id: userId,
+    })
+      .select("child_name child_age gender_preference price is_paid createdAt")
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    return {
+      total_personalized_books: totalPersonalizedBooks,
+      paid_books: paidBooks,
+      unpaid_books: unpaidBooks,
+      books_by_genre: booksByGenre,
+      books_by_gender: booksByGender,
+      age_statistics: ageStats[0] || {
+        avg_age: 0,
+        min_age: 0,
+        max_age: 0,
+      },
+      recent_personalized_books: recentPersonalizedBooks,
+    };
+  } catch (error) {
+    throw new ErrorHandler(
+      "Failed to fetch user personalized book statistics",
+      500,
+    );
+  }
+};
+
+userSchema.statics.getUserPaymentStatistics = async function (userId) {
+  try {
+    const PersonalizedBookModel = mongoose.model("PersonalizedBook");
+    const revenueStats = await PersonalizedBookModel.aggregate([
+      {
+        $match: {
+          user_id: userId,
+          is_paid: true,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total_revenue: { $sum: "$price" },
+          average_payment: { $avg: "$price" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Revenue by month for user (last 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const revenueByMonth = await PersonalizedBookModel.aggregate([
+      {
+        $match: {
+          user_id: userId,
+          is_paid: true,
+          payment_date: { $gte: sixMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$payment_date" },
+            month: { $month: "$payment_date" },
+          },
+          revenue: { $sum: "$price" },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { "_id.year": 1, "_id.month": 1 },
+      },
+      {
+        $project: {
+          month: {
+            $dateToString: {
+              format: "%Y-%m",
+              date: {
+                $dateFromParts: {
+                  year: "$_id.year",
+                  month: "$_id.month",
+                  day: 1,
+                },
+              },
+            },
+          },
+          revenue: 1,
+          count: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    const recentPayments = await PersonalizedBookModel.find({
+      user_id: userId,
+      is_paid: true,
+    })
+      .select("child_name price payment_date")
+      .sort({ payment_date: -1 })
+      .limit(10);
+
+    return {
+      revenue_statistics: revenueStats[0] || {
+        total_revenue: 0,
+        average_payment: 0,
+        count: 0,
+      },
+      revenue_by_month: revenueByMonth,
+      recent_payments: recentPayments,
+    };
+  } catch (error) {
+    throw new ErrorHandler("Failed to fetch user payment statistics", 500);
+  }
+};
+
+userSchema.statics.getRecentUserActivities = async function (userId) {
+  try {
+    const PersonalizedBookModel = mongoose.model("PersonalizedBook");
+
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const recentPersonalizedBooks = await PersonalizedBookModel.find({
+      user_id: userId,
+      createdAt: { $gte: oneWeekAgo },
+    })
+      .select("child_name price is_paid createdAt")
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    const recentPayments = await PersonalizedBookModel.find({
+      user_id: userId,
+      is_paid: true,
+      payment_date: { $gte: oneWeekAgo },
+    })
+      .select("child_name price payment_date")
+      .sort({ payment_date: -1 })
+      .limit(10);
+
+    return {
+      recent_personalized_books: recentPersonalizedBooks,
+      recent_payments: recentPayments,
+    };
+  } catch (error) {
+    throw new ErrorHandler("Failed to fetch recent user activities", 500);
+  }
+};
 const User = mongoose.model("User", userSchema);
 
 export default User;
