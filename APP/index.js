@@ -20,6 +20,7 @@ import { connectDB } from "../CORE/services/db/index.js";
 import ErrorHandler from "../CORE/middleware/errorhandler/index.js";
 import { sendResponse } from "../CORE/utils/response.handler/index.js";
 import CorsHandler from "../CORE/services/cors/index.js";
+
 export const app = express();
 
 app.use(helmet());

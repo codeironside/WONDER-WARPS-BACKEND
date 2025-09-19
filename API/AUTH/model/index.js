@@ -61,7 +61,6 @@ userSchema.statics.signIn = async function (identifier, password) {
 
 userSchema.statics.registerWithOTP = async function (userData) {
   try {
-    // Check if user already exists in either TempUser or User collection
     const existingTempUser = await TempUser.findOne({
       $or: [
         { email: userData.email },
@@ -99,11 +98,8 @@ userSchema.statics.registerWithOTP = async function (userData) {
       }
     }
 
-    // Generate alphanumeric OTP
-    const otp = this.generateAlphanumericOTP(6); // 6-character alphanumeric OTP
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
-
-    // Create temporary user
+    const otp = this.generateAlphanumericOTP(6);
+    const otpExpires = new Date(Date.now() + 1 * 60 * 1000);
     const tempUser = new TempUser({
       username: userData.username,
       firstname: userData.firstName,
@@ -111,19 +107,16 @@ userSchema.statics.registerWithOTP = async function (userData) {
       phonenumber: userData.phoneNumber,
       email: userData.email,
       password: userData.password,
-      role: await RoleModel.getRoleName(userData.role),
+      role: await RoleModel.getRoleName("User"),
       otp,
       otpExpires,
     });
 
     await tempUser.save();
-
-    // In a real application, you would send the OTP via email or SMS here
-    console.log(`OTP for ${userData.email}: ${otp}`);
-
     return {
-      message: "OTP sent to your email/phone",
+      message: "OTP sent to your email",
       tempUserId: tempUser._id,
+      otp: otp,
     };
   } catch (error) {
     if (error instanceof ErrorHandler) throw error;
@@ -148,19 +141,64 @@ userSchema.statics.resendOTP = async function (tempUserId) {
     const tempUser = await TempUser.findById(tempUserId);
 
     if (!tempUser) {
-      throw new ErrorHandler("Invalid request", 400);
+      throw new ErrorHandler("Session Expired", 400);
     }
     const otp = this.generateAlphanumericOTP(6);
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + 1 * 60 * 1000);
     tempUser.otp = otp;
     tempUser.otpExpires = otpExpires;
     await tempUser.save();
-    console.log(`New OTP for ${tempUser.email}: ${otp}`);
 
-    return { message: "New OTP sent to your email/phone" };
+    return { message: "New OTP sent to your email", tempUser };
   } catch (error) {
     if (error instanceof ErrorHandler) throw error;
     throw new ErrorHandler("Failed to resend OTP", 500);
+  }
+};
+
+userSchema.statics.verifyOTP = async function (tempUserId, otp) {
+  try {
+    const tempUser = await TempUser.findById(tempUserId);
+
+    if (!tempUser) {
+      throw new ErrorHandler("Invalid or expired OTP", 400);
+    }
+
+    if (tempUser.otpExpires < new Date()) {
+      await TempUser.findByIdAndDelete(tempUserId);
+      throw new ErrorHandler("OTP has expired", 400);
+    }
+
+   
+    if (tempUser.otp !== otp) {
+      throw new ErrorHandler("Invalid OTP", 400);
+    }
+
+    const newUser = new this({
+      username: tempUser.username,
+      firstname: tempUser.firstname,
+      lastname: tempUser.lastname,
+      phonenumber: tempUser.phonenumber,
+      email: tempUser.email,
+      password: tempUser.password,
+      role: tempUser.role,
+      isVerified: true,
+    });
+
+    await newUser.save();
+
+    await TempUser.findByIdAndDelete(tempUserId);
+
+    return {
+      email: newUser.email,
+      username: newUser.username,
+      firstname: newUser.firstname,
+      lastname: newUser.lastname,
+      phonenumber: newUser.phonenumber,
+    };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to verify OTP", 500);
   }
 };
 

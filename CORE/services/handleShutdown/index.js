@@ -1,5 +1,5 @@
 import logger from "@/logger";
-// import { db } from "@/db";
+import mongoose from "../db/index.js";
 let server;
 
 export function handleShutdown(signal) {
@@ -7,19 +7,23 @@ export function handleShutdown(signal) {
   if (server) {
     server.close(() => {
       logger.info("HTTP server closed.");
-      // db.destroy()
-      //   .then(() => {
-      //     logger.info("Database connection closed.");
-      //     process.exit(0);
-      //   })
-      // .catch((err) => {
-      //   logger.error("Error closing database connection:", err);
-      //   process.exit(1);
-      // });
+      mongoose.connection.close(() => {
+        try {
+          logger.info("Database connection closed.");
+          process.exit(1);
+        } catch (err) {
+          logger.error("Error closing database connection:", err);
+          process.exit(0);
+        }
+      });
     });
   } else {
-    db.destroy()
-      .then(() => process.exit(0))
-      .catch(() => process.exit(1));
+    try {
+      logger.info("Database connection closed.");
+      process.exit(1);
+    } catch (err) {
+      logger.error("Error closing database connection:", err);
+      process.exit(0);
+    }
   }
 }

@@ -24,7 +24,8 @@ export const config = {
   ses: {
     accessKeyId: process.env.SES_KEY_ID,
     secretAccessKey: process.env.SES_SECRET_ACCESS_KEY,
-    region: process.env.AWS_REGION || "us-east-1",
+    from_info: process.env.SES_FROM_INFO,
+    region: process.env.SES_REGION,
   },
   url: {
     frontendurl: process.env.FRONTEND_URL,

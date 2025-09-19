@@ -13,7 +13,7 @@ const tempUserSchema = new mongoose.Schema({
   role: { type: Number, required: true },
   otp: { type: String, required: true },
   otpExpires: { type: Date, required: true },
-  createdAt: { type: Date, default: Date.now, expires: 60 },
+  createdAt: { type: Date, default: Date.now, expires: 6000 },
 });
 
 tempUserSchema.pre("save", async function (next) {
