@@ -1,5 +1,5 @@
-import SES from "aws-sdk/clients/ses.js";
-import fs from "fs/promises";
+import {Resend} from "resend";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import logger from "../../utils/logger/index.js";
@@ -8,14 +8,10 @@ import { config } from "../../utils/config/index.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const resend = new Resend(config.resend.apiKey);
+
 class EmailService {
   constructor() {
-    this.ses = new SES({
-      region: config.ses.region,
-      accessKeyId: config.ses.accessKeyId,
-      secretAccessKey: config.ses.secretAccessKey,
-    });
-
     this.templates = {
       otp: null,
       welcome: null,
@@ -30,28 +26,26 @@ class EmailService {
     try {
       const templatesDir = path.join(__dirname, "../../email-templates");
 
-      this.templates.otp = await fs.readFile(
+      this.templates.otp = await fs.promises.readFile(
         path.join(templatesDir, "otp.html"),
         "utf8",
       );
-
-      this.templates.welcome = await fs.readFile(
+      this.templates.welcome = await fs.promises.readFile(
         path.join(templatesDir, "welcome-template.html"),
         "utf8",
       );
-
-      this.templates.login = await fs.readFile(
+      this.templates.login = await fs.promises.readFile(
         path.join(templatesDir, "login-template.html"),
         "utf8",
       );
-
-      this.templates.payment = await fs.readFile(
+      this.templates.payment = await fs.promises.readFile(
         path.join(templatesDir, "payment-template.html"),
         "utf8",
       );
 
       logger.info("Email templates loaded successfully");
     } catch (error) {
+        console.log(error)
       logger.error("Failed to load email templates:", error);
       throw new Error("Failed to load email templates");
     }
@@ -63,64 +57,40 @@ class EmailService {
       htmlContent = htmlContent.replace("{{OTP_CODE}}", otpCode);
       htmlContent = htmlContent.replace("{{USER_NAME}}", username);
 
-      const params = {
-        Source: config.ses.from_info,
-        Destination: {
-          ToAddresses: [email],
-        },
-        Message: {
-          Subject: {
-            Data: "Your Wonder Wrap Verification Code",
-          },
-          Body: {
-            Html: {
-              Data: htmlContent,
-            },
-          },
-        },
-      };
+      const result = await resend.emails.send({
+        from: config.resend.fromEmail,
+        to: email,
+        subject: "Your Wonder Wrap Verification Code",
+        html: htmlContent,
+        text: `Your Wonder Wrap verification code is: ${otpCode}. This code will expire in 10 minutes.`,
+      });
 
-      const result = await this.ses.sendEmail(params).promise();
-      console.log(result);
-      logger.info(`OTP email sent to ${email}: ${result.MessageId}`);
+      logger.info(`OTP email sent to ${email}: ${result.id}`);
       return result;
     } catch (error) {
-      console.log(error);
       logger.error("Failed to send OTP email:", error);
-      throw new Error("Failed to send OTP email");
+      throw new Error(`Failed to send OTP email: ${error.message}`);
     }
   }
 
   async sendWelcomeEmail(email, username) {
     try {
       let htmlContent = this.templates.welcome;
-
-      
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
 
-      const params = {
-        Source: config.ses.from_info,
-        Destination: {
-          ToAddresses: [email],
-        },
-        Message: {
-          Subject: {
-            Data: "Welcome to Wonder Wrap!",
-          },
-          Body: {
-            Html: {
-              Data: htmlContent,
-            },
-          },
-        },
-      };
+      const result = await resend.emails.send({
+        from: config.resend.fromEmail,
+        to: email,
+        subject: "Welcome to Wonder Wrap!",
+        html: htmlContent,
+        text: `Welcome to Wonder Wrap, ${username}! Thank you for joining our community.`,
+      });
 
-      const result = await this.ses.sendEmail(params).promise();
-      logger.info(`Welcome email sent to ${email}: ${result.MessageId}`);
+      logger.info(`Welcome email sent to ${email}: ${result.id}`);
       return result;
     } catch (error) {
       logger.error("Failed to send welcome email:", error);
-      throw new Error("Failed to send welcome email");
+      throw new Error(`Failed to send welcome email: ${error.message}`);
     }
   }
 
@@ -132,37 +102,25 @@ class EmailService {
   ) {
     try {
       let htmlContent = this.templates.login;
-
-      // Replace placeholders with actual values
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
       htmlContent = htmlContent.replace("{{LOGIN_TIME}}", loginTime);
       htmlContent = htmlContent.replace("{{DEVICE_INFO}}", deviceInfo);
 
-      const params = {
-        Source: process.env.SES_FROM_EMAIL,
-        Destination: {
-          ToAddresses: [email],
-        },
-        Message: {
-          Subject: {
-            Data: "New Login to Your Wonder Wrap Account",
-          },
-          Body: {
-            Html: {
-              Data: htmlContent,
-            },
-          },
-        },
-      };
+      const result = await resend.emails.send({
+        from: config.resend.fromEmail,
+        to: email,
+        subject: "New Login to Your Wonder Wrap Account",
+        html: htmlContent,
+        text: `New login detected for your Wonder Wrap account.\nTime: ${loginTime}\nDevice: ${deviceInfo}\nIf this wasn't you, please contact support immediately.`,
+      });
 
-      const result = await this.ses.sendEmail(params).promise();
-      logger.info(
-        `Login notification email sent to ${email}: ${result.MessageId}`,
-      );
+      logger.info(`Login notification email sent to ${email}: ${result.id}`);
       return result;
     } catch (error) {
       logger.error("Failed to send login notification email:", error);
-      throw new Error("Failed to send login notification email");
+      throw new Error(
+        `Failed to send login notification email: ${error.message}`,
+      );
     }
   }
 
@@ -175,38 +133,26 @@ class EmailService {
   ) {
     try {
       let htmlContent = this.templates.payment;
-
-      // Replace placeholders with actual values
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
       htmlContent = htmlContent.replace("{{AMOUNT}}", amount);
       htmlContent = htmlContent.replace("{{PAYMENT_DATE}}", paymentDate);
       htmlContent = htmlContent.replace("{{ORDER_ID}}", orderId);
 
-      const params = {
-        Source: process.env.SES_FROM_EMAIL,
-        Destination: {
-          ToAddresses: [email],
-        },
-        Message: {
-          Subject: {
-            Data: "Your Wonder Wrap Payment Confirmation",
-          },
-          Body: {
-            Html: {
-              Data: htmlContent,
-            },
-          },
-        },
-      };
+      const result = await resend.emails.send({
+        from: config.resend.fromEmail,
+        to: email,
+        subject: "Your Wonder Wrap Payment Confirmation",
+        html: htmlContent,
+        text: `Payment Confirmation\nAmount: ${amount}\nDate: ${paymentDate}\nOrder ID: ${orderId}\nThank you for your purchase!`,
+      });
 
-      const result = await this.ses.sendEmail(params).promise();
-      logger.info(
-        `Payment confirmation email sent to ${email}: ${result.MessageId}`,
-      );
+      logger.info(`Payment confirmation email sent to ${email}: ${result.id}`);
       return result;
     } catch (error) {
       logger.error("Failed to send payment confirmation email:", error);
-      throw new Error("Failed to send payment confirmation email");
+      throw new Error(
+        `Failed to send payment confirmation email: ${error.message}`,
+      );
     }
   }
 
@@ -224,30 +170,38 @@ class EmailService {
         htmlContent = htmlContent.replace(placeholder, replacements[key]);
       });
 
-      const params = {
-        Source: process.env.SES_FROM_EMAIL,
-        Destination: {
-          ToAddresses: [email],
-        },
-        Message: {
-          Subject: {
-            Data: subject,
-          },
-          Body: {
-            Html: {
-              Data: htmlContent,
-            },
-          },
-        },
-      };
+      // Generate plain text version (basic)
+      const textContent = Object.values(replacements).join(" ");
 
-      const result = await this.ses.sendEmail(params).promise();
-      logger.info(`Custom email sent to ${email}: ${result.MessageId}`);
+      const result = await resend.emails.send({
+        from: config.resend.fromEmail,
+        to: email,
+        subject: subject,
+        html: htmlContent,
+        text: textContent,
+      });
+
+      logger.info(`Custom email sent to ${email}: ${result.id}`);
       return result;
     } catch (error) {
       logger.error("Failed to send custom email:", error);
-      throw new Error("Failed to send custom email");
+      throw new Error(`Failed to send custom email: ${error.message}`);
     }
+  }
+
+  async verifyEmailIdentity(email) {
+    try {
+      // Resend does not require email verification like SES, as it handles email sending through its API
+      logger.info(`Email identity verification not needed in Resend: ${email}`);
+    } catch (error) {
+      logger.error("Failed to verify email identity:", error);
+      throw new Error(`Failed to verify email identity: ${error.message}`);
+    }
+  }
+
+  // Method to close the Resend client (useful for cleanup)
+  destroy() {
+    // Resend does not have a specific cleanup function as it's an API service
   }
 }
 

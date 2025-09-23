@@ -169,7 +169,6 @@ userSchema.statics.verifyOTP = async function (tempUserId, otp) {
       throw new ErrorHandler("OTP has expired", 400);
     }
 
-   
     if (tempUser.otp !== otp) {
       throw new ErrorHandler("Invalid OTP", 400);
     }

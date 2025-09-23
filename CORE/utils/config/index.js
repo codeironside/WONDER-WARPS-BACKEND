@@ -28,6 +28,10 @@ export const config = {
     region: process.env.SES_REGION,
   },
   url: {
-    frontendurl: process.env.FRONTEND_URL,
+    frontendurl: [process.env.FRONTEND_URL, process.env.FRONTEND_DEV],
+    frontendev: process.env.FRONTEND_DEV,
+  },
+  resend: {
+    apiKey: process.env.RESEND_API_KEY,
   },
 };

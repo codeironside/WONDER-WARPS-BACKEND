@@ -120,7 +120,7 @@ You will return the story as a single JSON object with the following format:
       const image = await this.openai.images.generate({
         model: "dall-e-3",
         response_format: "url",
-        prompt: `A dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. The lighting should be intense and cinematic. Absolutely no text, words, or letters should be present in any part of the image.`,
+        prompt: `A dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. The lighting should be intense and cinematic. Absolutely no text, words, or letters should be present in any part of the image, again NO TEXT.`,
         n: 1,
         quality: "standard",
         size: "1024x1024",
@@ -138,7 +138,8 @@ You will return the story as a single JSON object with the following format:
       .map((chapter) => chapter.chapter_content)
       .join(" ");
 
-    const prompt = `A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli, with no text, words, or lettering in the image. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
+    const prompt = `A dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation, with no text, words, or lettering in the image. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image. NO TEXT`;
+    // const prompt = `A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli, with no text, words, or lettering in the image. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
 
     const coverImage = await this.openai.images.generate({
       model: "dall-e-3",

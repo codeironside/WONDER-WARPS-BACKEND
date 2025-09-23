@@ -33,8 +33,6 @@ class StoryPersonalizer {
       if (!templateId || !childName) {
         throw new ErrorHandler("Template ID and child name are required", 400);
       }
-
-      // Fetch the template from the database
       const template = await BookTemplate.findByIdWithChapters(templateId);
       if (!template) {
         throw new ErrorHandler("Book template not found", 404);
@@ -43,14 +41,10 @@ class StoryPersonalizer {
       if (!template.is_personalizable) {
         throw new ErrorHandler("This book template is not personalizable", 400);
       }
-
-      // Personalize the story using OpenAI
       const personalizedStory = await this.rewriteStoryWithAI(
         template,
         personalizationDetails,
       );
-
-      // Generate new images for the personalized story
       const images = await this.generatePersonalizedImages(
         template.chapters,
         personalizedStory.chapters,
@@ -58,14 +52,10 @@ class StoryPersonalizer {
         template.age_max,
         personalizationDetails,
       );
-
-      // Generate a new cover image
       const coverImage = await this.generatePersonalizedCoverImage(
         personalizedStory,
         personalizationDetails,
       );
-
-      // Add images to the personalized story
       const storybookContent = this.addImagesToStory(personalizedStory, images);
 
       return {
@@ -204,7 +194,6 @@ class StoryPersonalizer {
 
           const imageUrl = image.data[0].url;
 
-          // Upload to S3
           const s3Key = this.s3Service.generateImageKey(
             `personalized-books/${childName}/chapters`,
             imageUrl,
@@ -240,7 +229,7 @@ class StoryPersonalizer {
       gender,
     } = personalizationDetails;
 
-    return `Create a children's book illustration with NO TEXT of any kind. Maintain the same composition and style as the original scene but with these character changes:
+    return `Create a children's book illustration with NO TEXT of any kind.style it as a dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation Maintain the same composition and style as the original scene but with these character changes:
     
     Original scene: ${originalDescription}
     
@@ -263,7 +252,7 @@ class StoryPersonalizer {
     try {
       const { childName } = personalizationDetails;
 
-      const prompt = `Create a children's book image with NO TEXT of any kind. Maintain the same composition and style as the original but with these character changes:
+      const prompt = `Create a children's book image with NO TEXT of any kind. style it as dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation Maintain the same composition and style as the original but with these character changes:
       
       Book title: "${storyData.book_title}"
       

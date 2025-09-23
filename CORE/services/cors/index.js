@@ -10,6 +10,7 @@ class CorsHandler {
 
   parseAllowedOrigins() {
     const { frontendurl } = config.url;
+    const { frontendev } = config.url;
 
     if (!frontendurl) {
       logger.warn("No frontend URL found in configuration");
