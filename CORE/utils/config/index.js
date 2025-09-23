@@ -8,6 +8,7 @@ export const config = {
     session_stay_alive: process.env.SESSIONS_STAY_ALIVE,
     session_doesnt_stay_alive: process.env.SESSIONS_DOESNT_STAY_ALIVE,
     JWT_SECRET: process.env.JWT_SECRET,
+    base_url:process.env.BASE_URL
   },
   db: {
     MONGO_URI: process.env.MONGO_URI,
