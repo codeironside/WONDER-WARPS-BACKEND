@@ -7,8 +7,7 @@ export const saveBookTemplate = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { story } = req.body;
-
-    if (!story || !story.book_title) {
+    if (!story || !story.book_title || !story.cover_image) {
       throw new ErrorHandler("Story data with book title is required", 400);
     }
     if (

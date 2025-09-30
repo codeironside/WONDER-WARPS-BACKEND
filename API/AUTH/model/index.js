@@ -3,6 +3,10 @@ import bcrypt from "bcrypt";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import RoleModel from "../../ROLES/model/index.js";
 import TempUser from "../OTP/new.user/index.js";
+import PasswordReset from "../OTP/forgot.password/index.js";
+import emailService from "../../../CORE/services/Email/index.js";
+import logger from "../../../CORE/utils/logger/index.js";
+import crypto from "crypto";
 
 const SALT_ROUNDS = 10;
 
@@ -269,7 +273,6 @@ userSchema.statics.getUserStatistics = async function () {
       },
     ]);
 
-    // Get new users in the last 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -426,10 +429,8 @@ userSchema.statics.getPersonalizedBookStatistics = async function () {
 
 userSchema.statics.getPaymentStatistics = async function () {
   try {
-    // Get the actual Mongoose model for PersonalizedBook
     const PersonalizedBookModel = mongoose.model("PersonalizedBook");
 
-    // Total revenue from paid personalized books
     const revenueStats = await PersonalizedBookModel.aggregate([
       {
         $match: { is_paid: true },
@@ -512,11 +513,9 @@ userSchema.statics.getAllRoles = async function () {
 
 userSchema.statics.getGenreStatistics = async function () {
   try {
-    // Get the actual Mongoose models
     const BookTemplateModel = mongoose.model("BookTemplate");
     const PersonalizedBookModel = mongoose.model("PersonalizedBook");
 
-    // Genre distribution in templates
     const templateGenres = await BookTemplateModel.aggregate([
       {
         $group: {
@@ -566,12 +565,9 @@ userSchema.statics.getRecentActivities = async function () {
   try {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-    // Get the actual Mongoose models
     const BookTemplateModel = mongoose.model("BookTemplate");
     const PersonalizedBookModel = mongoose.model("PersonalizedBook");
 
-    // Recent user signups
     const recentUsers = await this.find({
       createdAt: { $gte: oneWeekAgo },
     })
@@ -656,7 +652,7 @@ userSchema.statics.getUsersList = async function (filters = {}) {
   } catch (error) {
     throw new ErrorHandler("Failed to fetch users list", 500);
   }
-}; // Add these methods to your existing User model
+};
 
 userSchema.statics.getUserDashboard = async function (userId) {
   try {
@@ -1010,7 +1006,6 @@ userSchema.statics.updatePassword = async function (
   }
 };
 
-// Upload profile picture
 userSchema.statics.uploadProfilePicture = async function (userId, imageFile) {
   try {
     const user = await this.findById(userId);
@@ -1075,6 +1070,527 @@ userSchema.statics.deleteProfilePicture = async function (userId) {
     throw new ErrorHandler("Failed to delete profile picture", 500);
   }
 };
+
+userSchema.statics.requestPasswordReset = async function (email, req) {
+  try {
+    if (!email) {
+      throw new ErrorHandler("Email is required", 400);
+    }
+
+    const user = await this.findOne({ email });
+    if (!user) {
+      logger.warn(`Password reset requested for non-existent email: ${email}`);
+      return {
+        success: true,
+        message:
+          "If an account with that email exists, a reset OTP has been sent",
+        otpId: null,
+      };
+    }
+    const recentAttempt = await PasswordReset.findOne({
+      email,
+      createdAt: { $gte: new Date(Date.now() - 2 * 60 * 1000) },
+    });
+
+    if (recentAttempt) {
+      throw new ErrorHandler("Please wait before requesting another OTP", 429);
+    }
+    const otp = this.generateSecureOTP(6);
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000);
+    const passwordReset = new PasswordReset({
+      email,
+      otp,
+      otpExpires,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.headers["user-agent"] || "Unknown",
+    });
+
+    await passwordReset.save();
+    await emailService.sendPasswordResetOTP(email, user.firstname, otp, req);
+    logger.info(`Password reset OTP sent to ${email}`, {
+      userId: user._id,
+      ip: passwordReset.ipAddress,
+      userAgent: passwordReset.userAgent,
+    });
+
+    return {
+      success: true,
+      message: "Password reset OTP has been sent to your email",
+      otpId: passwordReset._id,
+      expiresIn: "15 minutes",
+    };
+  } catch (error) {
+    console.log(error);
+    if (error instanceof ErrorHandler) throw error;
+    logger.error("Password reset request failed:", error);
+    throw new ErrorHandler("Failed to process password reset request", 500);
+  }
+};
+userSchema.statics.resendPasswordResetOTP = async function (email, req) {
+  try {
+    if (!email) {
+      throw new ErrorHandler("Email is required", 400);
+    }
+    const existingReset = await PasswordReset.findOne({
+      email,
+      used: false,
+      otpExpires: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+
+    if (!existingReset) {
+      throw new ErrorHandler(
+        "No active OTP request found. Please request a new OTP",
+        400,
+      );
+    }
+    if (existingReset.resendCount >= 3) {
+      throw new ErrorHandler(
+        "Maximum resend attempts reached. Please request a new OTP",
+        429,
+      );
+    }
+    const canResendAfter = new Date(
+      existingReset.lastResentAt?.getTime() + 60 * 1000,
+    );
+    if (existingReset.lastResentAt && new Date() < canResendAfter) {
+      const waitSeconds = Math.ceil((canResendAfter - new Date()) / 1000);
+      throw new ErrorHandler(
+        `Please wait ${waitSeconds} seconds before resending OTP`,
+        429,
+      );
+    }
+
+    // Generate new OTP
+    const newOTP = this.generateSecureOTP(6);
+    const newOTPExpires = new Date(Date.now() + 15 * 60 * 1000);
+    existingReset.otp = newOTP;
+    existingReset.otpExpires = newOTPExpires;
+    existingReset.resendCount += 1;
+    existingReset.lastResentAt = new Date();
+    existingReset.ipAddress = req.ip || req.connection.remoteAddress;
+    existingReset.userAgent = req.headers["user-agent"] || "Unknown";
+
+    await existingReset.save();
+    const user = await this.findOne({ email });
+    const username = user ? user.firstname : "User";
+
+    await emailService.sendPasswordResetOTP(email, username, newOTP, req);
+
+    logger.info(`Password reset OTP resent to ${email}`, {
+      resendCount: existingReset.resendCount,
+      ip: existingReset.ipAddress,
+    });
+
+    return {
+      success: true,
+      message: "New OTP has been sent to your email",
+      otpId: existingReset._id,
+      resendCount: existingReset.resendCount,
+      expiresIn: "15 minutes",
+    };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    logger.error("Resend password reset OTP failed:", error);
+    throw new ErrorHandler("Failed to resend OTP", 500);
+  }
+};
+userSchema.statics.canResendOTP = async function (type, identifier) {
+  try {
+    let record;
+
+    if (type === "password-reset") {
+      record = await PasswordReset.findOne({
+        email: identifier,
+        used: false,
+        otpExpires: { $gt: new Date() },
+      }).sort({ createdAt: -1 });
+    } else if (type === "registration") {
+      record = await TempUser.findById(identifier);
+    } else {
+      return { canResend: false, reason: "Invalid OTP type" };
+    }
+
+    if (!record) {
+      return { canResend: false, reason: "No active OTP found" };
+    }
+
+    if (record.resendCount >= 3) {
+      return { canResend: false, reason: "Maximum resend attempts reached" };
+    }
+
+    const canResendAfter = new Date(record.lastResentAt?.getTime() + 60 * 1000);
+    if (record.lastResentAt && new Date() < canResendAfter) {
+      const waitSeconds = Math.ceil((canResendAfter - new Date()) / 1000);
+      return {
+        canResend: false,
+        reason: `Please wait ${waitSeconds} seconds`,
+        waitSeconds,
+      };
+    }
+
+    return {
+      canResend: true,
+      resendCount: record.resendCount,
+      lastResentAt: record.lastResentAt,
+    };
+  } catch (error) {
+    logger.error("Error checking OTP resend eligibility:", error);
+    return { canResend: false, reason: "Error checking eligibility" };
+  }
+};
+
+userSchema.statics.verifyPasswordResetOTP = async function (otpId, otp, email) {
+  try {
+    if (!otpId || !otp || !email) {
+      throw new ErrorHandler("OTP ID, OTP, and email are required", 400);
+    }
+
+    // Find the reset record
+    const resetRecord = await PasswordReset.findOne({
+      _id: otpId,
+      email,
+      used: false,
+    });
+
+    if (!resetRecord) {
+      throw new ErrorHandler("Invalid or expired OTP", 400);
+    }
+
+    // Check if OTP has expired
+    if (resetRecord.otpExpires < new Date()) {
+      await PasswordReset.findByIdAndUpdate(otpId, { used: true });
+      throw new ErrorHandler("OTP has expired", 400);
+    }
+
+    // Check attempt limit
+    if (resetRecord.attempts >= 5) {
+      await PasswordReset.findByIdAndUpdate(otpId, { used: true });
+      throw new ErrorHandler(
+        "Too many failed attempts. Please request a new OTP",
+        429,
+      );
+    }
+
+    // Verify OTP
+    if (resetRecord.otp !== otp.toUpperCase()) {
+      await PasswordReset.findByIdAndUpdate(otpId, {
+        $inc: { attempts: 1 },
+      });
+
+      const attemptsLeft = 5 - (resetRecord.attempts + 1);
+      throw new ErrorHandler(
+        `Invalid OTP. ${attemptsLeft} attempts remaining`,
+        400,
+      );
+    }
+
+    // OTP is valid
+    await PasswordReset.findByIdAndUpdate(otpId, {
+      used: true,
+    });
+
+    logger.info(`Password reset OTP verified for ${email}`);
+
+    return {
+      success: true,
+      message: "OTP verified successfully",
+      token: this.generateResetToken(otpId), // Short-lived token for actual reset
+    };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    logger.error("OTP verification failed:", error);
+    throw new ErrorHandler("Failed to verify OTP", 500);
+  }
+};
+
+userSchema.statics.resetPasswordWithOTP = async function (
+  resetToken,
+  newPassword,
+  confirmPassword,
+) {
+  try {
+    if (!resetToken || !newPassword || !confirmPassword) {
+      throw new ErrorHandler("All fields are required", 400);
+    }
+
+    // Verify reset token
+    const { otpId, valid } = this.verifyResetToken(resetToken);
+    if (!valid) {
+      throw new ErrorHandler("Invalid or expired reset token", 400);
+    }
+
+    // Find the used reset record
+    const resetRecord = await PasswordReset.findOne({
+      _id: otpId,
+      used: true,
+    });
+
+    if (!resetRecord) {
+      throw new ErrorHandler("Invalid reset request", 400);
+    }
+
+    // Check if token was used recently (within 10 minutes)
+    if (resetRecord.updatedAt < new Date(Date.now() - 10 * 60 * 1000)) {
+      throw new ErrorHandler("Reset token has expired", 400);
+    }
+
+    // Validate passwords match
+    if (newPassword !== confirmPassword) {
+      throw new ErrorHandler("Passwords do not match", 400);
+    }
+
+    // Validate password strength
+    this.validatePasswordStrength(newPassword);
+
+    // Find user and update password
+    const user = await this.findOne({ email: resetRecord.email });
+    if (!user) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    // Invalidate all existing reset tokens for this user
+    await PasswordReset.updateMany(
+      { email: user.email, used: false },
+      { used: true },
+    );
+
+    // Log the password reset
+    logger.info(`Password reset successfully for user ${user.email}`, {
+      userId: user._id,
+      resetVia: "OTP",
+    });
+
+    // Send confirmation email
+    await this.sendPasswordResetConfirmation(
+      user.email,
+      user.firstname,
+      resetRecord.ipAddress,
+    );
+
+    return {
+      success: true,
+      message: "Password has been reset successfully",
+    };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    logger.error("Password reset failed:", error);
+    throw new ErrorHandler("Failed to reset password", 500);
+  }
+};
+
+userSchema.statics.changePassword = async function (
+  userId,
+  currentPassword,
+  newPassword,
+  confirmPassword,
+  req,
+) {
+  try {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      throw new ErrorHandler("All password fields are required", 400);
+    }
+
+    // Find user
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      throw new ErrorHandler("Current password is incorrect", 401);
+    }
+
+    // Check if new password is same as current
+    if (currentPassword === newPassword) {
+      throw new ErrorHandler(
+        "New password cannot be the same as current password",
+        400,
+      );
+    }
+
+    // Validate passwords match
+    if (newPassword !== confirmPassword) {
+      throw new ErrorHandler("New passwords do not match", 400);
+    }
+
+    // Validate password strength
+    this.validatePasswordStrength(newPassword);
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    // Log the password change
+    logger.info(`Password changed successfully for user ${user.email}`, {
+      userId: user._id,
+      changedVia: "Authenticated request",
+      ip: req.ip,
+    });
+
+    // Send security notification email
+    await this.sendPasswordChangeNotification(user.email, user.firstname, req);
+
+    return {
+      success: true,
+      message: "Password has been changed successfully",
+    };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    logger.error("Password change failed:", error);
+    throw new ErrorHandler("Failed to change password", 500);
+  }
+};
+
+userSchema.statics.generateSecureOTP = function (length = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let otp = "";
+
+  for (let i = 0; i < length; i++) {
+    const randomByte = crypto.randomBytes(1)[0];
+    const randomIndex = randomByte % chars.length;
+    otp += chars[randomIndex];
+  }
+
+  return otp;
+};
+
+userSchema.statics.validatePasswordStrength = function (password) {
+  const minLength = 8;
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+
+  if (password.length < minLength) {
+    throw new ErrorHandler(
+      `Password must be at least ${minLength} characters long`,
+      400,
+    );
+  }
+
+  if (!hasUpperCase || !hasLowerCase) {
+    throw new ErrorHandler(
+      "Password must contain both uppercase and lowercase letters",
+      400,
+    );
+  }
+
+  if (!hasNumbers) {
+    throw new ErrorHandler("Password must contain at least one number", 400);
+  }
+
+  if (!hasSpecialChar) {
+    throw new ErrorHandler(
+      "Password must contain at least one special character",
+      400,
+    );
+  }
+
+  // Check for common passwords (basic check)
+  const commonPasswords = ["password", "12345678", "qwerty123", "admin123"];
+  if (commonPasswords.includes(password.toLowerCase())) {
+    throw new ErrorHandler(
+      "Password is too common. Please choose a stronger password",
+      400,
+    );
+  }
+};
+
+userSchema.statics.generateResetToken = function (otpId) {
+  const crypto = require("crypto");
+  const token = crypto.randomBytes(32).toString("hex");
+  const expires = Date.now() + 10 * 60 * 1000;
+  const payload = {
+    otpId: otpId.toString(),
+    exp: expires,
+  };
+
+  return Buffer.from(JSON.stringify(payload)).toString("base64");
+};
+
+userSchema.statics.verifyResetToken = function (token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token, "base64").toString());
+
+    if (payload.exp < Date.now()) {
+      return { valid: false, error: "Token expired" };
+    }
+
+    return { valid: true, otpId: payload.otpId };
+  } catch (error) {
+    return { valid: false, error: "Invalid token" };
+  }
+};
+
+// Email Methods
+
+userSchema.statics.sendPasswordResetConfirmation = async function (
+  email,
+  username,
+  ipAddress,
+) {
+  try {
+    await emailService.sendCustomEmail(
+      email,
+      "Password Reset Successful - My Story Hat",
+      "passwordResetConfirmation",
+      {
+        USER_NAME: username,
+        RESET_TIME: new Date().toLocaleString(),
+        IP_ADDRESS: ipAddress,
+        RECOMMENDATION:
+          "If you did not perform this action, please contact support immediately.",
+      },
+    );
+  } catch (error) {
+    logger.error("Failed to send password reset confirmation email:", error);
+  }
+};
+
+userSchema.statics.sendPasswordChangeNotification = async function (
+  email,
+  username,
+  req,
+) {
+  try {
+    const loginDetails = await getLoginDetails(req);
+
+    await emailService.sendCustomEmail(
+      email,
+      "Password Changed - My Story Hat",
+      "passwordChangeNotification",
+      {
+        USER_NAME: username,
+        CHANGE_TIME: loginDetails.time,
+        LOCATION: loginDetails.location,
+        DEVICE_INFO: loginDetails.device,
+        RECOMMENDATION:
+          "If you did not make this change, please reset your password immediately and contact support.",
+      },
+    );
+  } catch (error) {
+    logger.error("Failed to send password change notification email:", error);
+  }
+};
+userSchema.statics.cleanupExpiredOTPs = async function () {
+  try {
+    const result = await PasswordReset.deleteMany({
+      otpExpires: { $lt: new Date() },
+    });
+
+    logger.info(`Cleaned up ${result.deletedCount} expired OTPs`);
+    return result.deletedCount;
+  } catch (error) {
+    logger.error("Failed to cleanup expired OTPs:", error);
+  }
+};
+
 const User = mongoose.model("User", userSchema);
 
 export default User;

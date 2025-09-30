@@ -1,14 +1,111 @@
 import OpenAI from "openai";
 import { config } from "@/config";
 import ErrorHandler from "@/Error";
+const IMAGE_POSITIONS = {
+  YOUNGER_CHILD: [
+    "full scene",
+    "character focus",
+    "action spotlight",
+    "top third",
+    "bottom third",
+    "diagonal spread",
+    "circular frame",
+    "speech bubble",
+  ],
+
+  MIDDLE_CHILD: [
+    "left panel",
+    "right panel",
+    "background layered",
+    "floating elements",
+    "comic strip",
+    "map integration",
+    "cutaway view",
+    "split screen",
+  ],
+
+  OLDER_CHILD: [
+    "text wrap",
+    "border integrated",
+    "corner accent",
+    "header banner",
+    "footer illustration",
+    "side bar",
+    "watermark style",
+    "interactive element",
+  ],
+};
+
+const SUGGESTED_FONTS = {
+  YOUNGER_CHILD: [
+    "Comic Sans MS",
+    "KG Primary Penmanship",
+    "DK Crayon Crumble",
+    "OpenDyslexic",
+    "Sassoon Primary",
+    "Century Gothic",
+    "Verdana",
+    "Arial Rounded",
+  ],
+
+  MIDDLE_CHILD: [
+    "Gill Sans",
+    "Trebuchet MS",
+    "Palatino",
+    "Georgia",
+    "Calibri",
+    "Cabin",
+    "Quicksand",
+    "Nunito",
+  ],
+
+  OLDER_CHILD: [
+    "Times New Roman",
+    "Garamond",
+    "Baskerville",
+    "Helvetica",
+    "Lato",
+    "Merriweather",
+    "Roboto",
+    "Source Sans Pro",
+  ],
+
+  THEMED_FONTS: {
+    fantasy: ["Papyrus", "Trajan Pro", "Uncial Antiqua"],
+    adventure: ["Rockwell", "Copperplate", "Franklin Gothic"],
+    sci_fi: ["Orbitron", "Eurostile", "Bank Gothic"],
+    mystery: ["Courier New", "American Typewriter", "Baskerville"],
+    humor: ["Comic Sans MS", "Marker Felt", "Chalkboard"],
+    educational: ["Georgia", "Palatino", "Calibri"],
+  },
+};
 
 class StorybookGenerator {
   constructor() {
     const apiKey = config.openai.API_KEY;
     this.openai = new OpenAI({ apiKey });
   }
+  getAgeGroup(ageMin) {
+    if (ageMin <= 6) return "YOUNGER_CHILD";
+    if (ageMin <= 10) return "MIDDLE_CHILD";
+    return "OLDER_CHILD";
+  }
 
-  async generateStory({
+  getImagePositions(ageGroup) {
+    return IMAGE_POSITIONS[ageGroup] || IMAGE_POSITIONS.MIDDLE_CHILD;
+  }
+
+  getSuggestedFonts(ageGroup, theme = "") {
+    const ageFonts = SUGGESTED_FONTS[ageGroup] || SUGGESTED_FONTS.MIDDLE_CHILD;
+    const themeKey = Object.keys(SUGGESTED_FONTS.THEMED_FONTS).find((key) =>
+      theme.toLowerCase().includes(key),
+    );
+    const themeFonts = themeKey ? SUGGESTED_FONTS.THEMED_FONTS[themeKey] : [];
+
+    return [...new Set([...ageFonts, ...themeFonts])];
+  }
+
+  async generateStory1({
     theme,
     name = "",
     photo_url = "",
@@ -97,6 +194,112 @@ You will return the story as a single JSON object with the following format:
       const storybookContent = this.addImagesToStory(storyData, images);
 
       return { ...storybookContent, coverImage, author: name, title };
+    } catch (error) {
+      console.error("Error generating story:", error);
+      throw new ErrorHandler("Failed to generate the story.", 500);
+    }
+  }
+  async generateStory({
+    theme,
+    name = "",
+    photo_url = "",
+    skin_tone = "",
+    hair_type = "",
+    hairstyle = "",
+    hair_color = "",
+    eye_color = "",
+    facial_features = "",
+    clothing = "",
+    gender = "",
+    milestone_date = "",
+    age_min = 5,
+    age_max = 10,
+    prompt_message,
+  }) {
+    let prompt = `${theme}:\nWrite a full, detailed children's storybook with the following details:\n`;
+
+    if (name) prompt += `- Name: ${name}\n`;
+    if (photo_url) prompt += `- Photo URL: ${photo_url}\n`;
+    if (skin_tone) prompt += `- Skin tone: ${skin_tone}\n`;
+    if (hair_type) prompt += `- Hair type: ${hair_type}\n`;
+    if (hairstyle) prompt += `- Hairstyle: ${hairstyle}\n`;
+    if (hair_color) prompt += `- Hair color: ${hair_color}\n`;
+    if (eye_color) prompt += `- Eye color: ${eye_color}\n`;
+    if (facial_features) prompt += `- Facial features: ${facial_features}\n`;
+    if (clothing) prompt += `- Clothing: ${clothing}\n`;
+    if (gender) prompt += `- Gender: ${gender}\n`;
+
+    prompt += `\n${prompt_message}\n`;
+
+    const ageGroup = this.getAgeGroup(age_min);
+    const imagePositions = this.getImagePositions(ageGroup);
+    const suggestedFonts = this.getSuggestedFonts(ageGroup, theme);
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional children's storyteller. You will write a fun, magical, and joyful story for a child aged ${age_min} to ${age_max}, the gender is ${gender}.
+
+**Story Rules:**
+* The story must have a clear beginning, middle, and end.
+* It must be at least **three chapters** long, and 10 chapters at most.
+* The tone should be similar to a whimsical Studio Ghibli film, full of imagination and wonder.
+* The story must be appropriate for the age range ${age_min}-${age_max}
+
+**Image Position Guidance:**
+For age ${age_min}-${age_max}, choose image positions that enhance engagement. Available positions: ${imagePositions.join(", ")}
+- Younger children (3-6): Prefer full scene, character focus, action spotlight for visual impact
+- Middle childhood (7-10): Use left/right panels, comic strips, split screens for narrative flow  
+- Older children (11+): Consider text wrap, header banners, interactive elements for sophistication
+
+**Font Selection:**
+Choose from these age-appropriate fonts: ${suggestedFonts.join(", ")}
+
+You will return the story as a single JSON object with the following format:
+{
+  "book_title": "The title of the book",
+  "author": "${name}",
+  "chapters": [
+    {
+      "chapter_title": "The title of chapter 1",
+      "chapter_content": "The full content of chapter 1, formatted with Markdown.",
+      "image_description": "A brief, vivid description for an illustration.",
+      "image_position": "Choose from the available positions above"
+    }
+  ],
+  "suggested_font": "Choose from the available fonts above"
+}`,
+          },
+          {
+            role: "user",
+            content: `Using the details below, weave a captivating story with a magical adventure. Make sure the child feels like the protagonist.
+            
+            Details for the story:
+            ${prompt}`,
+          },
+        ],
+        max_tokens: 1500,
+        temperature: 0.7,
+      });
+
+      const storyData = this.formatBookData(
+        response.choices[0].message.content.trim(),
+      );
+
+      const images = await this.generateImagesForChapters(
+        storyData.chapters,
+        age_min,
+        age_max,
+        gender,
+      );
+      const coverImage = await this.generateCoverImage(storyData, gender);
+
+      const storybookContent = this.addImagesToStory(storyData, images);
+
+      return { ...storybookContent, coverImage, author: name };
     } catch (error) {
       console.error("Error generating story:", error);
       throw new ErrorHandler("Failed to generate the story.", 500);

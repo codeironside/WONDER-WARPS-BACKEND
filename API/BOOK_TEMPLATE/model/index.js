@@ -110,18 +110,16 @@ const bookTemplateSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-    cover_image: [
-      {
-        type: String,
-        required: true,
-        validate: {
-          validator: function (v) {
-            return Array.isArray(v) && v.length > 0;
-          },
-          message: "At least one cover image is required",
+    cover_image: {
+      type: [String],
+      required: true,
+      validate: {
+        validator: function (v) {
+          return v.length > 0;
         },
+        message: "At least one cover image is required",
       },
-    ],
+    },
     genre: {
       type: String,
       default: null,
@@ -227,7 +225,6 @@ class BookTemplate {
 
     if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
 
-    // Check if template with same title exists for this user
     const existing = await this.findByTitle(
       validatedData.book_title,
       validatedData.user_id,
@@ -251,11 +248,10 @@ class BookTemplate {
     session.startTransaction();
 
     try {
-      // Create the book template
+      console.log(validatedData);
       const newTemplate = new BookTemplateModel(validatedData);
       await newTemplate.save({ session });
 
-      // Create chapters if provided
       if (validatedData.chapters && validatedData.chapters.length > 0) {
         const chapters = validatedData.chapters.map((chapter, index) => ({
           chapter_title: chapter.chapter_title?.substring(0, 500) || "",

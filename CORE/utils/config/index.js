@@ -8,7 +8,7 @@ export const config = {
     session_stay_alive: process.env.SESSIONS_STAY_ALIVE,
     session_doesnt_stay_alive: process.env.SESSIONS_DOESNT_STAY_ALIVE,
     JWT_SECRET: process.env.JWT_SECRET,
-    base_url:process.env.BASE_URL
+    base_url: process.env.BASE_URL,
   },
   db: {
     MONGO_URI: process.env.MONGO_URI,
@@ -34,5 +34,9 @@ export const config = {
   },
   resend: {
     apiKey: process.env.RESEND_API_KEY,
+    from: process.env.SES_FROM_INFO,
+  },
+  ipgeo: {
+    apikey: process.env.IPGEO_API_KEY,
   },
 };

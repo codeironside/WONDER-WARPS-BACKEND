@@ -31,7 +31,8 @@ app.use(requestLogger);
 app.use(applyRateLimit);
 app.use(logEveryRequest);
 app.use(flagMaliciousActivity);
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(API_SUFFIX, apiRouter);
 
 let server;

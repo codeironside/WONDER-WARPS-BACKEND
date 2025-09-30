@@ -38,7 +38,8 @@
                     margin-bottom: 10px;
                   ">
                                 <a href="https://my-story-hat.com" style="text-decoration: none">
-                                    <img src="/logo.png" alt="My Story Hat" height="96" width="auto" />
+                                    <img src="https://mystoryhat.s3.eu-north-1.amazonaws.com/photos/2025/09/23/photo-my-story-hat-logo-d8f38f50.png"
+                                        alt="My Story Hat" height="96" width="auto" />
                                 </a>
                             </div>
                         </td>
@@ -73,8 +74,23 @@
                       font-size: 18px;
                       line-height: 1.6;
                     ">
-                                    Hi <strong style="color: #fb923c">[Customer Name]</strong>,
+                                    Hi <strong style="color: #fb923c">{{USER_NAME}}</strong>,
                                     we noticed a login to your account on My Story Hat just now.
+                                </p>
+                            </div>
+
+                            <div style="margin: 20px 0; text-align: center">
+                                <p style="
+                      margin: 0;
+                      color: #374151;
+                      font-size: 16px;
+                      line-height: 1.6;
+                    ">
+                                    <strong>Login details:</strong><br />
+                                    Location: <span style="color: #fb923c">{{LOCATION}}</span><br />
+                                    Device:
+                                    <span style="color: #fb923c">{{DEVICE_INFO}}</span><br />
+                                    Time: <span style="color: #fb923c">{{LOGIN_TIME}}</span>
                                 </p>
                             </div>
 

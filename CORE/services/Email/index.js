@@ -1,9 +1,10 @@
-import {Resend} from "resend";
+import { Resend } from "resend";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import logger from "../../utils/logger/index.js";
 import { config } from "../../utils/config/index.js";
+import { getLoginDetails } from "../getlogindetails/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,7 @@ class EmailService {
       welcome: null,
       login: null,
       payment: null,
+      reset_password: null,
     };
 
     this.loadTemplates();
@@ -42,10 +44,13 @@ class EmailService {
         path.join(templatesDir, "payment-template.html"),
         "utf8",
       );
+      this.templates.reset_password = await fs.promises.readFile(
+        path.join(templatesDir, "password-reset-otp.html"),
+        "utf8",
+      );
 
       logger.info("Email templates loaded successfully");
     } catch (error) {
-        console.log(error)
       logger.error("Failed to load email templates:", error);
       throw new Error("Failed to load email templates");
     }
@@ -58,14 +63,14 @@ class EmailService {
       htmlContent = htmlContent.replace("{{USER_NAME}}", username);
 
       const result = await resend.emails.send({
-        from: config.resend.fromEmail,
+        from: config.resend.from,
         to: email,
         subject: "Your Wonder Wrap Verification Code",
         html: htmlContent,
         text: `Your Wonder Wrap verification code is: ${otpCode}. This code will expire in 10 minutes.`,
       });
-
-      logger.info(`OTP email sent to ${email}: ${result.id}`);
+      console.log(result);
+      logger.info(`OTP email sent to ${email}: ${result.data.id}`);
       return result;
     } catch (error) {
       logger.error("Failed to send OTP email:", error);
@@ -79,14 +84,14 @@ class EmailService {
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
 
       const result = await resend.emails.send({
-        from: config.resend.fromEmail,
+        from: config.resend.from,
         to: email,
         subject: "Welcome to Wonder Wrap!",
         html: htmlContent,
         text: `Welcome to Wonder Wrap, ${username}! Thank you for joining our community.`,
       });
 
-      logger.info(`Welcome email sent to ${email}: ${result.id}`);
+      logger.info(`Welcome email sent to ${email}: ${result.data.id}`);
       return result;
     } catch (error) {
       logger.error("Failed to send welcome email:", error);
@@ -94,36 +99,57 @@ class EmailService {
     }
   }
 
-  async sendLoginNotificationEmail(
-    email,
-    username,
-    loginTime,
-    deviceInfo = "Unknown device",
-  ) {
+  async sendLoginNotificationEmail(req, email, username) {
     try {
+      const loginDetails = await getLoginDetails(req);
+
       let htmlContent = this.templates.login;
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
-      htmlContent = htmlContent.replace("{{LOGIN_TIME}}", loginTime);
-      htmlContent = htmlContent.replace("{{DEVICE_INFO}}", deviceInfo);
+      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
+      htmlContent = htmlContent.replace("{{DEVICE_INFO}}", loginDetails.device);
+      htmlContent = htmlContent.replace("{{LOGIN_TIME}}", loginDetails.time);
 
       const result = await resend.emails.send({
-        from: config.resend.fromEmail,
+        from: config.resend.from,
         to: email,
-        subject: "New Login to Your Wonder Wrap Account",
+        subject: "New Login to Your My Story Hat Account",
         html: htmlContent,
-        text: `New login detected for your Wonder Wrap account.\nTime: ${loginTime}\nDevice: ${deviceInfo}\nIf this wasn't you, please contact support immediately.`,
+        text: this.generateLoginTextEmail(username, loginDetails),
+      });
+      logger.info(`Login notification sent to ${email}`, {
+        userId: username,
+        email: email,
+        ip: loginDetails.ip,
+        location: loginDetails.location,
+        device: loginDetails.rawDevice,
+        time: loginDetails.time,
       });
 
-      logger.info(`Login notification email sent to ${email}: ${result.id}`);
       return result;
-    } catch (error) {
-      logger.error("Failed to send login notification email:", error);
-      throw new Error(
-        `Failed to send login notification email: ${error.message}`,
-      );
-    }
+    } catch (error) {}
   }
+  generateLoginTextEmail(username, loginDetails) {
+    return `
+New Login to Your My Story Hat Account
 
+Hi ${username},
+
+We noticed a login to your account on My Story Hat just now.
+
+Login details:
+Location: ${loginDetails.location}
+Device: ${loginDetails.device}
+Time: ${loginDetails.time}
+
+If this wasn't you, please reset your password immediately.
+
+View your account: https://my-story-hat.com/account
+
+Questions? Contact us at support@mystoryhat.com
+
+© ${new Date().getFullYear()} My Story Hat. All rights reserved.
+    `.trim();
+  }
   async sendPaymentConfirmationEmail(
     email,
     username,
@@ -139,14 +165,16 @@ class EmailService {
       htmlContent = htmlContent.replace("{{ORDER_ID}}", orderId);
 
       const result = await resend.emails.send({
-        from: config.resend.fromEmail,
+        from: config.resend.from,
         to: email,
         subject: "Your Wonder Wrap Payment Confirmation",
         html: htmlContent,
         text: `Payment Confirmation\nAmount: ${amount}\nDate: ${paymentDate}\nOrder ID: ${orderId}\nThank you for your purchase!`,
       });
 
-      logger.info(`Payment confirmation email sent to ${email}: ${result.id}`);
+      logger.info(
+        `Payment confirmation email sent to ${email}: ${result.data.id}`,
+      );
       return result;
     } catch (error) {
       logger.error("Failed to send payment confirmation email:", error);
@@ -163,8 +191,6 @@ class EmailService {
       if (!htmlContent) {
         throw new Error(`Template ${templateName} not found`);
       }
-
-      // Replace all placeholders with actual values
       Object.keys(replacements).forEach((key) => {
         const placeholder = new RegExp(`{{${key}}}`, "g");
         htmlContent = htmlContent.replace(placeholder, replacements[key]);
@@ -174,14 +200,14 @@ class EmailService {
       const textContent = Object.values(replacements).join(" ");
 
       const result = await resend.emails.send({
-        from: config.resend.fromEmail,
+        from: config.resend.from,
         to: email,
         subject: subject,
         html: htmlContent,
         text: textContent,
       });
 
-      logger.info(`Custom email sent to ${email}: ${result.id}`);
+      logger.info(`Custom email sent to ${email}: ${result.data.id}`);
       return result;
     } catch (error) {
       logger.error("Failed to send custom email:", error);
@@ -191,18 +217,48 @@ class EmailService {
 
   async verifyEmailIdentity(email) {
     try {
-      // Resend does not require email verification like SES, as it handles email sending through its API
       logger.info(`Email identity verification not needed in Resend: ${email}`);
     } catch (error) {
       logger.error("Failed to verify email identity:", error);
       throw new Error(`Failed to verify email identity: ${error.message}`);
     }
   }
+  async sendPasswordResetOTP(email, username, otp, req) {
+    try {
+      const loginDetails = await getLoginDetails(req);
+      let htmlContent = this.templates.reset_password;
+      htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
+      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
+      htmlContent = htmlContent.replace("{{DEVICE_INFO}}", loginDetails.device);
+      htmlContent = htmlContent.replace("{{REQUEST_TIME}}", loginDetails.time);
+      htmlContent = htmlContent.replace("{{EXPIRY_TIME}}", "15 minutes");
+      htmlContent = htmlContent.replace("{{OTP_CODE}}", otp);
 
-  // Method to close the Resend client (useful for cleanup)
-  destroy() {
-    // Resend does not have a specific cleanup function as it's an API service
+      const result = await resend.emails.send({
+        from: config.resend.from,
+        to: email,
+        subject: "PASSWORD RESET OTP",
+        html: htmlContent,
+      });
+      logger.info(`Password reset notification sent tp ${email}`, {
+        userId: username,
+        email: email,
+        ip: loginDetails.ip,
+        location: loginDetails.location,
+        device: loginDetails.rawDevice,
+        time: loginDetails.time,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error("Failed to send password reset email:", error);
+      throw new Error(
+        `Failed to send login notification email: ${error.message}`,
+      );
+    }
   }
+
+  destroy() {}
 }
 
 const emailService = new EmailService();
