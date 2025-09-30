@@ -19,6 +19,7 @@ class EmailService {
       login: null,
       payment: null,
       reset_password: null,
+      change_password: null,
     };
 
     this.loadTemplates();
@@ -46,6 +47,10 @@ class EmailService {
       );
       this.templates.reset_password = await fs.promises.readFile(
         path.join(templatesDir, "password-reset-otp.html"),
+        "utf8",
+      );
+      this.templates.change_password = await fs.promises.readFile(
+        path.join(templatesDir, "passwordchangenotification.html"),
         "utf8",
       );
 
@@ -196,7 +201,6 @@ Questions? Contact us at support@mystoryhat.com
         htmlContent = htmlContent.replace(placeholder, replacements[key]);
       });
 
-      // Generate plain text version (basic)
       const textContent = Object.values(replacements).join(" ");
 
       const result = await resend.emails.send({
@@ -241,6 +245,53 @@ Questions? Contact us at support@mystoryhat.com
         html: htmlContent,
       });
       logger.info(`Password reset notification sent tp ${email}`, {
+        userId: username,
+        email: email,
+        ip: loginDetails.ip,
+        location: loginDetails.location,
+        device: loginDetails.rawDevice,
+        time: loginDetails.time,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error("Failed to send password reset email:", error);
+      throw new Error(
+        `Failed to send login notification email: ${error.message}`,
+      );
+    }
+  }
+  async sendPasswordChangeNotification(
+    email,
+    username,
+    PASSWORD_RESET_RECOMMENDATION,
+    req,
+  ) {
+    try {
+      console.log(PASSWORD_RESET_RECOMMENDATION);
+      const loginDetails = await getLoginDetails(req);
+      let htmlContent = this.templates.change_password;
+      htmlContent = htmlContent.replace(/{{USER_NAME}}/, username);
+      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
+      htmlContent = htmlContent.replace("{{DEVICE_INFO}}", loginDetails.device);
+      htmlContent = htmlContent.replace("{{CHANGE_TIME}}", loginDetails.time);
+      htmlContent = htmlContent.replace(
+        "{{RECOMMENDATION}}",
+        PASSWORD_RESET_RECOMMENDATION,
+      );
+
+      console.log(
+        "After replacement contains RECOMMENDATION:",
+        htmlContent.includes(PASSWORD_RESET_RECOMMENDATION),
+      );
+
+      const result = await resend.emails.send({
+        from: config.resend.from,
+        to: email,
+        subject: "PASSWORD CHANGE NOTIFICATION",
+        html: htmlContent,
+      });
+      logger.info(`Password change Notification ${email}`, {
         userId: username,
         email: email,
         ip: loginDetails.ip,

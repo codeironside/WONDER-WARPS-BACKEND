@@ -7,6 +7,7 @@ import PasswordReset from "../OTP/forgot.password/index.js";
 import emailService from "../../../CORE/services/Email/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
 import crypto from "crypto";
+import { PASSWORD_RESET_RECOMMENDATION } from "../../../CORE/utils/constants/index.js";
 
 const SALT_ROUNDS = 10;
 
@@ -1288,7 +1289,7 @@ userSchema.statics.verifyPasswordResetOTP = async function (otpId, otp, email) {
       token: this.generateResetToken(otpId),
     };
   } catch (error) {
-    console.log(error)
+    console.log(error);
     if (error instanceof ErrorHandler) throw error;
     logger.error("OTP verification failed:", error);
     throw new ErrorHandler("Failed to verify OTP", 500);
@@ -1399,13 +1400,21 @@ userSchema.statics.changePassword = async function (
       changedVia: "Authenticated request",
       ip: req.ip,
     });
-    await this.sendPasswordChangeNotification(user.email, user.firstname, req);
+    const recommendation = PASSWORD_RESET_RECOMMENDATION;
+    console.log(PASSWORD_RESET_RECOMMENDATION);
+    await emailService.sendPasswordChangeNotification(
+      user.email,
+      user.firstname,
+      PASSWORD_RESET_RECOMMENDATION,
+      req,
+    );
 
     return {
       success: true,
       message: "Password has been changed successfully",
     };
   } catch (error) {
+    console.log(error);
     if (error instanceof ErrorHandler) throw error;
     logger.error("Password change failed:", error);
     throw new ErrorHandler("Failed to change password", 500);
@@ -1493,7 +1502,7 @@ userSchema.statics.verifyResetToken = function (token) {
 };
 
 // Email Methods
-
+// sendPasswordChan
 userSchema.statics.sendPasswordResetConfirmation = async function (
   email,
   username,
@@ -1517,31 +1526,6 @@ userSchema.statics.sendPasswordResetConfirmation = async function (
   }
 };
 
-userSchema.statics.sendPasswordChangeNotification = async function (
-  email,
-  username,
-  req,
-) {
-  try {
-    const loginDetails = await getLoginDetails(req);
-
-    await emailService.sendCustomEmail(
-      email,
-      "Password Changed - My Story Hat",
-      "passwordChangeNotification",
-      {
-        USER_NAME: username,
-        CHANGE_TIME: loginDetails.time,
-        LOCATION: loginDetails.location,
-        DEVICE_INFO: loginDetails.device,
-        RECOMMENDATION:
-          "If you did not make this change, please reset your password immediately and contact support.",
-      },
-    );
-  } catch (error) {
-    logger.error("Failed to send password change notification email:", error);
-  }
-};
 userSchema.statics.cleanupExpiredOTPs = async function () {
   try {
     const result = await PasswordReset.deleteMany({

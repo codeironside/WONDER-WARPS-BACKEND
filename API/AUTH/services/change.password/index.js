@@ -4,12 +4,11 @@ import { sendResponse } from "../../../../CORE/utils/response.handler/index.js";
 
 export const changePassword = async (req, res, next) => {
   try {
-    const { currentPassword, newPassword, confirmPassword } = req.body;
+    const { newPassword, confirmPassword } = req.body;
     const userId = req.user.id;
 
     const result = await User.changePassword(
       userId,
-      currentPassword,
       newPassword,
       confirmPassword,
       req,

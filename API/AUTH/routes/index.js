@@ -12,6 +12,7 @@ import { verifyRegisterOTP } from "../services/verify.otp/index.js";
 import { verifyPasswordResetOTP } from "../services/verify.otp.for.password.reset/index.js";
 import { resendPasswordResetOTP } from "../services/resend.password.otp/index.js";
 import { resetPassword } from "../services/reset.password/index.js";
+import { changePassword } from "../services/change.password/index.js";
 export const UserRouter = Router();
 
 //=======public routes
@@ -19,7 +20,7 @@ UserRouter.post("/public/login", SignIn);
 UserRouter.post("/public/forgotpassword", requestPasswordReset);
 UserRouter.post("/public/resendpasswordotp", resendPasswordResetOTP);
 UserRouter.post("/public/verifypasswordresetotp", verifyPasswordResetOTP);
-UserRouter.post("/public/resetPassword", resetPassword)
+UserRouter.post("/public/resetPassword", resetPassword);
 UserRouter.post("/public/logout", signOut);
 UserRouter.post("/public/signup", registerWithOTP);
 UserRouter.post("/public/resendregisterotp", resendRegisterOTP);
@@ -34,4 +35,13 @@ UserRouter.get(
   "/user/dashboard",
   authorize(["Admin", "User"]),
   getUserDashboard,
+);
+
+//============DUAL routes (ADMIN + USER)
+
+UserRouter.post("/public/login", SignIn);
+UserRouter.post(
+  "/dual/changePassword",
+  authorize(["Admin", "User"]),
+  changePassword,
 );

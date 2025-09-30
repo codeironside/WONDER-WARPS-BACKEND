@@ -16,7 +16,7 @@ export const verifyPasswordResetOTP = async (req, res, next) => {
       token: result.token,
     });
   } catch (error) {
-    console.log(error)
+    console.log(error);
     next(error);
   }
 };
