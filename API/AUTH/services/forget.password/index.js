@@ -15,6 +15,7 @@ export const requestPasswordReset = async (req, res, next) => {
     sendResponse(res, 200, result.message, {
       success: result.success,
       expiresIn: result.expiresIn,
+      otpId: result.otpId
     });
   } catch (error) {
     next(error);

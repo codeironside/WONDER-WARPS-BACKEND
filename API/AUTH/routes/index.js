@@ -11,13 +11,15 @@ import { resendRegisterOTP } from "../services/resend.register.OTP/index.js";
 import { verifyRegisterOTP } from "../services/verify.otp/index.js";
 import { verifyPasswordResetOTP } from "../services/verify.otp.for.password.reset/index.js";
 import { resendPasswordResetOTP } from "../services/resend.password.otp/index.js";
+import { resetPassword } from "../services/reset.password/index.js";
 export const UserRouter = Router();
 
 //=======public routes
 UserRouter.post("/public/login", SignIn);
-UserRouter.post("/public/resendpasswordotp", requestPasswordReset);
-UserRouter.post("/public/forgotpassword", resendPasswordResetOTP);
-UserRouter.post("/public/verify-otp", verifyPasswordResetOTP);
+UserRouter.post("/public/forgotpassword", requestPasswordReset);
+UserRouter.post("/public/resendpasswordotp", resendPasswordResetOTP);
+UserRouter.post("/public/verifypasswordresetotp", verifyPasswordResetOTP);
+UserRouter.post("/public/resetPassword", resetPassword)
 UserRouter.post("/public/logout", signOut);
 UserRouter.post("/public/signup", registerWithOTP);
 UserRouter.post("/public/resendregisterotp", resendRegisterOTP);

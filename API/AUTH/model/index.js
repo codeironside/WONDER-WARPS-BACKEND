@@ -1244,8 +1244,6 @@ userSchema.statics.verifyPasswordResetOTP = async function (otpId, otp, email) {
     if (!otpId || !otp || !email) {
       throw new ErrorHandler("OTP ID, OTP, and email are required", 400);
     }
-
-    // Find the reset record
     const resetRecord = await PasswordReset.findOne({
       _id: otpId,
       email,
@@ -1255,14 +1253,10 @@ userSchema.statics.verifyPasswordResetOTP = async function (otpId, otp, email) {
     if (!resetRecord) {
       throw new ErrorHandler("Invalid or expired OTP", 400);
     }
-
-    // Check if OTP has expired
     if (resetRecord.otpExpires < new Date()) {
       await PasswordReset.findByIdAndUpdate(otpId, { used: true });
       throw new ErrorHandler("OTP has expired", 400);
     }
-
-    // Check attempt limit
     if (resetRecord.attempts >= 5) {
       await PasswordReset.findByIdAndUpdate(otpId, { used: true });
       throw new ErrorHandler(
@@ -1270,8 +1264,6 @@ userSchema.statics.verifyPasswordResetOTP = async function (otpId, otp, email) {
         429,
       );
     }
-
-    // Verify OTP
     if (resetRecord.otp !== otp.toUpperCase()) {
       await PasswordReset.findByIdAndUpdate(otpId, {
         $inc: { attempts: 1 },
@@ -1284,7 +1276,6 @@ userSchema.statics.verifyPasswordResetOTP = async function (otpId, otp, email) {
       );
     }
 
-    // OTP is valid
     await PasswordReset.findByIdAndUpdate(otpId, {
       used: true,
     });
@@ -1294,9 +1285,10 @@ userSchema.statics.verifyPasswordResetOTP = async function (otpId, otp, email) {
     return {
       success: true,
       message: "OTP verified successfully",
-      token: this.generateResetToken(otpId), // Short-lived token for actual reset
+      token: this.generateResetToken(otpId),
     };
   } catch (error) {
+    console.log(error)
     if (error instanceof ErrorHandler) throw error;
     logger.error("OTP verification failed:", error);
     throw new ErrorHandler("Failed to verify OTP", 500);
@@ -1384,56 +1376,29 @@ userSchema.statics.resetPasswordWithOTP = async function (
 
 userSchema.statics.changePassword = async function (
   userId,
-  currentPassword,
   newPassword,
   confirmPassword,
   req,
 ) {
   try {
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    if (!newPassword || !confirmPassword) {
       throw new ErrorHandler("All password fields are required", 400);
     }
-
-    // Find user
     const user = await this.findById(userId);
     if (!user) {
       throw new ErrorHandler("User not found", 404);
     }
 
-    // Verify current password
-    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
-    if (!isCurrentPasswordValid) {
-      throw new ErrorHandler("Current password is incorrect", 401);
-    }
-
-    // Check if new password is same as current
-    if (currentPassword === newPassword) {
-      throw new ErrorHandler(
-        "New password cannot be the same as current password",
-        400,
-      );
-    }
-
-    // Validate passwords match
-    if (newPassword !== confirmPassword) {
-      throw new ErrorHandler("New passwords do not match", 400);
-    }
-
-    // Validate password strength
     this.validatePasswordStrength(newPassword);
 
-    // Update password
     user.password = newPassword;
     await user.save();
 
-    // Log the password change
     logger.info(`Password changed successfully for user ${user.email}`, {
       userId: user._id,
       changedVia: "Authenticated request",
       ip: req.ip,
     });
-
-    // Send security notification email
     await this.sendPasswordChangeNotification(user.email, user.firstname, req);
 
     return {
@@ -1503,7 +1468,6 @@ userSchema.statics.validatePasswordStrength = function (password) {
 };
 
 userSchema.statics.generateResetToken = function (otpId) {
-  const crypto = require("crypto");
   const token = crypto.randomBytes(32).toString("hex");
   const expires = Date.now() + 10 * 60 * 1000;
   const payload = {
