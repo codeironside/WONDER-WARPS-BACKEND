@@ -75,7 +75,7 @@ class EmailService {
         text: `Your Wonder Wrap verification code is: ${otpCode}. This code will expire in 10 minutes.`,
       });
       console.log(result);
-      logger.info(`OTP email sent to ${email}: ${result.data.id}`);
+      logger.info(`OTP email sent to ${email}: ${result.data}`);
       return result;
     } catch (error) {
       console.log(error)
