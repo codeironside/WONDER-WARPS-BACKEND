@@ -107,7 +107,7 @@ async function getLocationFromIP(ip) {
 
 async function getLocationFromAPI(ip) {
   try {
-    const response = await fetch(`http://ipapi.co/${ip}/json/`);
+    const response = await fetch(`https://ipapi.co/${ip}/json/`);
     if (response.ok) {
       const data = await response.json();
       return {

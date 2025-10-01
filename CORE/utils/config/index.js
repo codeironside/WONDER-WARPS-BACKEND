@@ -36,6 +36,7 @@ export const config = {
     apiKey: process.env.RESEND_API_KEY,
     from: process.env.SES_FROM_INFO,
   },
+  geoip: { enabled: true },
   ipgeo: {
     apikey: process.env.IPGEO_API_KEY,
   },
