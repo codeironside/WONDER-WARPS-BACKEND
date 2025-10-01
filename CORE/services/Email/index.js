@@ -78,6 +78,7 @@ class EmailService {
       logger.info(`OTP email sent to ${email}: ${result.data.id}`);
       return result;
     } catch (error) {
+      console.log(error)
       logger.error("Failed to send OTP email:", error);
       throw new Error(`Failed to send OTP email: ${error.message}`);
     }
