@@ -15,7 +15,6 @@ class ComprehensiveFileUpload {
       throw new Error("AWS S3 configuration is incomplete");
     }
 
-    // Configure AWS SDK v2
     AWS.config.update({
       accessKeyId: config.aws.accessKeyId,
       secretAccessKey: config.aws.secretAccessKey,
@@ -36,7 +35,6 @@ class ComprehensiveFileUpload {
     this.bucketName = config.aws.s3Bucket;
     this.region = config.aws.region;
 
-    // Initialize with connection test
     this.initialize();
   }
 
@@ -60,14 +58,13 @@ class ComprehensiveFileUpload {
       await this.s3.headBucket({ Bucket: this.bucketName }).promise();
       return true;
     } catch (error) {
+      console.log(error)
       logger.error("S3 connection test failed:", error);
       throw new Error(`S3 connection failed: ${error.message}`);
     }
   }
 
-  /**
-   * Generate optimized file key with folder structure
-   */
+ 
   generateFileKey(folder, originalName, prefix = "", useDateStructure = true) {
     const extension = path.extname(originalName).toLowerCase();
     const baseName = path.basename(originalName, extension);
@@ -78,7 +75,6 @@ class ComprehensiveFileUpload {
 
     let keyPath = folder;
 
-    // Add date-based structure for better organization
     if (useDateStructure) {
       const now = new Date();
       const year = now.getFullYear();
@@ -87,7 +83,6 @@ class ComprehensiveFileUpload {
       keyPath += `/${year}/${month}/${day}`;
     }
 
-    // Add prefix if provided
     if (prefix) {
       keyPath += `/${prefix}-${cleanName}-${uniqueId}${extension}`;
     } else {
@@ -97,9 +92,7 @@ class ComprehensiveFileUpload {
     return keyPath;
   }
 
-  /**
-   * Upload file buffer to S3 with comprehensive options
-   */
+ 
   async uploadBuffer(buffer, key, contentType, metadata = {}, options = {}) {
     try {
       const uploadParams = {
@@ -119,7 +112,6 @@ class ComprehensiveFileUpload {
         StorageClass: options.storageClass || "STANDARD",
       };
 
-      // Add upload progress tracking for large files
       if (options.onProgress && buffer.length > 1024 * 1024) {
         return await this.uploadWithProgress(uploadParams, options.onProgress);
       }
@@ -145,9 +137,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Upload with progress tracking for large files
-   */
+
   async uploadWithProgress(uploadParams, onProgress) {
     return new Promise((resolve, reject) => {
       const upload = this.s3.upload(uploadParams);
@@ -167,9 +157,7 @@ class ComprehensiveFileUpload {
     });
   }
 
-  /**
-   * Upload file from disk path
-   */
+  
   async uploadFile(filePath, key, contentType = null, options = {}) {
     try {
       const fileStats = await fs.stat(filePath);
@@ -198,9 +186,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Upload file from URL (download and upload to S3)
-   */
+  
   async uploadFromUrl(url, key, options = {}) {
     try {
       const fetch = (await import("node-fetch")).default;
@@ -231,9 +217,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Upload stream directly to S3
-   */
+ 
   async uploadStream(
     readStream,
     key,
@@ -276,9 +260,7 @@ class ComprehensiveFileUpload {
     });
   }
 
-  /**
-   * Upload multiple files with batch processing
-   */
+  
   async uploadMultipleFiles(files, options = {}) {
     const uploadPromises = files.map((file, index) => {
       const key =
@@ -340,9 +322,7 @@ class ComprehensiveFileUpload {
     return uploadResults;
   }
 
-  /**
-   * Generate pre-signed upload URL for direct frontend uploads
-   */
+  
   async generatePresignedUploadUrl(
     key,
     contentType,
@@ -368,9 +348,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Generate pre-signed download URL (for private files)
-   */
+
   async generatePresignedDownloadUrl(key, expiresIn = 3600) {
     try {
       const params = {
@@ -390,9 +368,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Delete file from S3
-   */
+  
   async deleteFile(key) {
     try {
       await this.s3
@@ -410,9 +386,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Delete multiple files in batch
-   */
+  
   async deleteMultipleFiles(keys) {
     try {
       const deletePromises = keys.map((key) => this.deleteFile(key));
@@ -438,9 +412,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Copy file within S3
-   */
+ 
   async copyFile(sourceKey, destinationKey, options = {}) {
     try {
       const copyParams = {
@@ -468,9 +440,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Get file metadata
-   */
+ 
   async getFileMetadata(key) {
     try {
       const metadata = await this.s3
@@ -488,9 +458,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * List files with pagination support
-   */
   async listFiles(prefix = "", maxKeys = 1000, continuationToken = null) {
     try {
       const params = {
@@ -524,9 +491,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Download file from S3 to local path
-   */
+  
   async downloadFile(key, localPath) {
     try {
       const fileStream = this.s3
@@ -547,9 +512,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Check if file exists
-   */
+ 
   async fileExists(key) {
     try {
       await this.getFileMetadata(key);
@@ -562,9 +525,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Get file size
-   */
+
   async getFileSize(key) {
     try {
       const metadata = await this.getFileMetadata(key);
@@ -575,9 +536,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Utility method to detect content type from URL
-   */
   detectContentTypeFromUrl(url) {
     const extension = path.extname(url).toLowerCase();
     const typeMap = {
@@ -596,9 +554,7 @@ class ComprehensiveFileUpload {
     return typeMap[extension] || "application/octet-stream";
   }
 
-  /**
-   * Cleanup temporary files older than specified hours
-   */
+  
   async cleanupTempFiles(prefix = "temp/", olderThanHours = 24) {
     try {
       let files = [];
@@ -628,9 +584,7 @@ class ComprehensiveFileUpload {
     }
   }
 
-  /**
-   * Get bucket statistics
-   */
+ 
   async getBucketStats() {
     try {
       const [objects, bucketSize] = await Promise.all([
