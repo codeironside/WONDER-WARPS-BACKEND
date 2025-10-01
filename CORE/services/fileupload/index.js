@@ -58,13 +58,12 @@ class ComprehensiveFileUpload {
       await this.s3.headBucket({ Bucket: this.bucketName }).promise();
       return true;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       logger.error("S3 connection test failed:", error);
       throw new Error(`S3 connection failed: ${error.message}`);
     }
   }
 
- 
   generateFileKey(folder, originalName, prefix = "", useDateStructure = true) {
     const extension = path.extname(originalName).toLowerCase();
     const baseName = path.basename(originalName, extension);
@@ -92,7 +91,6 @@ class ComprehensiveFileUpload {
     return keyPath;
   }
 
- 
   async uploadBuffer(buffer, key, contentType, metadata = {}, options = {}) {
     try {
       const uploadParams = {
@@ -137,7 +135,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-
   async uploadWithProgress(uploadParams, onProgress) {
     return new Promise((resolve, reject) => {
       const upload = this.s3.upload(uploadParams);
@@ -157,7 +154,6 @@ class ComprehensiveFileUpload {
     });
   }
 
-  
   async uploadFile(filePath, key, contentType = null, options = {}) {
     try {
       const fileStats = await fs.stat(filePath);
@@ -186,7 +182,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-  
   async uploadFromUrl(url, key, options = {}) {
     try {
       const fetch = (await import("node-fetch")).default;
@@ -217,7 +212,6 @@ class ComprehensiveFileUpload {
     }
   }
 
- 
   async uploadStream(
     readStream,
     key,
@@ -260,7 +254,6 @@ class ComprehensiveFileUpload {
     });
   }
 
-  
   async uploadMultipleFiles(files, options = {}) {
     const uploadPromises = files.map((file, index) => {
       const key =
@@ -322,7 +315,6 @@ class ComprehensiveFileUpload {
     return uploadResults;
   }
 
-  
   async generatePresignedUploadUrl(
     key,
     contentType,
@@ -348,7 +340,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-
   async generatePresignedDownloadUrl(key, expiresIn = 3600) {
     try {
       const params = {
@@ -368,7 +359,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-  
   async deleteFile(key) {
     try {
       await this.s3
@@ -386,7 +376,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-  
   async deleteMultipleFiles(keys) {
     try {
       const deletePromises = keys.map((key) => this.deleteFile(key));
@@ -412,7 +401,6 @@ class ComprehensiveFileUpload {
     }
   }
 
- 
   async copyFile(sourceKey, destinationKey, options = {}) {
     try {
       const copyParams = {
@@ -440,7 +428,6 @@ class ComprehensiveFileUpload {
     }
   }
 
- 
   async getFileMetadata(key) {
     try {
       const metadata = await this.s3
@@ -491,7 +478,6 @@ class ComprehensiveFileUpload {
     }
   }
 
-  
   async downloadFile(key, localPath) {
     try {
       const fileStream = this.s3
@@ -512,7 +498,6 @@ class ComprehensiveFileUpload {
     }
   }
 
- 
   async fileExists(key) {
     try {
       await this.getFileMetadata(key);
@@ -524,7 +509,6 @@ class ComprehensiveFileUpload {
       throw error;
     }
   }
-
 
   async getFileSize(key) {
     try {
@@ -554,7 +538,6 @@ class ComprehensiveFileUpload {
     return typeMap[extension] || "application/octet-stream";
   }
 
-  
   async cleanupTempFiles(prefix = "temp/", olderThanHours = 24) {
     try {
       let files = [];
@@ -584,7 +567,6 @@ class ComprehensiveFileUpload {
     }
   }
 
- 
   async getBucketStats() {
     try {
       const [objects, bucketSize] = await Promise.all([

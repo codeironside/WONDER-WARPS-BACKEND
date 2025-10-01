@@ -40,10 +40,10 @@ userSchema.pre("save", async function (next) {
 });
 
 userSchema.methods.comparePassword = async function (password) {
-  console.log('Stored password hash:', this.password);
-  console.log('Plaintext password to compare:', password);
+  console.log("Stored password hash:", this.password);
+  console.log("Plaintext password to compare:", password);
   const result = await bcrypt.compare(password, this.password);
-  console.log('Comparison result:', result);
+  console.log("Comparison result:", result);
   return result;
 };
 userSchema.statics.findUser = async function (identifier) {

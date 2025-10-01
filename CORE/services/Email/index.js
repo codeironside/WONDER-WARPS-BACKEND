@@ -245,7 +245,7 @@ Questions? Contact us at support@mystoryhat.com
         subject: "PASSWORD RESET OTP",
         html: htmlContent,
       });
-      logger.info(`Password reset notification sent t0 ${email}`, {
+      logger.info(`Password reset notification sent to ${email}`, {
         userId: username,
         email: email,
         ip: loginDetails.ip,

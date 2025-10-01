@@ -1,6 +1,7 @@
 import { UAParser } from "ua-parser-js";
 import geoip from "geoip-lite";
 import { config } from "../../utils/config/index.js";
+import logger from "../../utils/logger/index.js";
 
 export async function getLoginDetails(req) {
   try {
