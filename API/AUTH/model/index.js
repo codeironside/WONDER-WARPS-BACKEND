@@ -104,7 +104,7 @@ userSchema.statics.registerWithOTP = async function (userData) {
     }
 
     const otp = this.generateAlphanumericOTP(6);
-    const otpExpires = new Date(Date.now() + 1 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
     const tempUser = new TempUser({
       username: userData.username,
       firstname: userData.firstName,
