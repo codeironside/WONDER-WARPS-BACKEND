@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema(
     username: { type: String, required: true, unique: true },
     firstname: { type: String, required: true },
     lastname: { type: String, required: true },
-    phonenumber: { type: String, required: true },
+    phonenumber: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     role: { type: Number, required: true, ref: "roles" },
@@ -125,6 +125,69 @@ userSchema.statics.registerWithOTP = async function (userData) {
   } catch (error) {
     if (error instanceof ErrorHandler) throw error;
     throw new ErrorHandler("Failed to register user with OTP", 500);
+  }
+};
+userSchema.statics.createAdmin = async function (userData) {
+  try {
+    const existingTempUser = await TempUser.findOne({
+      $or: [
+        { email: userData.email },
+        { username: userData.username },
+        { phonenumber: userData.phonenumber },
+      ],
+    });
+
+    const existingUser = await this.findOne({
+      $or: [
+        { email: userData.email },
+        { username: userData.username },
+        { phonenumber: userData.phonenumber },
+      ],
+    });
+
+    if (existingUser || existingTempUser) {
+      if (
+        existingUser?.email === userData.email ||
+        existingTempUser?.email === userData.email
+      ) {
+        throw new ErrorHandler("Email is already in use.", 406);
+      }
+      if (
+        existingUser?.username === userData.username ||
+        existingTempUser?.username === userData.username
+      ) {
+        throw new ErrorHandler("Username is already in use.", 406);
+      }
+      if (
+        existingUser?.phonenumber === userData.phonenumber ||
+        existingTempUser?.phonenumber === userData.phonenumber
+      ) {
+        throw new ErrorHandler("Phone number is already in use.", 406);
+      }
+    }
+
+    const newUser = new User({
+      username: userData.userName,
+      firstname: userData.firstName,
+      lastname: userData.lastName,
+      phonenumber: userData.phoneNumber,
+      email: userData.email,
+      password: userData.password,
+      role: await RoleModel.getRoleName(userData.role),
+    });
+
+    await newUser.save();
+    const newUserWithoutPassword = newUser.toObject();
+    delete newUserWithoutPassword.password;
+
+    return {
+      message: "Admin created",
+      newUser: newUserWithoutPassword, // Return the object without the password
+    };
+  } catch (error) {
+    console.log(error);
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to create User", 500);
   }
 };
 
@@ -284,7 +347,6 @@ userSchema.statics.getUserStatistics = async function () {
       createdAt: { $gte: thirtyDaysAgo },
     });
 
-    // Get active users (logged in within last 30 days)
     const activeUsers = await this.countDocuments({
       lastLogin: { $gte: thirtyDaysAgo },
     });

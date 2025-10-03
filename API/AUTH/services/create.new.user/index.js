@@ -5,29 +5,23 @@ import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
 import { sendResponse } from "../../../../CORE/utils/response.handler/index.js";
 import logger from "../../../../CORE/utils/logger/index.js";
 export async function createUser(req, res, next) {
-  const { email, password, userName, firstName, lastName, phoneNumber } =
+  const { email, password, userName, firstName, lastName, phoneNumber, role } =
     req.body;
-
+  console.log(req.body);
   try {
-    if (!email || !password || !firstName || !lastName || !phoneNumber)
+    if (!email || !password || !firstName || !lastName || !phoneNumber || !role)
       throw new ErrorHandler("body can not be empty", 402);
-    const newUser = await User.createUser({
+    const userData = {
       email,
       password,
       phoneNumber,
       userName,
       firstName,
       lastName,
-      role: "Admin",
-    });
-    sendResponse(res, 201, "User created successfully.", {
-      email: newUser.email,
-      firstName: newUser.first_name,
-      lastName: newUser.last_name,
-      userName: newUser.username,
-      phoneNumber: newUser.phonenumber,
-      role: "Admin",
-    });
+      role: role,
+    };
+    const response = await User.createAdmin(userData);
+    sendResponse(res, 201, response.message, { user: response.newUser });
     logger.info(`user with email:-${email} has been created`);
   } catch (error) {
     console.log(error);

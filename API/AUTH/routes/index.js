@@ -28,7 +28,7 @@ UserRouter.post("/public/verifyregisterotp", verifyRegisterOTP);
 
 //=============ADMIN routes
 UserRouter.get("/admin/dashboard", authorize(["Admin"]), getAdminDashboard);
-UserRouter.post("/admin/signup", authorize(["Admin"]), createUser);
+UserRouter.post("/admin/signup", createUser);
 
 //===============USER routes
 UserRouter.get(
