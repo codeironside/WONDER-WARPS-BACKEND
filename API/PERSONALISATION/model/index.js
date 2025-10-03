@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import User from "../../AUTH/model/index.js";
-
+import logger from "../../../CORE/utils/logger/index.js";
 const personalizedBookSchema = new mongoose.Schema(
   {
     original_template_id: {
@@ -172,8 +172,9 @@ class PersonalizedBook {
       if (!book) {
         throw new ErrorHandler("Personalized book not found", 404);
       }
+      logger.info(`fetch one book for one user`);
 
-      return book.toObject();
+      return book;
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to find personalized book", 500);

@@ -7,7 +7,7 @@ import { getGenreStatistics } from "../services/ADMIN/get.genre.statistics/index
 import { getAdminAllPersonalizedBooks } from "../services/ADMIN/get.one.admin.advanced.filtering/index.js";
 import { getAdminPersonalizedBook } from "../services/ADMIN/get.one.book.for.admin/index.js";
 import { getPaymentStatistics } from "../services/ADMIN/get.payment.statistics/index.js";
-import { getUserPersonalizedBooks } from "../services/USERS/get.all.for.users/index.js";
+import { getALLUserPersonalizedBooks } from "../services/USERS/get.all.for.users/index.js";
 import { getUserPersonalizedBook } from "../services/USERS/get.one.for.user/index.js";
 import { getPersonalizedBooksByGenre } from "../services/USERS/search.by.genre/index.js";
 
@@ -55,12 +55,12 @@ BookPersonalizer.get(
 //===========for user
 BookPersonalizer.get(
   "/allforoneuser",
-  authorize(["User"]),
-  getUserPersonalizedBooks,
+  authorize(["User", "Admin"]),
+  getALLUserPersonalizedBooks,
 );
 BookPersonalizer.get(
   "/oneforoneuser",
-  authorize(["User"]),
+  authorize(["User", "Admin"]),
   getUserPersonalizedBook,
 );
 BookPersonalizer.get(

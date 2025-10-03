@@ -6,7 +6,10 @@ import PersonalizedBook from "../../../model/index.js";
 export const getUserPersonalizedBook = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { id } = req.params;
+    const { id } = req.body;
+    if (!id) {
+      throw new ErrorHandler("Personalized book ID is required", 400);
+    }
 
     const book = await PersonalizedBook.findByIdForUser(id, userId);
 

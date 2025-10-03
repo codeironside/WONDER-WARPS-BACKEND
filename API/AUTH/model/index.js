@@ -94,12 +94,12 @@ userSchema.statics.registerWithOTP = async function (userData) {
       ) {
         throw new ErrorHandler("Username is already in use.", 406);
       }
-      if (
-        existingUser?.phonenumber === userData.phonenumber ||
-        existingTempUser?.phonenumber === userData.phonenumber
-      ) {
-        throw new ErrorHandler("Phone number is already in use.", 406);
-      }
+    }
+    const exisitingNumber = await User.findOne({
+      phonenumber: userData.phoneNumber,
+    });
+    if (existingNumber) {
+      throw new ErrorHandler("phoneNumber is already in use.", 406);
     }
 
     const otp = this.generateAlphanumericOTP(6);
