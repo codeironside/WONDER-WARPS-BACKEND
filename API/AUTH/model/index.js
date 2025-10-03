@@ -83,20 +83,20 @@ userSchema.statics.registerWithOTP = async function (userData) {
 
     if (existingUser || existingTempUser) {
       if (
-        existingUser.email === userData.email ||
-        existingTempUser.email === userData.email
+        existingUser?.email === userData.email ||
+        existingTempUser?.email === userData.email
       ) {
         throw new ErrorHandler("Email is already in use.", 406);
       }
       if (
-        existingUser.username === userData.username ||
-        existingTempUser.username === userData.username
+        existingUser?.username === userData.username ||
+        existingTempUser?.username === userData.username
       ) {
         throw new ErrorHandler("Username is already in use.", 406);
       }
       if (
-        existingUser.phonenumber === userData.phonenumber ||
-        existingTempUser.phonenumber === userData.phonenumber
+        existingUser?.phonenumber === userData.phonenumber ||
+        existingTempUser?.phonenumber === userData.phonenumber
       ) {
         throw new ErrorHandler("Phone number is already in use.", 406);
       }
@@ -123,7 +123,6 @@ userSchema.statics.registerWithOTP = async function (userData) {
       otp: otp,
     };
   } catch (error) {
-    console.log(error)
     if (error instanceof ErrorHandler) throw error;
     throw new ErrorHandler("Failed to register user with OTP", 500);
   }
