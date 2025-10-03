@@ -16,12 +16,12 @@ const tempUserSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now, expires: 300 },
 });
 
-tempUserSchema.pre("save", async function (next) {
-  if (this.isModified("password")) {
-    this.password = await bcrypt.hash(this.password, SALT_ROUNDS);
-  }
-  next();
-});
+// tempUserSchema.pre("save", async function (next) {
+//   if (this.isModified("password")) {
+//     this.password = await bcrypt.hash(this.password, SALT_ROUNDS);
+//   }
+//   next();
+// });
 
 const TempUser = mongoose.model("TempUser", tempUserSchema);
 

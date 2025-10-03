@@ -250,11 +250,6 @@ userSchema.statics.verifyOTP = async function (tempUserId, otp) {
       role: tempUser.role,
       isVerified: true,
     });
-    newUser.isModified = function (field) {
-      if (field === "password") return false;
-      return this._isModified(field);
-    };
-
     await newUser.save();
 
     await TempUser.findByIdAndDelete(tempUserId);
