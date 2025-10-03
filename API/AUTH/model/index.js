@@ -33,7 +33,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.pre("save", async function (next) {
-  if (this.isModified("password")) {
+  if (this.isModified("password") && !this.password.startsWith("$2b$")) {
     this.password = await bcrypt.hash(this.password, SALT_ROUNDS);
   }
   next();
@@ -187,6 +187,10 @@ userSchema.statics.verifyOTP = async function (tempUserId, otp) {
       role: tempUser.role,
       isVerified: true,
     });
+    newUser.isModified = function (field) {
+      if (field === "password") return false;
+      return this._isModified(field);
+    };
 
     await newUser.save();
 
