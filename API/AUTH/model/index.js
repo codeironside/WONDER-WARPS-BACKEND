@@ -123,6 +123,7 @@ userSchema.statics.registerWithOTP = async function (userData) {
       otp: otp,
     };
   } catch (error) {
+    console.log(error)
     if (error instanceof ErrorHandler) throw error;
     throw new ErrorHandler("Failed to register user with OTP", 500);
   }
