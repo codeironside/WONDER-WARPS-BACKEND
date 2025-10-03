@@ -147,7 +147,7 @@ const bookTemplateSchema = new mongoose.Schema(
     },
     is_public: {
       type: Boolean,
-      default: false,
+      default: true,
       index: true,
     },
     popularity_score: {
@@ -511,7 +511,6 @@ class BookTemplate {
       price: Joi.number().precision(2).positive().allow(null).optional(),
       keywords: Joi.array().items(Joi.string()).optional(),
       is_personalizable: Joi.boolean().optional(),
-      is_public: Joi.boolean().optional(),
     }).unknown(false);
     const { error, value: validatedData } = updateValidationSchema.validate(
       data,
