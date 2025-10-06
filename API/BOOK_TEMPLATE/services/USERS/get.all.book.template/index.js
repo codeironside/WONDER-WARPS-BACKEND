@@ -8,7 +8,7 @@ export const getPublicTemplates = async (req, res, next) => {
     const {
       page = 1,
       limit = 20,
-      sortBy = "popularity_score",
+      sortBy,
       sortOrder = "desc",
       genre,
       age_min,

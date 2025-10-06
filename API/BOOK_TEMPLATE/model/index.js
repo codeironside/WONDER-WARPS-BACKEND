@@ -145,14 +145,9 @@ const bookTemplateSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
-    is_public: {
-      type: Boolean,
-      default: true,
-      index: true,
-    },
     popularity_score: {
       type: Number,
-      default: 0,
+      default: 1,
       index: true,
     },
   },
@@ -612,7 +607,7 @@ class BookTemplate {
       const {
         page = 1,
         limit = 20,
-        sortBy = "popularity_score",
+        sortBy,
         sortOrder = "desc",
         filters = {},
       } = options;
@@ -627,9 +622,8 @@ class BookTemplate {
         query.is_personalizable = filters.is_personalizable;
       if (filters.keywords) query.keywords = { $in: filters.keywords };
 
-      // Get public templates with pagination
       const templates = await BookTemplateModel.find(query)
-        .select("-chapters -__v -user_id") // Exclude sensitive/private fields
+        .select("-chapters -__v -user_id")
         .sort(sort)
         .skip(skip)
         .limit(limit)
