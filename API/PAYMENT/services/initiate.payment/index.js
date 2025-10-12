@@ -1,7 +1,5 @@
 import PersonalizedBook from "../../../PERSONALISATION/model/index.js";
 import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
-import stripeService from "../../../../CORE/services/stripe/index.js";
-import logger from "../../../../CORE/utils/logger/index.js";
 
 export const initiatePayment = async (req, res, next) => {
   try {
