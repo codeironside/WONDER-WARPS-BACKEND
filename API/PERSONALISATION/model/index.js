@@ -18,7 +18,6 @@ const personalizedBookSchema = new mongoose.Schema(
       type: String,
       enum: ["male", "female", "neutral"],
       default: null,
-      accc,
     },
     price: { type: Number, required: true, min: 0 },
     is_paid: { type: Boolean, default: false },

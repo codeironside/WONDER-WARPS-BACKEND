@@ -1,21 +1,20 @@
-
-import mongoose from 'mongoose';
-import Joi from 'joi';
-import ErrorHandler from '../../../CORE/middleware/errorhandler/index.js';
-import stripeService from '../../../CORE/services/stripe/index.js';
-import logger from '../../../CORE/utils/logger/index.js';
+import mongoose from "mongoose";
+import Joi from "joi";
+import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
+import stripeService from "../../../CORE/services/stripe/index.js";
+import logger from "../../../CORE/utils/logger/index.js";
 
 const receiptSchema = new mongoose.Schema(
   {
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
       index: true,
     },
     personalized_book_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'PersonalizedBook',
+      ref: "PersonalizedBook",
       required: true,
       index: true,
     },
@@ -46,22 +45,22 @@ const receiptSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-      default: 'USD',
+      default: "USD",
       uppercase: true,
     },
     status: {
       type: String,
       enum: [
-        'pending',
-        'processing',
-        'requires_payment_method',
-        'requires_confirmation',
-        'requires_action',
-        'succeeded',
-        'canceled',
-        'failed',
+        "pending",
+        "processing",
+        "requires_payment_method",
+        "requires_confirmation",
+        "requires_action",
+        "succeeded",
+        "canceled",
+        "failed",
       ],
-      default: 'pending',
+      default: "pending",
       index: true,
     },
     payment_method: {
@@ -115,18 +114,18 @@ const receiptSchema = new mongoose.Schema(
         return ret;
       },
     },
-  }
+  },
 );
 
 receiptSchema.index({ user_id: 1, created_at: -1 });
 receiptSchema.index({ personalized_book_id: 1 });
 receiptSchema.index({ reference_code: 1 }, { unique: true });
 receiptSchema.index({ status: 1, created_at: -1 });
-receiptSchema.index({ 'book_details.genre': 1 });
+receiptSchema.index({ "book_details.genre": 1 });
 receiptSchema.index({ paid_at: -1 });
 receiptSchema.index({ user_id: 1, status: 1 });
 
-const ReceiptModel = mongoose.model('Receipt', receiptSchema);
+const ReceiptModel = mongoose.model("Receipt", receiptSchema);
 
 class Receipt {
   static validationSchema = Joi.object({
@@ -137,17 +136,19 @@ class Receipt {
     stripe_customer_id: Joi.string().optional(),
     stripe_charge_id: Joi.string().optional(),
     amount: Joi.number().positive().precision(2).required(),
-    currency: Joi.string().length(3).uppercase().default('USD'),
-    status: Joi.string().valid(
-      'pending',
-      'processing',
-      'requires_payment_method',
-      'requires_confirmation',
-      'requires_action',
-      'succeeded',
-      'canceled',
-      'failed'
-    ).default('pending'),
+    currency: Joi.string().length(3).uppercase().default("USD"),
+    status: Joi.string()
+      .valid(
+        "pending",
+        "processing",
+        "requires_payment_method",
+        "requires_confirmation",
+        "requires_action",
+        "succeeded",
+        "canceled",
+        "failed",
+      )
+      .default("pending"),
     payment_method: Joi.string().optional(),
     receipt_url: Joi.string().uri().optional(),
     receipt_number: Joi.string().optional(),
@@ -170,13 +171,15 @@ class Receipt {
     refunded_at: Joi.date().optional(),
   }).unknown(false);
 
-  
   static async create(data) {
     try {
-      const { error, value: validatedData } = this.validationSchema.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const { error, value: validatedData } = this.validationSchema.validate(
+        data,
+        {
+          abortEarly: false,
+          stripUnknown: true,
+        },
+      );
 
       if (error) {
         throw new ErrorHandler(this.formatValidationError(error), 400);
@@ -185,7 +188,7 @@ class Receipt {
       const newReceipt = new ReceiptModel(validatedData);
       await newReceipt.save();
 
-      logger.info('Receipt created successfully', {
+      logger.info("Receipt created successfully", {
         receiptId: newReceipt._id,
         referenceCode: validatedData.reference_code,
         userId: validatedData.user_id,
@@ -194,7 +197,10 @@ class Receipt {
       return newReceipt.toObject();
     } catch (error) {
       if (error.code === 11000) {
-        throw new ErrorHandler('Receipt with this reference code already exists', 409);
+        throw new ErrorHandler(
+          "Receipt with this reference code already exists",
+          409,
+        );
       }
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(`Failed to create receipt: ${error.message}`, 500);
@@ -203,7 +209,9 @@ class Receipt {
 
   static async createFromPayment(paymentData, bookData, userData) {
     try {
-      const stripeReceipt = await stripeService.getReceipt(paymentData.payment_intent_id);
+      const stripeReceipt = await stripeService.getReceipt(
+        paymentData.payment_intent_id,
+      );
 
       const receiptData = {
         user_id: paymentData.user_id,
@@ -214,7 +222,7 @@ class Receipt {
         stripe_charge_id: paymentData.charge_id,
         amount: paymentData.amount,
         currency: paymentData.currency,
-        status: 'succeeded',
+        status: "succeeded",
         payment_method: paymentData.payment_method,
         receipt_url: stripeReceipt.receipt_url,
         receipt_number: stripeReceipt.receipt_number,
@@ -236,53 +244,54 @@ class Receipt {
 
       return await this.create(receiptData);
     } catch (error) {
-      logger.error('Failed to create receipt from payment', {
+      logger.error("Failed to create receipt from payment", {
         error: error.message,
-        paymentData
+        paymentData,
       });
-      throw new ErrorHandler('Failed to create payment receipt', 500);
+      throw new ErrorHandler("Failed to create payment receipt", 500);
     }
   }
 
-  
   static async findOneForUser(receiptId, userId) {
     try {
       const receipt = await ReceiptModel.findOne({
         _id: receiptId,
         user_id: userId,
       })
-        .populate('personalized_book_id', 'personalized_content child_name child_age')
+        .populate(
+          "personalized_book_id",
+          "personalized_content child_name child_age",
+        )
         .lean();
 
       if (!receipt) {
-        throw new ErrorHandler('Receipt not found', 404);
+        throw new ErrorHandler("Receipt not found", 404);
       }
 
       return receipt;
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler('Failed to retrieve receipt', 500);
+      throw new ErrorHandler("Failed to retrieve receipt", 500);
     }
   }
 
- 
   static async findAllForUser(userId, options = {}) {
     try {
       const {
         page = 1,
         limit = 10,
-        sortBy = 'createdAt',
-        sortOrder = 'desc',
+        sortBy = "createdAt",
+        sortOrder = "desc",
         status,
         startDate,
         endDate,
       } = options;
 
       const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
       const query = { user_id: userId };
-      
+
       if (status) query.status = status;
       if (startDate || endDate) {
         query.createdAt = {};
@@ -291,7 +300,7 @@ class Receipt {
       }
 
       const receipts = await ReceiptModel.find(query)
-        .populate('personalized_book_id', 'personalized_content')
+        .populate("personalized_book_id", "personalized_content")
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -309,43 +318,44 @@ class Receipt {
         },
       };
     } catch (error) {
-      throw new ErrorHandler('Failed to retrieve user receipts', 500);
+      throw new ErrorHandler("Failed to retrieve user receipts", 500);
     }
   }
 
- 
   static async findAllForAdmin(options = {}) {
     try {
       const {
         page = 1,
         limit = 20,
-        sortBy = 'createdAt',
-        sortOrder = 'desc',
+        sortBy = "createdAt",
+        sortOrder = "desc",
         filters = {},
       } = options;
 
       const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
       const query = {};
-      
+
       if (filters.status) query.status = filters.status;
       if (filters.user_id) query.user_id = filters.user_id;
-      if (filters.min_amount) query.amount = { $gte: parseFloat(filters.min_amount) };
+      if (filters.min_amount)
+        query.amount = { $gte: parseFloat(filters.min_amount) };
       if (filters.max_amount) {
         query.amount = query.amount || {};
         query.amount.$lte = parseFloat(filters.max_amount);
       }
-      if (filters.start_date) query.createdAt = { $gte: new Date(filters.start_date) };
+      if (filters.start_date)
+        query.createdAt = { $gte: new Date(filters.start_date) };
       if (filters.end_date) {
         query.createdAt = query.createdAt || {};
         query.createdAt.$lte = new Date(filters.end_date);
       }
-      if (filters.genre) query['book_details.genre'] = filters.genre;
+      if (filters.genre) query["book_details.genre"] = filters.genre;
 
       const receipts = await ReceiptModel.find(query)
-        .populate('user_id', 'username email firstname lastname')
-        .populate('personalized_book_id', 'personalized_content')
+        .populate("user_id", "username email firstname lastname")
+        .populate("personalized_book_id", "personalized_content")
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -363,11 +373,10 @@ class Receipt {
         },
       };
     } catch (error) {
-      throw new ErrorHandler('Failed to retrieve receipts for admin', 500);
+      throw new ErrorHandler("Failed to retrieve receipts for admin", 500);
     }
   }
 
-  
   static async findByReferenceCode(referenceCode, userId = null) {
     try {
       const query = { reference_code: referenceCode };
@@ -376,26 +385,27 @@ class Receipt {
       }
 
       const receipt = await ReceiptModel.findOne(query)
-        .populate('user_id', 'username email firstname lastname')
-        .populate('personalized_book_id')
+        .populate("user_id", "username email firstname lastname")
+        .populate("personalized_book_id")
         .lean();
 
       if (!receipt) {
-        throw new ErrorHandler('Receipt not found', 404);
+        throw new ErrorHandler("Receipt not found", 404);
       }
 
       return receipt;
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler('Failed to find receipt by reference code', 500);
+      throw new ErrorHandler("Failed to find receipt by reference code", 500);
     }
   }
 
-  
-  static async getPlatformStatistics(timeRange = 'all') {
+  static async getPlatformStatistics(timeRange = "all") {
     try {
       const dateFilter = this.getDateFilter(timeRange);
-      const matchStage = dateFilter ? { paid_at: dateFilter } : { status: 'succeeded' };
+      const matchStage = dateFilter
+        ? { paid_at: dateFilter }
+        : { status: "succeeded" };
 
       const [
         totalRevenue,
@@ -405,33 +415,45 @@ class Receipt {
         averageOrderValue,
       ] = await Promise.all([
         ReceiptModel.aggregate([
-          { $match: { ...matchStage, status: 'succeeded' } },
-          { $group: { _id: null, total: { $sum: '$amount' } } },
+          { $match: { ...matchStage, status: "succeeded" } },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
 
-        ReceiptModel.countDocuments({ ...matchStage, status: 'succeeded' }),
+        ReceiptModel.countDocuments({ ...matchStage, status: "succeeded" }),
 
         // Revenue by Genre
         ReceiptModel.aggregate([
-          { $match: { ...matchStage, status: 'succeeded' } },
-          { $group: { _id: '$book_details.genre', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+          { $match: { ...matchStage, status: "succeeded" } },
+          {
+            $group: {
+              _id: "$book_details.genre",
+              total: { $sum: "$amount" },
+              count: { $sum: 1 },
+            },
+          },
           { $sort: { total: -1 } },
         ]),
 
         ReceiptModel.countDocuments({
-          status: 'succeeded',
+          status: "succeeded",
           paid_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
         }),
 
         ReceiptModel.aggregate([
-          { $match: { ...matchStage, status: 'succeeded' } },
-          { $group: { _id: null, average: { $avg: '$amount' } } },
+          { $match: { ...matchStage, status: "succeeded" } },
+          { $group: { _id: null, average: { $avg: "$amount" } } },
         ]),
       ]);
 
       const popularBooks = await ReceiptModel.aggregate([
-        { $match: { ...matchStage, status: 'succeeded' } },
-        { $group: { _id: '$book_details.book_title', count: { $sum: 1 }, total_revenue: { $sum: '$amount' } } },
+        { $match: { ...matchStage, status: "succeeded" } },
+        {
+          $group: {
+            _id: "$book_details.book_title",
+            count: { $sum: 1 },
+            total_revenue: { $sum: "$amount" },
+          },
+        },
         { $sort: { count: -1 } },
         { $limit: 10 },
       ]);
@@ -446,40 +468,54 @@ class Receipt {
         time_range: timeRange,
       };
     } catch (error) {
-      logger.error('Failed to get platform statistics', { error: error.message });
-      throw new ErrorHandler('Failed to retrieve platform statistics', 500);
+      logger.error("Failed to get platform statistics", {
+        error: error.message,
+      });
+      throw new ErrorHandler("Failed to retrieve platform statistics", 500);
     }
   }
 
   static async getUserStatistics(userId) {
     try {
-      const [
-        userStats,
-        genreStats,
-        recentPayments,
-      ] = await Promise.all([
+      const [userStats, genreStats, recentPayments] = await Promise.all([
         // User overall stats
         ReceiptModel.aggregate([
-          { $match: { user_id: new mongoose.Types.ObjectId(userId), status: 'succeeded' } },
+          {
+            $match: {
+              user_id: new mongoose.Types.ObjectId(userId),
+              status: "succeeded",
+            },
+          },
           {
             $group: {
               _id: null,
-              total_spent: { $sum: '$amount' },
+              total_spent: { $sum: "$amount" },
               total_books: { $sum: 1 },
-              average_spent: { $avg: '$amount' },
+              average_spent: { $avg: "$amount" },
             },
           },
         ]),
 
         ReceiptModel.aggregate([
-          { $match: { user_id: new mongoose.Types.ObjectId(userId), status: 'succeeded' } },
-          { $group: { _id: '$book_details.genre', count: { $sum: 1 }, total_spent: { $sum: '$amount' } } },
+          {
+            $match: {
+              user_id: new mongoose.Types.ObjectId(userId),
+              status: "succeeded",
+            },
+          },
+          {
+            $group: {
+              _id: "$book_details.genre",
+              count: { $sum: 1 },
+              total_spent: { $sum: "$amount" },
+            },
+          },
           { $sort: { count: -1 } },
         ]),
 
         ReceiptModel.countDocuments({
           user_id: userId,
-          status: 'succeeded',
+          status: "succeeded",
           paid_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
         }),
       ]);
@@ -495,52 +531,56 @@ class Receipt {
         genre_breakdown: genreStats,
       };
     } catch (error) {
-      throw new ErrorHandler('Failed to retrieve user statistics', 500);
+      throw new ErrorHandler("Failed to retrieve user statistics", 500);
     }
+  }
 
-  
   static async updateStatus(receiptId, status, updates = {}) {
     try {
       const allowedStatuses = [
-        'pending', 'processing', 'requires_payment_method', 
-        'requires_confirmation', 'requires_action', 'succeeded', 
-        'canceled', 'failed'
+        "pending",
+        "processing",
+        "requires_payment_method",
+        "requires_confirmation",
+        "requires_action",
+        "succeeded",
+        "canceled",
+        "failed",
       ];
 
       if (!allowedStatuses.includes(status)) {
-        throw new ErrorHandler('Invalid receipt status', 400);
+        throw new ErrorHandler("Invalid receipt status", 400);
       }
 
       const updateData = { status, ...updates };
-      
-      if (status === 'succeeded' && !updates.paid_at) {
+
+      if (status === "succeeded" && !updates.paid_at) {
         updateData.paid_at = new Date();
       }
 
       const updatedReceipt = await ReceiptModel.findByIdAndUpdate(
         receiptId,
         { $set: updateData },
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
       );
 
       if (!updatedReceipt) {
-        throw new ErrorHandler('Receipt not found', 404);
+        throw new ErrorHandler("Receipt not found", 404);
       }
 
-      logger.info('Receipt status updated', {
+      logger.info("Receipt status updated", {
         receiptId,
         status,
-        updates
+        updates,
       });
 
       return updatedReceipt.toObject();
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler('Failed to update receipt status', 500);
+      throw new ErrorHandler("Failed to update receipt status", 500);
     }
   }
 
-  
   static generateReferenceCode() {
     const timestamp = Date.now().toString(36);
     const random = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -550,13 +590,13 @@ class Receipt {
   static getDateFilter(timeRange) {
     const now = new Date();
     switch (timeRange) {
-      case 'today':
+      case "today":
         return { $gte: new Date(now.setHours(0, 0, 0, 0)) };
-      case 'week':
+      case "week":
         return { $gte: new Date(now.setDate(now.getDate() - 7)) };
-      case 'month':
+      case "month":
         return { $gte: new Date(now.setMonth(now.getMonth() - 1)) };
-      case 'year':
+      case "year":
         return { $gte: new Date(now.setFullYear(now.getFullYear() - 1)) };
       default:
         return null;
@@ -564,7 +604,7 @@ class Receipt {
   }
 
   static formatValidationError(error) {
-    return error.details.map((detail) => detail.message).join(', ');
+    return error.details.map((detail) => detail.message).join(", ");
   }
 }
 
