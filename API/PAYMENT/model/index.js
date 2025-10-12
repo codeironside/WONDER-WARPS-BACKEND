@@ -603,6 +603,193 @@ class Receipt {
     }
   }
 
+  static async findOneForUserAdmin(receiptId, userId) {
+    try {
+      const receipt = await ReceiptModel.findOne({
+        _id: receiptId,
+        user_id: userId,
+      })
+        .populate("user_id", "username email firstname lastname phonenumber")
+        .populate(
+          "personalized_book_id",
+          "child_name child_age gender_preference personalized_content",
+        )
+        .lean();
+
+      if (!receipt) {
+        throw new ErrorHandler("Receipt not found for this user", 404);
+      }
+
+      const formattedReceipt = {
+        ...receipt,
+        book_info: {
+          child_name: receipt.personalized_book_id?.child_name,
+          child_age: receipt.personalized_book_id?.child_age,
+          gender_preference: receipt.personalized_book_id?.gender_preference,
+          book_title:
+            receipt.personalized_book_id?.personalized_content?.book_title,
+          genre: receipt.personalized_book_id?.personalized_content?.genre,
+          author: receipt.personalized_book_id?.personalized_content?.author,
+          chapters_count:
+            receipt.personalized_book_id?.personalized_content?.chapters
+              ?.length || 0,
+          cover_image:
+            receipt.personalized_book_id?.personalized_content
+              ?.cover_image?.[0],
+        },
+        user_info: {
+          username: receipt.user_id?.username,
+          email: receipt.user_id?.email,
+          name: `${receipt.user_id?.firstname} ${receipt.user_id?.lastname}`,
+          phone: receipt.user_id?.phonenumber,
+        },
+      };
+
+      delete formattedReceipt.personalized_book_id;
+      delete formattedReceipt.user_id;
+
+      return formattedReceipt;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to retrieve receipt for user", 500);
+    }
+  }
+
+  static async findByReferenceCodeAdmin(referenceCode) {
+    try {
+      const receipt = await ReceiptModel.findOne({
+        reference_code: referenceCode,
+      })
+        .populate(
+          "user_id",
+          "username email firstname lastname phonenumber createdAt",
+        )
+        .populate(
+          "personalized_book_id",
+          "child_name child_age gender_preference personalized_content created_at",
+        )
+        .lean();
+
+      if (!receipt) {
+        throw new ErrorHandler("Receipt not found", 404);
+      }
+      const formattedReceipt = {
+        ...receipt,
+        book_info: {
+          book_id: receipt.personalized_book_id?._id,
+          child_name: receipt.personalized_book_id?.child_name,
+          child_age: receipt.personalized_book_id?.child_age,
+          gender_preference: receipt.personalized_book_id?.gender_preference,
+          book_title:
+            receipt.personalized_book_id?.personalized_content?.book_title,
+          genre: receipt.personalized_book_id?.personalized_content?.genre,
+          author: receipt.personalized_book_id?.personalized_content?.author,
+          suggested_font:
+            receipt.personalized_book_id?.personalized_content?.suggested_font,
+          chapters_count:
+            receipt.personalized_book_id?.personalized_content?.chapters
+              ?.length || 0,
+          cover_image:
+            receipt.personalized_book_id?.personalized_content
+              ?.cover_image?.[0],
+          created_at: receipt.personalized_book_id?.created_at,
+          character_details: {
+            skin_tone:
+              receipt.personalized_book_id?.personalized_content?.skin_tone,
+            hair_type:
+              receipt.personalized_book_id?.personalized_content?.hair_type,
+            hair_style:
+              receipt.personalized_book_id?.personalized_content?.hair_style,
+            hair_color:
+              receipt.personalized_book_id?.personalized_content?.hair_color,
+            eye_color:
+              receipt.personalized_book_id?.personalized_content?.eye_color,
+            clothing:
+              receipt.personalized_book_id?.personalized_content?.clothing,
+            gender: receipt.personalized_book_id?.personalized_content?.gender,
+          },
+        },
+        user_info: {
+          user_id: receipt.user_id?._id,
+          username: receipt.user_id?.username,
+          email: receipt.user_id?.email,
+          name: `${receipt.user_id?.firstname} ${receipt.user_id?.lastname}`,
+          phone: receipt.user_id?.phonenumber,
+          account_created: receipt.user_id?.createdAt,
+        },
+        payment_info: {
+          reference_code: receipt.reference_code,
+          stripe_payment_intent_id: receipt.stripe_payment_intent_id,
+          stripe_charge_id: receipt.stripe_charge_id,
+          payment_method: receipt.payment_method,
+          amount: receipt.amount,
+          currency: receipt.currency,
+          paid_at: receipt.paid_at,
+          refund_status: receipt.refunded ? "refunded" : "not_refunded",
+          refund_amount: receipt.refund_amount,
+          refunded_at: receipt.refunded_at,
+        },
+      };
+
+      delete formattedReceipt.personalized_book_id;
+      delete formattedReceipt.user_id;
+
+      return formattedReceipt;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to find receipt by reference code", 500);
+    }
+  }
+
+  static async findByPaymentIntentIdAdmin(paymentIntentId) {
+    try {
+      const receipt = await ReceiptModel.findOne({
+        stripe_payment_intent_id: paymentIntentId,
+      })
+        .populate("user_id", "username email firstname lastname")
+        .populate(
+          "personalized_book_id",
+          "child_name child_age personalized_content",
+        )
+        .lean();
+
+      if (!receipt) {
+        throw new ErrorHandler(
+          "Receipt not found for this payment intent",
+          404,
+        );
+      }
+
+      // Format the response
+      const formattedReceipt = {
+        ...receipt,
+        book_info: {
+          child_name: receipt.personalized_book_id?.child_name,
+          child_age: receipt.personalized_book_id?.child_age,
+          book_title:
+            receipt.personalized_book_id?.personalized_content?.book_title,
+          genre: receipt.personalized_book_id?.personalized_content?.genre,
+        },
+        user_info: {
+          username: receipt.user_id?.username,
+          email: receipt.user_id?.email,
+          name: `${receipt.user_id?.firstname} ${receipt.user_id?.lastname}`,
+        },
+      };
+
+      delete formattedReceipt.personalized_book_id;
+      delete formattedReceipt.user_id;
+
+      return formattedReceipt;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        "Failed to find receipt by payment intent ID",
+        500,
+      );
+    }
+  }
+
   static formatValidationError(error) {
     return error.details.map((detail) => detail.message).join(", ");
   }

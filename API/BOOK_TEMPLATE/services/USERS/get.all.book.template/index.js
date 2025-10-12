@@ -16,10 +16,8 @@ export const getPublicTemplates = async (req, res, next) => {
       personalizable,
       keywords,
     } = req.query;
-    const isPersonalizable = personalizable
-      ? personalizable === "true"
-      : true;
-    console.log(isPersonalizable)
+    const isPersonalizable = personalizable ? personalizable === "true" : true;
+    console.log(isPersonalizable);
 
     let keywordArray = [];
     if (keywords) {
