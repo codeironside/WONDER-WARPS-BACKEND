@@ -229,7 +229,7 @@ class StoryPersonalizer {
       gender,
     } = personalizationDetails;
 
-    return `Create a children's book illustration with NO TEXT of any kind.style it as a dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation Maintain the same composition and style as the original scene but with these character changes:
+    return `Create a children's book illustration with NO TEXT of any kind .style it as a dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation Maintain the same composition and style as the original scene but with these character changes:
     
     Original scene: ${originalDescription}
     
@@ -244,7 +244,7 @@ class StoryPersonalizer {
     ${gender ? `- Gender: ${gender}` : ""}
     
     Keep the same background, composition, and artistic style as the original illustration,A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli. Only change the character's appearance to match the new details.
-    Absolutely NO TEXT of any kind in the image.
+    Absolutely NO TEXT of any kind in the image, and just one image.
     Style: Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
   }
 
@@ -268,7 +268,7 @@ class StoryPersonalizer {
       
       Keep the same background, composition, and artistic style as the original cover,A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli. Only change the character's appearance to match the new details.
       Absolutely NO TEXT of any kind in the image.
-      Style: Colorful, engaging, professional children's book, whimsical Studio Ghibli film, full of imagination and wonder`;
+      Style: Colorful, engaging, professional children's book, whimsical Studio Ghibli film, full of imagination and wonder, JUST ONE IMAGE NOTHING ELSE`;
 
       const coverImage = await this.openai.images.generate({
         model: "dall-e-3",

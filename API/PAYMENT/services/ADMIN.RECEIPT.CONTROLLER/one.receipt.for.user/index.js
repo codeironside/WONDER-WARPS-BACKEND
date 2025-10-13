@@ -3,7 +3,7 @@ import ErrorHandler from "../../../../../CORE/middleware/errorhandler/index.js";
 
 export const getReceiptForUserByAdmin = async (req, res, next) => {
   try {
-    const { userId, receiptId } = req.params;
+    const { userId, receiptId } = req.query;
 
     if (!userId || !receiptId) {
       throw new ErrorHandler("User ID and Receipt ID are required", 400);

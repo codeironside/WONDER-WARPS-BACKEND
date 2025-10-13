@@ -2,7 +2,6 @@ import Stripe from "stripe";
 import { config } from "../../utils/config/index.js";
 import ErrorHandler from "../../middleware/errorhandler/index.js";
 import logger from "../../utils/logger/index.js";
-
 class StripeService {
   constructor() {
     this.stripe = new Stripe(config.stripe.secret_key, {
@@ -12,6 +11,111 @@ class StripeService {
       telemetry: false,
     });
     this.currency = "usd";
+  }
+  async createCheckoutSession(
+    amount,
+    metadata,
+    customerData,
+    successUrl,
+    cancelUrl,
+  ) {
+    try {
+      const amountInCents = Math.round(amount * 100);
+
+      if (amountInCents < 50) {
+        throw new ErrorHandler("Amount must be at least $0.50", 400);
+      }
+
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `Personalized Book: ${metadata.book_title}`,
+                description: `Custom story for ${metadata.child_name}`,
+                metadata: {
+                  book_title: metadata.book_title,
+                  child_name: metadata.child_name,
+                },
+              },
+              unit_amount: amountInCents,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        customer_email: customerData.email,
+        metadata: {
+          service: "personalized_book",
+          ...metadata,
+        },
+        payment_intent_data: {
+          metadata: {
+            service: "personalized_book",
+            ...metadata,
+          },
+          description: `Personalized Book: ${metadata.book_title} for ${metadata.child_name}`,
+          receipt_email: customerData.email,
+        },
+      });
+
+      logger.info("Checkout session created successfully", {
+        sessionId: session.id,
+        amount: amount,
+        bookTitle: metadata.book_title,
+      });
+
+      return session;
+    } catch (error) {
+
+      console.log(error)
+      logger.error("Failed to create checkout session", {
+        error: error.message,
+        amount,
+        metadata,
+      });
+
+      if (error.type?.includes("Stripe")) {
+        throw new ErrorHandler(this.formatStripeError(error), 400);
+      }
+
+      throw new ErrorHandler("Payment service temporarily unavailable", 503);
+    }
+  }
+
+  async getCheckoutSession(sessionId) {
+    try {
+      const session = await this.stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["payment_intent"],
+      });
+
+      return {
+        id: session.id,
+        status: session.status,
+        payment_status: session.payment_status,
+        amount_total: session.amount_total / 100,
+        currency: session.currency,
+        customer_email: session.customer_email,
+        payment_intent: session.payment_intent,
+        metadata: session.metadata,
+        url: session.url,
+      };
+    } catch (error) {
+      logger.error("Failed to retrieve checkout session", {
+        error: error.message,
+        sessionId,
+      });
+
+      if (error.type === "StripeInvalidRequestError") {
+        throw new ErrorHandler("Checkout session not found", 404);
+      }
+
+      throw new ErrorHandler("Failed to retrieve checkout session", 500);
+    }
   }
 
   async createPaymentIntent(amount, metadata = {}, customerEmail = null) {

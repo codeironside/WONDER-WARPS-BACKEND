@@ -3,6 +3,7 @@ import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import User from "../../AUTH/model/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
+import stripeService from "../../../CORE/services/stripe/index.js";
 const personalizedBookSchema = new mongoose.Schema(
   {
     original_template_id: {
@@ -605,6 +606,566 @@ class PersonalizedBook {
 
   static formatValidationError(error) {
     return error.details.map((detail) => detail.message).join(", ");
+  }
+
+  static async initiatePayment(bookId, userData) {
+    try {
+      const book = await this.findById(bookId);
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      if (book.is_paid) {
+        throw new ErrorHandler("This book has already been paid for", 400);
+      }
+
+      const session = await stripeService.createCheckoutSession(
+        book.price,
+        {
+          personalized_book_id: bookId.toString(),
+          user_id: book.user_id.toString(),
+          book_title:
+            book.personalized_content?.book_title || "Personalized Book",
+          child_name: book.child_name,
+        },
+        userData,
+        `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        `${process.env.CLIENT_URL}/payment/cancel`,
+      );
+
+      logger.info("Checkout session created for personalized book", {
+        bookId,
+        sessionId: session.id,
+        amount: book.price,
+        url: session.url,
+      });
+
+      return {
+        checkout_url: session.url,
+        session_id: session.id,
+        amount: book.price,
+        currency: "usd",
+      };
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to initiate payment: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  static async confirmPayment(bookId, paymentIntentId) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Confirm payment with Stripe service
+      const paymentResult = await stripeService.confirmPayment(paymentIntentId);
+
+      if (paymentResult.status !== "succeeded") {
+        throw new ErrorHandler(
+          `Payment not completed: ${paymentResult.status}`,
+          400,
+        );
+      }
+
+      // Get complete payment details
+      const paymentDetails =
+        await stripeService.getPaymentIntent(paymentIntentId);
+
+      const book = await this.findById(bookId);
+      stripeService.validatePaymentAmount(paymentDetails.amount, book.price);
+
+      const updatedBook = await this.updatePaymentStatus(
+        bookId,
+        paymentIntentId,
+        true,
+      );
+
+      const user = await User.findById(book.user_id);
+      if (!user) {
+        throw new ErrorHandler("User not found", 404);
+      }
+
+      const receipt = await Receipt.createForSuccessfulPayment(
+        {
+          user_id: book.user_id,
+          personalized_book_id: bookId,
+          payment_intent_id: paymentIntentId,
+          amount: paymentDetails.amount,
+          currency: paymentDetails.currency,
+          customer_id: paymentDetails.customer,
+          charge_id: paymentDetails.latest_charge,
+          payment_method: paymentDetails.payment_method,
+          status: paymentDetails.status,
+        },
+        {
+          book_title: book.personalized_content?.book_title,
+          child_name: book.child_name,
+          child_age: book.child_age,
+          genre: book.personalized_content?.genre,
+          author: book.personalized_content?.author,
+          cover_image: book.personalized_content?.cover_image?.[0],
+        },
+        {
+          email: user.email,
+          name: `${user.firstname} ${user.lastname}`,
+          username: user.username,
+        },
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info("Payment completed and receipt created", {
+        bookId,
+        paymentIntentId,
+        receiptId: receipt._id,
+      });
+
+      return {
+        book: updatedBook,
+        receipt: receipt,
+        payment: paymentDetails,
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+
+      logger.error("Payment confirmation failed", {
+        error: error.message,
+        bookId,
+        paymentIntentId,
+      });
+
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Payment confirmation failed: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  static async confirmPaymentWithSession(sessionId) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const checkoutSession = await stripeService.getCheckoutSession(sessionId);
+
+      if (checkoutSession.payment_status !== "paid") {
+        throw new ErrorHandler(
+          `Payment not completed: ${checkoutSession.payment_status}`,
+          400,
+        );
+      }
+
+      const bookId = checkoutSession.metadata.personalized_book_id;
+      const paymentIntentId = checkoutSession.payment_intent.id;
+
+      const book = await this.findById(bookId);
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      stripeService.validatePaymentAmount(
+        checkoutSession.amount_total,
+        book.price,
+      );
+      const updatedBook = await this.updatePaymentStatus(
+        bookId,
+        paymentIntentId,
+        true,
+      );
+
+      const user = await User.findById(book.user_id);
+      if (!user) {
+        throw new ErrorHandler("User not found", 404);
+      }
+
+      const receipt = await Receipt.createForSuccessfulPayment(
+        {
+          user_id: book.user_id,
+          personalized_book_id: bookId,
+          payment_intent_id: paymentIntentId,
+          amount: checkoutSession.amount_total,
+          currency: checkoutSession.currency,
+          customer_id: checkoutSession.payment_intent.customer,
+          charge_id: checkoutSession.payment_intent.latest_charge,
+          payment_method: checkoutSession.payment_intent.payment_method,
+          status: checkoutSession.payment_intent.status,
+        },
+        {
+          book_title: book.personalized_content?.book_title,
+          child_name: book.child_name,
+          child_age: book.child_age,
+          genre: book.personalized_content?.genre,
+          author: book.personalized_content?.author,
+          cover_image: book.personalized_content?.cover_image?.[0],
+        },
+        {
+          email: user.email,
+          name: `${user.firstname} ${user.lastname}`,
+          username: user.username,
+        },
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info("Payment completed via checkout session", {
+        bookId,
+        sessionId,
+        paymentIntentId,
+        amount: checkoutSession.amount_total,
+      });
+
+      return {
+        book: updatedBook,
+        receipt: receipt,
+        session: checkoutSession,
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+
+      logger.error("Payment confirmation with session failed", {
+        error: error.message,
+        sessionId,
+      });
+
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Payment confirmation failed: ${error.message}`,
+        500,
+      );
+    }
+  }
+  
+  static async handleCheckoutSessionCompleted(session) {
+    const sessionMongo = await mongoose.startSession();
+    sessionMongo.startTransaction();
+
+    try {
+      const { id: sessionId, metadata, amount_total } = session;
+      const bookId = metadata.personalized_book_id;
+
+      if (!bookId) {
+        logger.warn("No book ID in checkout session metadata", {
+          sessionId,
+          metadata,
+        });
+        await sessionMongo.commitTransaction();
+        sessionMongo.endSession();
+        return;
+      }
+      const paymentIntentId = session.payment_intent;
+      const existingReceipt =
+        await Receipt.findByPaymentIntentId(paymentIntentId);
+      if (existingReceipt) {
+        logger.info("Receipt already exists for this payment", {
+          paymentIntentId,
+        });
+        await sessionMongo.commitTransaction();
+        sessionMongo.endSession();
+        return;
+      }
+
+      const book = await this.findById(bookId);
+      if (!book) {
+        throw new ErrorHandler("Book not found for successful payment", 404);
+      }
+      if (!book.is_paid) {
+        await this.updatePaymentStatus(bookId, paymentIntentId, true);
+      }
+
+      const user = await User.findById(book.user_id);
+      if (!user) {
+        throw new ErrorHandler("User not found for payment", 404);
+      }
+
+      await Receipt.createForSuccessfulPayment(
+        {
+          user_id: book.user_id,
+          personalized_book_id: bookId,
+          payment_intent_id: paymentIntentId,
+          amount: amount_total / 100,
+          currency: session.currency,
+          customer_id: session.customer,
+          charge_id: session.payment_intent,
+          payment_method: session.payment_method_types?.[0],
+          status: "succeeded",
+        },
+        {
+          book_title: book.personalized_content?.book_title,
+          child_name: book.child_name,
+          child_age: book.child_age,
+          genre: book.personalized_content?.genre,
+          author: book.personalized_content?.author,
+          cover_image: book.personalized_content?.cover_image?.[0],
+        },
+        {
+          email: user.email,
+          name: `${user.firstname} ${user.lastname}`,
+          username: user.username,
+        },
+      );
+
+      await sessionMongo.commitTransaction();
+      sessionMongo.endSession();
+
+      logger.info("Receipt created via checkout session webhook", {
+        bookId,
+        sessionId,
+        amount: amount_total / 100,
+      });
+    } catch (error) {
+      await sessionMongo.abortTransaction();
+      sessionMongo.endSession();
+      logger.error("Failed to process checkout session webhook", {
+        error: error.message,
+        sessionId: session.id,
+      });
+    }
+  }
+
+ 
+  static async handlePaymentSuccess(paymentIntent) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const { id: paymentIntentId, metadata, amount } = paymentIntent;
+      const bookId = metadata.personalized_book_id;
+
+      if (!bookId) {
+        logger.warn(
+          "No book ID in payment metadata, skipping receipt creation",
+          {
+            paymentIntentId,
+            metadata,
+          },
+        );
+        await session.commitTransaction();
+        session.endSession();
+        return;
+      }
+
+      // Check if receipt already exists (idempotency)
+      const existingReceipt =
+        await Receipt.findByPaymentIntentId(paymentIntentId);
+      if (existingReceipt) {
+        logger.info("Receipt already exists for this payment", {
+          paymentIntentId,
+        });
+        await session.commitTransaction();
+        session.endSession();
+        return;
+      }
+
+      // Find the book
+      const book = await this.findById(bookId);
+      if (!book) {
+        throw new ErrorHandler("Book not found for successful payment", 404);
+      }
+
+      // Update book payment status if not already updated
+      if (!book.is_paid) {
+        await this.updatePaymentStatus(bookId, paymentIntentId, true);
+      }
+
+      // Get user details
+      const user = await User.findById(book.user_id);
+      if (!user) {
+        throw new ErrorHandler("User not found for payment", 404);
+      }
+
+      // Create receipt for successful payment
+      await Receipt.createForSuccessfulPayment(
+        {
+          user_id: book.user_id,
+          personalized_book_id: bookId,
+          payment_intent_id: paymentIntentId,
+          amount: amount / 100,
+          currency: paymentIntent.currency,
+          customer_id: paymentIntent.customer,
+          charge_id: paymentIntent.latest_charge,
+          payment_method: paymentIntent.payment_method,
+          status: paymentIntent.status,
+        },
+        {
+          book_title: book.personalized_content?.book_title,
+          child_name: book.child_name,
+          child_age: book.child_age,
+          genre: book.personalized_content?.genre,
+          author: book.personalized_content?.author,
+          cover_image: book.personalized_content?.cover_image?.[0],
+        },
+        {
+          email: user.email,
+          name: `${user.firstname} ${user.lastname}`,
+          username: user.username,
+        },
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info("Receipt created via webhook for successful payment", {
+        bookId,
+        paymentIntentId,
+        amount: amount / 100,
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      logger.error("Failed to process payment success webhook", {
+        error: error.message,
+        paymentIntentId: paymentIntent.id,
+      });
+      // Don't throw error to prevent webhook retries for non-critical issues
+    }
+  }
+
+  /**
+   * Handle refund webhook
+   */
+  static async handleRefund(charge) {
+    try {
+      const { payment_intent: paymentIntentId, amount_refunded } = charge;
+
+      // Find receipt by payment intent ID
+      const receipt = await Receipt.findByPaymentIntentId(paymentIntentId);
+      if (!receipt) {
+        logger.warn("No receipt found for refund webhook", { paymentIntentId });
+        return;
+      }
+
+      // Mark receipt as refunded
+      await Receipt.markAsRefunded(
+        receipt._id,
+        amount_refunded / 100,
+        "processed_via_webhook",
+      );
+
+      logger.info("Receipt updated for refund via webhook", {
+        receiptId: receipt._id,
+        refundAmount: amount_refunded / 100,
+      });
+    } catch (error) {
+      logger.error("Failed to process refund webhook", {
+        error: error.message,
+        chargeId: charge.id,
+      });
+    }
+  }
+
+  /**
+   * Get payment receipt for a book
+   */
+  static async getReceipt(bookId, userId) {
+    try {
+      const book = await this.findById(bookId);
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      if (book.user_id.toString() !== userId.toString()) {
+        throw new ErrorHandler("Access denied", 403);
+      }
+
+      if (!book.is_paid) {
+        throw new ErrorHandler("No payment found for this book", 404);
+      }
+
+      // Find receipt by payment ID
+      const receipt = await Receipt.findByReferenceCode(
+        book.payment_id,
+        userId,
+      );
+
+      return receipt;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to retrieve receipt", 500);
+    }
+  }
+
+  /**
+   * Get payment history for a user's personalized books
+   */
+  static async getPaymentHistory(userId, options = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = options;
+
+      // Get user's paid books
+      const paidBooks = await PersonalizedBookModel.find({
+        user_id: userId,
+        is_paid: true,
+      })
+        .select("child_name personalized_content price payment_id payment_date")
+        .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+      const total = await PersonalizedBookModel.countDocuments({
+        user_id: userId,
+        is_paid: true,
+      });
+
+      // Get receipt details for each paid book
+      const paymentHistory = await Promise.all(
+        paidBooks.map(async (book) => {
+          try {
+            const receipt = await Receipt.findByReferenceCode(
+              book.payment_id,
+              userId,
+            );
+            return {
+              book: {
+                child_name: book.child_name,
+                book_title: book.personalized_content?.book_title,
+                genre: book.personalized_content?.genre,
+                price: book.price,
+                payment_date: book.payment_date,
+              },
+              receipt: receipt,
+            };
+          } catch (error) {
+            // If receipt not found, return basic book info
+            return {
+              book: {
+                child_name: book.child_name,
+                book_title: book.personalized_content?.book_title,
+                genre: book.personalized_content?.genre,
+                price: book.price,
+                payment_date: book.payment_date,
+              },
+              receipt: null,
+            };
+          }
+        }),
+      );
+
+      return {
+        payments: paymentHistory,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      throw new ErrorHandler("Failed to retrieve payment history", 500);
+    }
   }
 }
 

@@ -13,7 +13,6 @@ export const confirmPayment = async (req, res, next) => {
       throw new ErrorHandler("Book ID and payment intent ID are required", 400);
     }
 
-    // Verify the book belongs to the user
     const book = await PersonalizedBook.findByIdForUser(bookId, user._id);
     if (!book) {
       throw new ErrorHandler("Book not found or access denied", 404);

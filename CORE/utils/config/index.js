@@ -41,7 +41,7 @@ export const config = {
     apikey: process.env.IPGEO_API_KEY,
   },
   stripe: {
-    secretKey: process.env.STRIPE_SECRET_KEY,
+    secret_key: process.env.STRIPE_API_KEY,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   },
 };

@@ -1,9 +1,8 @@
 import PersonalizedBook from "../../../PERSONALISATION/model/index.js";
 import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
-import stripeService from "../../../../CORE/services/stripe/index.js";
 import logger from "../../../../CORE/utils/logger/index.js";
 
-export const getPaymentStatus = async (req, res, next) => {
+export const getPaymentStatus = async (req, res) => {
   try {
     const { bookId } = req.params;
     const user = req.user;
