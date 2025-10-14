@@ -4,6 +4,7 @@ import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import User from "../../AUTH/model/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
+import emailService from "../../../CORE/services/Email/index.js";
 const personalizedBookSchema = new mongoose.Schema(
   {
     original_template_id: {
@@ -438,7 +439,6 @@ class PersonalizedBook {
     }
   }
 
-  // Get one personalized book for admin with chapters and user information
   static async findOneForAdmin(bookId, options = {}) {
     try {
       const { includeChapters = true } = options;
@@ -479,7 +479,6 @@ class PersonalizedBook {
     }
   }
 
-  // Get all personalized books for admin dashboard with advanced filtering
   static async findAllForAdminAdvanced(options = {}) {
     try {
       const {
@@ -558,7 +557,6 @@ class PersonalizedBook {
     }
   }
 
-  // Get personalized books grouped by payment status for admin dashboard
   static async getPaymentStats() {
     try {
       const paidCount = await PersonalizedBookModel.countDocuments({
@@ -581,8 +579,6 @@ class PersonalizedBook {
       throw new ErrorHandler("Failed to get payment statistics", 500);
     }
   }
-
-  // Get personalized books grouped by genre for admin dashboard
   static async getGenreStats() {
     try {
       const genreStats = await PersonalizedBookModel.aggregate([
@@ -660,7 +656,6 @@ class PersonalizedBook {
     session.startTransaction();
 
     try {
-      // Confirm payment with Stripe service
       const paymentResult = await stripeService.confirmPayment(paymentIntentId);
 
       if (paymentResult.status !== "succeeded") {
@@ -809,6 +804,23 @@ class PersonalizedBook {
           name: `${user.firstname} ${user.lastname}`,
           username: user.username,
         },
+      );
+
+      await emailService.sendPaymentConfirmationEmail(
+        user.email,
+        user.username,
+        (checkoutSession.amount_total / 100).toFixed(2),
+        new Date(checkoutSession.created * 1000).toLocaleDateString(),
+        bookId,
+        book.personalized_content?.book_title || "Personalized Story Book",
+        book.child_name,
+        (checkoutSession.amount_subtotal / 100).toFixed(2),
+        "0.00",
+        (
+          (checkoutSession.amount_total - checkoutSession.amount_subtotal) /
+          100
+        ).toFixed(2),
+        (checkoutSession.amount_total / 100).toFixed(2),
       );
 
       await session.commitTransaction();
@@ -962,25 +974,17 @@ class PersonalizedBook {
         session.endSession();
         return;
       }
-
-      // Find the book
       const book = await this.findById(bookId);
       if (!book) {
         throw new ErrorHandler("Book not found for successful payment", 404);
       }
-
-      // Update book payment status if not already updated
       if (!book.is_paid) {
         await this.updatePaymentStatus(bookId, paymentIntentId, true);
       }
-
-      // Get user details
       const user = await User.findById(book.user_id);
       if (!user) {
         throw new ErrorHandler("User not found for payment", 404);
       }
-
-      // Create receipt for successful payment
       await Receipt.createForSuccessfulPayment(
         {
           user_id: book.user_id,
@@ -1010,12 +1014,14 @@ class PersonalizedBook {
 
       await session.commitTransaction();
       session.endSession();
-
-      logger.info("Receipt created via webhook for successful payment", {
-        bookId,
-        paymentIntentId,
-        amount: amount / 100,
-      });
+      await emailService.logger.info(
+        "Receipt created via webhook for successful payment",
+        {
+          bookId,
+          paymentIntentId,
+          amount: amount / 100,
+        },
+      );
     } catch (error) {
       await session.abortTransaction();
       session.endSession();

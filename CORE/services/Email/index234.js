@@ -171,6 +171,12 @@ class EmailService {
     amount,
     paymentDate,
     orderId,
+    bookTitle,
+    childName,
+    subtotal,
+    shipping,
+    tax,
+    total,
   ) {
     try {
       let htmlContent = this.templates.payment;
@@ -180,6 +186,12 @@ class EmailService {
       htmlContent = htmlContent.replace("{{AMOUNT}}", amount);
       htmlContent = htmlContent.replace("{{PAYMENT_DATE}}", paymentDate);
       htmlContent = htmlContent.replace("{{ORDER_ID}}", orderId);
+      htmlContent = htmlContent.replace("{{STORY_TITLE}}", bookTitle);
+      htmlContent = htmlContent.replace("{{CHILD_NAME}}", childName);
+      htmlContent = htmlContent.replace("{{SUBTOTAL}}", subtotal);
+      htmlContent = htmlContent.replace("{{SHIPPING}}", shipping);
+      htmlContent = htmlContent.replace("{{TAX}}", tax);
+      htmlContent = htmlContent.replace("{{TOTAL}}", total);
 
       const params = {
         Source: process.env.SES_FROM_EMAIL,
@@ -188,7 +200,7 @@ class EmailService {
         },
         Message: {
           Subject: {
-            Data: "Your Wonder Wrap Payment Confirmation",
+            Data: "Your My Story Hat Payment Confirmation",
           },
           Body: {
             Html: {

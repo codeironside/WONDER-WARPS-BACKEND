@@ -21,7 +21,7 @@ PaymentRouter.post(
   initiatePayment,
 );
 PaymentRouter.post(
-  "/confirmPayment/:bookId",
+  "/confirmPayment/:sessionId",
   authorize(["Admin", "User"]),
   confirmPayment,
 );
