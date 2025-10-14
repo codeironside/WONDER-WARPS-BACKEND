@@ -842,7 +842,7 @@ class PersonalizedBook {
       );
     }
   }
-  
+
   static async handleCheckoutSessionCompleted(session) {
     const sessionMongo = await mongoose.startSession();
     sessionMongo.startTransaction();
@@ -930,7 +930,6 @@ class PersonalizedBook {
     }
   }
 
- 
   static async handlePaymentSuccess(paymentIntent) {
     const session = await mongoose.startSession();
     session.startTransaction();

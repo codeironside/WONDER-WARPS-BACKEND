@@ -46,8 +46,8 @@ class StripeService {
           },
         ],
         mode: "payment",
-        success_url: successUrl,
-        cancel_url: cancelUrl,
+        success_url: config.stripe.success_url,
+        cancel_url: config.stripe.cancel_url,
         customer_email: customerData.email,
         metadata: {
           service: "personalized_book",
@@ -71,8 +71,7 @@ class StripeService {
 
       return session;
     } catch (error) {
-
-      console.log(error)
+      console.log(error);
       logger.error("Failed to create checkout session", {
         error: error.message,
         amount,
