@@ -5,6 +5,7 @@ import User from "../../AUTH/model/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
 import emailService from "../../../CORE/services/Email/index.js";
+import Receipt from "../../PAYMENT/model/index.js";
 const personalizedBookSchema = new mongoose.Schema(
   {
     original_template_id: {
