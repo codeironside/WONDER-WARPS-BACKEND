@@ -92,17 +92,7 @@ class StripeService {
         expand: ["payment_intent"],
       });
 
-      return {
-        id: session.id,
-        status: session.status,
-        payment_status: session.payment_status,
-        amount_total: session.amount_total / 100,
-        currency: session.currency,
-        customer_email: session.customer_email,
-        payment_intent: session.payment_intent,
-        metadata: session.metadata,
-        url: session.url,
-      };
+      return session;
     } catch (error) {
       logger.error("Failed to retrieve checkout session", {
         error: error.message,

@@ -31,7 +31,6 @@ const personalizedBookSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Create indexes for better performance
 personalizedBookSchema.index({ user_id: 1 });
 personalizedBookSchema.index({ original_template_id: 1 });
 personalizedBookSchema.index({ created_at: -1 });
@@ -108,9 +107,14 @@ class PersonalizedBook {
 
   static async updatePaymentStatus(bookId, paymentId, isPaid = true) {
     try {
+      const paymentIdString =
+        typeof paymentId === "string"
+          ? paymentId
+          : paymentId?.id || paymentId?.payment_intent || "unknown_payment_id";
+
       const updateData = {
         is_paid: isPaid,
-        payment_id: paymentId,
+        payment_id: paymentIdString,
         payment_date: isPaid ? new Date() : null,
       };
 
@@ -750,6 +754,10 @@ class PersonalizedBook {
     try {
       const checkoutSession = await stripeService.getCheckoutSession(sessionId);
 
+      if (!checkoutSession) {
+        throw new ErrorHandler("Checkout session not found", 404);
+      }
+
       if (checkoutSession.payment_status !== "paid") {
         throw new ErrorHandler(
           `Payment not completed: ${checkoutSession.payment_status}`,
@@ -758,7 +766,9 @@ class PersonalizedBook {
       }
 
       const bookId = checkoutSession.metadata.personalized_book_id;
-      const paymentIntentId = checkoutSession.payment_intent.id;
+      if (!bookId) {
+        throw new ErrorHandler("Book ID not found in session metadata", 400);
+      }
 
       const book = await this.findById(bookId);
       if (!book) {
@@ -766,9 +776,19 @@ class PersonalizedBook {
       }
 
       stripeService.validatePaymentAmount(
-        checkoutSession.amount_total,
+        checkoutSession.amount_total / 100,
         book.price,
       );
+
+      const paymentIntent = checkoutSession.payment_intent;
+      if (!paymentIntent || typeof paymentIntent !== "object") {
+        throw new ErrorHandler("Payment intent data not found", 400);
+      }
+
+      const paymentIntentId = paymentIntent.id;
+      const chargeId = paymentIntent.latest_charge;
+      const customerId = paymentIntent.customer;
+
       const updatedBook = await this.updatePaymentStatus(
         bookId,
         paymentIntentId,
@@ -785,12 +805,13 @@ class PersonalizedBook {
           user_id: book.user_id,
           personalized_book_id: bookId,
           payment_intent_id: paymentIntentId,
-          amount: checkoutSession.amount_total,
+          amount: checkoutSession.amount_total / 100,
           currency: checkoutSession.currency,
-          customer_id: checkoutSession.payment_intent.customer,
-          charge_id: checkoutSession.payment_intent.latest_charge,
-          payment_method: checkoutSession.payment_intent.payment_method,
-          status: checkoutSession.payment_intent.status,
+          customer_id: customerId,
+          charge_id: chargeId,
+          payment_method: paymentIntent.payment_method,
+          status: paymentIntent.status,
+          metadata: checkoutSession.metadata || {},
         },
         {
           book_title: book.personalized_content?.book_title,
@@ -837,7 +858,13 @@ class PersonalizedBook {
       return {
         book: updatedBook,
         receipt: receipt,
-        session: checkoutSession,
+        session: {
+          id: checkoutSession.id,
+          payment_intent: paymentIntentId,
+          amount_total: checkoutSession.amount_total,
+          currency: checkoutSession.currency,
+          payment_status: checkoutSession.payment_status,
+        },
       };
     } catch (error) {
       await session.abortTransaction();

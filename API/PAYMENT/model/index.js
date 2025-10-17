@@ -133,8 +133,8 @@ class Receipt {
     personalized_book_id: Joi.string().hex().length(24).required(),
     reference_code: Joi.string().required(),
     stripe_payment_intent_id: Joi.string().required(),
-    stripe_customer_id: Joi.string().optional(),
-    stripe_charge_id: Joi.string().optional(),
+    stripe_customer_id: Joi.string().optional().allow("", "not_available"),
+    stripe_charge_id: Joi.string().optional().allow("", "not_available"),
     amount: Joi.number().positive().precision(2).required(),
     currency: Joi.string().length(3).uppercase().default("USD"),
     status: Joi.string()
@@ -149,9 +149,11 @@ class Receipt {
         "failed",
       )
       .default("pending"),
-    payment_method: Joi.string().optional(),
-    receipt_url: Joi.string().uri().optional(),
-    receipt_number: Joi.string().optional(),
+    payment_method: Joi.string().optional().default("card"),
+    receipt_url: Joi.string().optional().allow("", "pending", "not_available"),
+    receipt_number: Joi.string()
+      .optional()
+      .allow("", "pending", "not_available"),
     book_details: Joi.object({
       book_title: Joi.string().required(),
       child_name: Joi.string().required(),
@@ -261,40 +263,50 @@ class Receipt {
         personalized_book_id: paymentData.personalized_book_id,
         reference_code: this.generateReferenceCode(),
         stripe_payment_intent_id: paymentData.payment_intent_id,
-        stripe_customer_id: paymentData.customer_id,
-        stripe_charge_id: paymentData.charge_id,
+        stripe_customer_id: paymentData.customer_id || "not_available",
+        stripe_charge_id: paymentData.charge_id || "not_available",
         amount: paymentData.amount,
-        currency: paymentData.currency,
+        currency: paymentData.currency || "usd",
         status: "succeeded",
-        payment_method: paymentData.payment_method,
-        receipt_url: null, // Will be populated from Stripe
-        receipt_number: null, // Will be populated from Stripe
+        payment_method: paymentData.payment_method || "card",
+        receipt_url: "pending",
+        receipt_number: "pending",
         book_details: {
-          book_title: bookData.book_title,
-          child_name: bookData.child_name,
+          book_title: bookData.book_title || "Personalized Book",
+          child_name: bookData.child_name || "Unknown",
           child_age: bookData.child_age,
-          genre: bookData.genre,
-          author: bookData.author,
+          genre: bookData.genre || "Unknown",
+          author: bookData.author || "Unknown",
         },
         user_details: {
           email: userData.email,
-          name: userData.name,
-          username: userData.username,
+          name: userData.name || "Unknown",
+          username: userData.username || "Unknown",
         },
         paid_at: new Date(),
         metadata: new Map(Object.entries(paymentData.metadata || {})),
       };
 
-      // Try to get receipt details from Stripe
       try {
         const stripeReceipt = await stripeService.getReceipt(
           paymentData.payment_intent_id,
         );
-        receiptData.receipt_url = stripeReceipt.receipt_url;
-        receiptData.receipt_number = stripeReceipt.receipt_number;
+        if (stripeReceipt) {
+          receiptData.receipt_url =
+            stripeReceipt.receipt_url || "not_available";
+          receiptData.receipt_number =
+            stripeReceipt.receipt_number || "not_available";
+
+          if (stripeReceipt.customer && !receiptData.stripe_customer_id) {
+            receiptData.stripe_customer_id = stripeReceipt.customer;
+          }
+          if (stripeReceipt.charge && !receiptData.stripe_charge_id) {
+            receiptData.stripe_charge_id = stripeReceipt.charge;
+          }
+        }
       } catch (stripeError) {
         logger.warn(
-          "Could not fetch Stripe receipt details, creating with basic info",
+          "Could not fetch Stripe receipt details immediately, will retry later",
           {
             paymentIntentId: paymentData.payment_intent_id,
             error: stripeError.message,
@@ -302,11 +314,38 @@ class Receipt {
         );
       }
 
-      return await this.create(receiptData);
+      const receipt = await this.create(receiptData);
+
+      setTimeout(async () => {
+        try {
+          const stripeReceipt = await stripeService.getReceipt(
+            paymentData.payment_intent_id,
+          );
+          if (stripeReceipt && stripeReceipt.receipt_url) {
+            await ReceiptModel.findByIdAndUpdate(receipt._id, {
+              $set: {
+                receipt_url: stripeReceipt.receipt_url,
+                receipt_number: stripeReceipt.receipt_number || "not_available",
+                ...(stripeReceipt.customer && {
+                  stripe_customer_id: stripeReceipt.customer,
+                }),
+                ...(stripeReceipt.charge && {
+                  stripe_charge_id: stripeReceipt.charge,
+                }),
+              },
+            });
+          }
+        } catch (retryError) {
+          logger.warn(
+            "Failed to update receipt with Stripe details in background",
+          );
+        }
+      }, 30000);
+
+      return receipt;
     } catch (error) {
       logger.error("Failed to create receipt for successful payment", {
         error: error.message,
-        paymentData,
       });
       throw new ErrorHandler("Failed to create payment receipt", 500);
     }
