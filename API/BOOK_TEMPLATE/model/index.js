@@ -563,7 +563,6 @@ class BookTemplate {
     try {
       const template = await BookTemplateModel.findOne({
         _id: id,
-        is_public: true,
       });
 
       if (!template) {
@@ -573,11 +572,9 @@ class BookTemplate {
         .sort({ order: 1 })
         .select("-book_template_id -__v -image_description");
 
-      // Convert to object and remove unnecessary fields
       const templateObj = template.toObject();
       delete templateObj.__v;
-      delete templateObj.user_id; // Remove user_id for public access
-
+      delete templateObj.user_id;
       return { ...templateObj, chapters };
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;

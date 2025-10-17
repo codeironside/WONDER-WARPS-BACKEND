@@ -252,6 +252,121 @@ class Receipt {
     }
   }
 
+  // Add this method to the Receipt class, after the createFromPayment method
+
+  static async createForSuccessfulPayment(paymentData, bookData, userData) {
+    try {
+      const receiptData = {
+        user_id: paymentData.user_id,
+        personalized_book_id: paymentData.personalized_book_id,
+        reference_code: this.generateReferenceCode(),
+        stripe_payment_intent_id: paymentData.payment_intent_id,
+        stripe_customer_id: paymentData.customer_id,
+        stripe_charge_id: paymentData.charge_id,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        status: "succeeded",
+        payment_method: paymentData.payment_method,
+        receipt_url: null, // Will be populated from Stripe
+        receipt_number: null, // Will be populated from Stripe
+        book_details: {
+          book_title: bookData.book_title,
+          child_name: bookData.child_name,
+          child_age: bookData.child_age,
+          genre: bookData.genre,
+          author: bookData.author,
+        },
+        user_details: {
+          email: userData.email,
+          name: userData.name,
+          username: userData.username,
+        },
+        paid_at: new Date(),
+        metadata: new Map(Object.entries(paymentData.metadata || {})),
+      };
+
+      // Try to get receipt details from Stripe
+      try {
+        const stripeReceipt = await stripeService.getReceipt(
+          paymentData.payment_intent_id,
+        );
+        receiptData.receipt_url = stripeReceipt.receipt_url;
+        receiptData.receipt_number = stripeReceipt.receipt_number;
+      } catch (stripeError) {
+        logger.warn(
+          "Could not fetch Stripe receipt details, creating with basic info",
+          {
+            paymentIntentId: paymentData.payment_intent_id,
+            error: stripeError.message,
+          },
+        );
+      }
+
+      return await this.create(receiptData);
+    } catch (error) {
+      logger.error("Failed to create receipt for successful payment", {
+        error: error.message,
+        paymentData,
+      });
+      throw new ErrorHandler("Failed to create payment receipt", 500);
+    }
+  }
+
+  // Also add this method to find by payment intent ID (used in your webhook handlers)
+  static async findByPaymentIntentId(paymentIntentId) {
+    try {
+      const receipt = await ReceiptModel.findOne({
+        stripe_payment_intent_id: paymentIntentId,
+      }).lean();
+
+      return receipt;
+    } catch (error) {
+      logger.error("Failed to find receipt by payment intent ID", {
+        error: error.message,
+        paymentIntentId,
+      });
+      throw new ErrorHandler(
+        "Failed to find receipt by payment intent ID",
+        500,
+      );
+    }
+  }
+
+  // And add this method for marking receipts as refunded
+  static async markAsRefunded(receiptId, refundAmount, refundReason = null) {
+    try {
+      const updateData = {
+        refunded: true,
+        refund_amount: refundAmount,
+        refunded_at: new Date(),
+      };
+
+      if (refundReason) {
+        updateData.metadata = { refund_reason: refundReason };
+      }
+
+      const updatedReceipt = await ReceiptModel.findByIdAndUpdate(
+        receiptId,
+        { $set: updateData },
+        { new: true, runValidators: true },
+      );
+
+      if (!updatedReceipt) {
+        throw new ErrorHandler("Receipt not found", 404);
+      }
+
+      logger.info("Receipt marked as refunded", {
+        receiptId,
+        refundAmount,
+      });
+
+      return updatedReceipt.toObject();
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to mark receipt as refunded", 500);
+    }
+  }
+
   static async findOneForUser(receiptId, userId) {
     try {
       const receipt = await ReceiptModel.findOne({

@@ -1015,14 +1015,11 @@ class PersonalizedBook {
 
       await session.commitTransaction();
       session.endSession();
-      await emailService.logger.info(
-        "Receipt created via webhook for successful payment",
-        {
-          bookId,
-          paymentIntentId,
-          amount: amount / 100,
-        },
-      );
+      await logger.info("Receipt created via webhook for successful payment", {
+        bookId,
+        paymentIntentId,
+        amount: amount / 100,
+      });
     } catch (error) {
       await session.abortTransaction();
       session.endSession();

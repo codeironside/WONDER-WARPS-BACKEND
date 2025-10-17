@@ -60,7 +60,6 @@ BookTemplateRouter.get(
 
 BookTemplateRouter.get(
   "/getbookwithchaptersforuser/:id",
-  authorize(["Admin", "User"]),
   getPublicTemplateWithChapters,
 );
 BookTemplateRouter.put(
