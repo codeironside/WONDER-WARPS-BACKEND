@@ -179,9 +179,18 @@ class EmailService {
     total,
   ) {
     try {
+      console.log(email,
+        username,
+        amount,
+        paymentDate,
+        orderId,
+        bookTitle,
+        childName,
+        subtotal,
+        shipping,
+        tax,
+        total)
       let htmlContent = this.templates.payment;
-
-      // Replace placeholders with actual values
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
       htmlContent = htmlContent.replace("{{AMOUNT}}", amount);
       htmlContent = htmlContent.replace("{{PAYMENT_DATE}}", paymentDate);

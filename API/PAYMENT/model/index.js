@@ -3,6 +3,8 @@ import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
+import crypto from 'crypto';
+import os from 'os';
 
 const receiptSchema = new mongoose.Schema(
   {
@@ -187,6 +189,17 @@ class Receipt {
         throw new ErrorHandler(this.formatValidationError(error), 400);
       }
 
+      const existingReceipt = await ReceiptModel.findOne({
+        stripe_payment_intent_id: validatedData.stripe_payment_intent_id,
+      });
+
+      if (existingReceipt) {
+        return await this.updateReceiptByPaymentIntent(
+          validatedData.stripe_payment_intent_id,
+          validatedData,
+        );
+      }
+
       const newReceipt = new ReceiptModel(validatedData);
       await newReceipt.save();
 
@@ -199,6 +212,17 @@ class Receipt {
       return newReceipt.toObject();
     } catch (error) {
       if (error.code === 11000) {
+        const existingReceipt = await ReceiptModel.findOne({
+          stripe_payment_intent_id: data.stripe_payment_intent_id,
+        });
+
+        if (existingReceipt) {
+          return await this.updateReceiptByPaymentIntent(
+            data.stripe_payment_intent_id,
+            data,
+          );
+        }
+
         throw new ErrorHandler(
           "Receipt with this reference code already exists",
           409,
@@ -209,8 +233,47 @@ class Receipt {
     }
   }
 
+  static async updateReceiptByPaymentIntent(paymentIntentId, updateData) {
+    try {
+      const updatedReceipt = await ReceiptModel.findOneAndUpdate(
+        { stripe_payment_intent_id: paymentIntentId },
+        { $set: updateData },
+        { new: true, runValidators: true },
+      );
+
+      if (!updatedReceipt) {
+        throw new ErrorHandler("Receipt not found", 404);
+      }
+
+      logger.info("Receipt updated by payment intent", {
+        receiptId: updatedReceipt._id,
+        paymentIntentId,
+      });
+
+      return updatedReceipt.toObject();
+    } catch (error) {
+      throw new ErrorHandler("Failed to update receipt", 500);
+    }
+  }
+
   static async createFromPayment(paymentData, bookData, userData) {
     try {
+      const existingReceipt = await this.findByPaymentIntentId(
+        paymentData.payment_intent_id,
+      );
+
+      if (existingReceipt) {
+        return await this.updateReceiptByPaymentIntent(
+          paymentData.payment_intent_id,
+          {
+            status: "succeeded",
+            receipt_url: paymentData.receipt_url,
+            receipt_number: paymentData.receipt_number,
+            paid_at: paymentData.paid_at,
+          },
+        );
+      }
+
       const stripeReceipt = await stripeService.getReceipt(
         paymentData.payment_intent_id,
       );
@@ -246,6 +309,7 @@ class Receipt {
 
       return await this.create(receiptData);
     } catch (error) {
+      console.log(error);
       logger.error("Failed to create receipt from payment", {
         error: error.message,
         paymentData,
@@ -254,10 +318,29 @@ class Receipt {
     }
   }
 
-  // Add this method to the Receipt class, after the createFromPayment method
-
   static async createForSuccessfulPayment(paymentData, bookData, userData) {
     try {
+      const existingReceipt = await this.findByPaymentIntentId(
+        paymentData.payment_intent_id,
+      );
+
+      if (existingReceipt) {
+        const updateData = {
+          status: "succeeded",
+          payment_method: paymentData.payment_method || "card",
+          paid_at: new Date(),
+          stripe_customer_id: paymentData.customer_id || existingReceipt.stripe_customer_id,
+          stripe_charge_id: paymentData.charge_id || existingReceipt.stripe_charge_id,
+          receipt_url: existingReceipt.receipt_url || "pending",
+          receipt_number: existingReceipt.receipt_number || "pending",
+        };
+
+        return await this.updateReceiptByPaymentIntent(
+          paymentData.payment_intent_id,
+          updateData,
+        );
+      }
+
       const receiptData = {
         user_id: paymentData.user_id,
         personalized_book_id: paymentData.personalized_book_id,
@@ -344,6 +427,7 @@ class Receipt {
 
       return receipt;
     } catch (error) {
+      console.log(error);
       logger.error("Failed to create receipt for successful payment", {
         error: error.message,
       });
@@ -351,7 +435,6 @@ class Receipt {
     }
   }
 
-  // Also add this method to find by payment intent ID (used in your webhook handlers)
   static async findByPaymentIntentId(paymentIntentId) {
     try {
       const receipt = await ReceiptModel.findOne({
@@ -371,7 +454,6 @@ class Receipt {
     }
   }
 
-  // And add this method for marking receipts as refunded
   static async markAsRefunded(receiptId, refundAmount, refundReason = null) {
     try {
       const updateData = {
@@ -574,8 +656,6 @@ class Receipt {
         ]),
 
         ReceiptModel.countDocuments({ ...matchStage, status: "succeeded" }),
-
-        // Revenue by Genre
         ReceiptModel.aggregate([
           { $match: { ...matchStage, status: "succeeded" } },
           {
@@ -632,7 +712,6 @@ class Receipt {
   static async getUserStatistics(userId) {
     try {
       const [userStats, genreStats, recentPayments] = await Promise.all([
-        // User overall stats
         ReceiptModel.aggregate([
           {
             $match: {
@@ -736,9 +815,24 @@ class Receipt {
   }
 
   static generateReferenceCode() {
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-    return `MSH-${timestamp}-${random}`;
+    const timestamp = Date.now().toString(36) + process.hrtime.bigint().toString(36);
+    const cryptoRandom = crypto.randomBytes(8).toString('hex');
+    const systemId = process.pid.toString(36) +
+      os.hostname().split('').reduce((a, b) => a + b.charCodeAt(0), 0).toString(36) +
+      Math.random().toString(36).substring(2, 6);
+    const sequence = (this.generateReferenceCode.counter = (this.generateReferenceCode.counter || 0) + 1).toString(36);
+
+    const parts = [
+      timestamp.padStart(12, '0').slice(-12),
+      cryptoRandom.padStart(16, '0').slice(-16),
+      systemId.padStart(10, '0').slice(-10),
+      sequence.padStart(4, '0').slice(-4)
+    ];
+
+    const referenceCode = `MSH-${parts.join('-')}`;
+    const checksum = crypto.createHash('md5').update(referenceCode).digest('hex').slice(0, 4).toUpperCase();
+
+    return `${referenceCode}-${checksum}`;
   }
 
   static getDateFilter(timeRange) {
@@ -914,7 +1008,6 @@ class Receipt {
         );
       }
 
-      // Format the response
       const formattedReceipt = {
         ...receipt,
         book_info: {

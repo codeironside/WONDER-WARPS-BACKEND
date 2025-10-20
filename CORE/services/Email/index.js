@@ -157,36 +157,70 @@ Questions? Contact us at support@mystoryhat.com
     `.trim();
   }
   async sendPaymentConfirmationEmail(
+    req,
     email,
     username,
     amount,
     paymentDate,
     orderId,
+    bookTitle,
+    childName,
+    subtotal,
+    shipping,
+    tax,
+    total,
+    referenceCode,
+    paymentMethod
   ) {
     try {
+      console.log("Sending payment confirmation email with data:", {
+        email,
+        username,
+        amount,
+        paymentDate,
+        orderId,
+        bookTitle,
+        childName,
+        subtotal,
+        shipping,
+        tax,
+        total,
+        referenceCode,
+
+        paymentMethod
+      });
+      const loginDetails = await getLoginDetails(req);
+
       let htmlContent = this.templates.payment;
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
       htmlContent = htmlContent.replace("{{AMOUNT}}", amount);
       htmlContent = htmlContent.replace("{{PAYMENT_DATE}}", paymentDate);
       htmlContent = htmlContent.replace("{{ORDER_ID}}", orderId);
+      htmlContent = htmlContent.replace("{{REFERENCE_CODE}}", referenceCode);
+      htmlContent = htmlContent.replace("{{STORY_TITLE}}", bookTitle);
+      htmlContent = htmlContent.replace("{{CHILD_NAME}}", childName);
+      htmlContent = htmlContent.replace("{{SUBTOTAL}}", subtotal);
+      htmlContent = htmlContent.replace("{{SHIPPING}}", shipping);
+      htmlContent = htmlContent.replace("{{TAX}}", tax);
+      htmlContent = htmlContent.replace("{{TOTAL}}", total);
+      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location); 
+      htmlContent = htmlContent.replace("{{PAYMENT_METHOD}}", paymentMethod); 
 
+  
       const result = await resend.emails.send({
         from: config.resend.from,
         to: email,
-        subject: "Your Wonder Wrap Payment Confirmation",
+        subject: "THANK YOU:Your My Story Hat Payment Confirmation",
         html: htmlContent,
-        text: `Payment Confirmation\nAmount: ${amount}\nDate: ${paymentDate}\nOrder ID: ${orderId}\nThank you for your purchase!`,
       });
-
       logger.info(
         `Payment confirmation email sent to ${email}: ${result.data.id}`,
       );
       return result;
     } catch (error) {
+      console.log(error)
       logger.error("Failed to send payment confirmation email:", error);
-      throw new Error(
-        `Failed to send payment confirmation email: ${error.message}`,
-      );
+      throw new Error("Failed to send payment confirmation email");
     }
   }
 

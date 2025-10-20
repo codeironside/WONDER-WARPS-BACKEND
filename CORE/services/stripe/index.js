@@ -12,6 +12,83 @@ class StripeService {
     });
     this.currency = "usd";
   }
+
+  async getReceipt(paymentIntentId) {
+    try {
+      const paymentIntent = await this.getPaymentIntent(paymentIntentId);
+
+      if (!paymentIntent.receipt_url) {
+        return {
+          receipt_url: null,
+          receipt_number: null,
+          amount: paymentIntent.amount,
+          currency: paymentIntent.currency.toUpperCase(),
+          payment_intent_id: paymentIntent.id,
+          status: paymentIntent.status,
+          paid_at: paymentIntent.created,
+          payment_method: paymentIntent.payment_method,
+          customer: paymentIntent.customer,
+          metadata: paymentIntent.metadata,
+          description: paymentIntent.description,
+          charge: paymentIntent.latest_charge,
+        };
+      }
+
+      let chargeDetails = null;
+      if (paymentIntent.latest_charge) {
+        try {
+          chargeDetails = await this.stripe.charges.retrieve(
+            paymentIntent.latest_charge,
+          );
+        } catch (chargeError) {
+          logger.warn("Could not retrieve charge details", {
+            chargeId: paymentIntent.latest_charge,
+            error: chargeError.message,
+          });
+        }
+      }
+
+      return {
+        receipt_url: paymentIntent.receipt_url,
+        receipt_number: paymentIntent.receipt_number,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency.toUpperCase(),
+        payment_intent_id: paymentIntent.id,
+        status: paymentIntent.status,
+        paid_at: chargeDetails
+          ? new Date(chargeDetails.created * 1000)
+          : paymentIntent.created,
+        payment_method: paymentIntent.payment_method,
+        customer: paymentIntent.customer,
+        metadata: paymentIntent.metadata,
+        description: paymentIntent.description,
+        charge: paymentIntent.latest_charge,
+      };
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+
+      logger.warn("Could not retrieve receipt from Stripe, returning basic info", {
+        paymentIntentId,
+        error: error.message,
+      });
+
+      return {
+        receipt_url: null,
+        receipt_number: null,
+        amount: null,
+        currency: null,
+        payment_intent_id: paymentIntentId,
+        status: "unknown",
+        paid_at: new Date(),
+        payment_method: null,
+        customer: null,
+        metadata: {},
+        description: null,
+        charge: null,
+      };
+    }
+  }
+
   async createCheckoutSession(
     amount,
     metadata,
@@ -234,41 +311,6 @@ class StripeService {
       }
 
       throw new ErrorHandler("Failed to retrieve payment information", 500);
-    }
-  }
-
-  async getReceipt(paymentIntentId) {
-    try {
-      const paymentIntent = await this.getPaymentIntent(paymentIntentId);
-
-      if (!paymentIntent.receipt_url) {
-        throw new ErrorHandler("Receipt not available for this payment", 404);
-      }
-      let chargeDetails = null;
-      if (paymentIntent.latest_charge) {
-        chargeDetails = await this.stripe.charges.retrieve(
-          paymentIntent.latest_charge,
-        );
-      }
-
-      return {
-        receipt_url: paymentIntent.receipt_url,
-        receipt_number: paymentIntent.receipt_number,
-        amount: paymentIntent.amount,
-        currency: paymentIntent.currency.toUpperCase(),
-        payment_intent_id: paymentIntent.id,
-        status: paymentIntent.status,
-        paid_at: chargeDetails
-          ? new Date(chargeDetails.created * 1000)
-          : paymentIntent.created,
-        payment_method: paymentIntent.payment_method,
-        customer: paymentIntent.customer,
-        metadata: paymentIntent.metadata,
-        description: paymentIntent.description,
-      };
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler("Failed to retrieve receipt", 500);
     }
   }
 

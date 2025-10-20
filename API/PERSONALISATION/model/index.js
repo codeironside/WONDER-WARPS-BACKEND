@@ -205,7 +205,6 @@ class PersonalizedBook {
       if (filters.is_paid !== undefined) query.is_paid = filters.is_paid;
       if (filters.user_id) query.user_id = filters.user_id;
 
-      // Get books without chapters
       const books = await PersonalizedBookModel.find(query)
         .select("-personalized_content.chapters")
         .sort(sort)
@@ -213,10 +212,9 @@ class PersonalizedBook {
         .limit(limit)
         .lean();
 
-      // Get user information for all books
       const userIds = [...new Set(books.map((book) => book.user_id))];
       const users = await User.find({ _id: { $in: userIds } })
-        .select("name email") // Select only necessary user fields
+        .select("name email")
         .lean();
 
       // Create a user map for easy lookup
@@ -262,14 +260,12 @@ class PersonalizedBook {
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-      // Get user information
       const user = await User.findById(userId).select("name email").lean();
 
       if (!user) {
         throw new ErrorHandler("User not found", 404);
       }
 
-      // Get books without chapters
       const books = await PersonalizedBookModel.find({ user_id: userId })
         .select("-personalized_content.chapters")
         .sort(sort)
@@ -281,7 +277,6 @@ class PersonalizedBook {
         user_id: userId,
       });
 
-      // Add user information to each book
       const booksWithUserInfo = books.map((book) => ({
         ...book,
         user,
@@ -307,16 +302,14 @@ class PersonalizedBook {
 
   static async findByIdWithUserInfo(bookId, userId) {
     try {
-      // Get user information
       const user = await User.findById(userId)
-        .select("name email") // Select only necessary user fields
+        .select("name email") 
         .lean();
 
       if (!user) {
         throw new ErrorHandler("User not found", 404);
       }
 
-      // Get book with chapters
       const book = await PersonalizedBookModel.findOne({
         _id: bookId,
         user_id: userId,
@@ -747,7 +740,7 @@ class PersonalizedBook {
     }
   }
 
-  static async confirmPaymentWithSession(sessionId) {
+  static async confirmPaymentWithSession(req,sessionId) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -766,6 +759,7 @@ class PersonalizedBook {
       }
 
       const bookId = checkoutSession.metadata.personalized_book_id;
+      console.log('book id', bookId);
       if (!bookId) {
         throw new ErrorHandler("Book ID not found in session metadata", 400);
       }
@@ -799,6 +793,11 @@ class PersonalizedBook {
       if (!user) {
         throw new ErrorHandler("User not found", 404);
       }
+      let paymentMethod; 
+      if (checkoutSession.payment_method_types && checkoutSession.payment_method_types.length > 0) {
+        const methodType = checkoutSession.payment_method_types[0];
+        paymentMethod = this.getHumanReadablePaymentMethod(methodType);
+      }
 
       const receipt = await Receipt.createForSuccessfulPayment(
         {
@@ -809,7 +808,7 @@ class PersonalizedBook {
           currency: checkoutSession.currency,
           customer_id: customerId,
           charge_id: chargeId,
-          payment_method: paymentIntent.payment_method,
+          payment_method: paymentMethod,
           status: paymentIntent.status,
           metadata: checkoutSession.metadata || {},
         },
@@ -827,14 +826,14 @@ class PersonalizedBook {
           username: user.username,
         },
       );
-
       await emailService.sendPaymentConfirmationEmail(
+        req,
         user.email,
         user.username,
         (checkoutSession.amount_total / 100).toFixed(2),
         new Date(checkoutSession.created * 1000).toLocaleDateString(),
         bookId,
-        book.personalized_content?.book_title || "Personalized Story Book",
+        book.personalized_content.book_title || "Personalized Story Book",
         book.child_name,
         (checkoutSession.amount_subtotal / 100).toFixed(2),
         "0.00",
@@ -843,6 +842,8 @@ class PersonalizedBook {
           100
         ).toFixed(2),
         (checkoutSession.amount_total / 100).toFixed(2),
+        receipt.reference_code,
+        paymentMethod
       );
 
       await session.commitTransaction();
@@ -881,6 +882,27 @@ class PersonalizedBook {
         500,
       );
     }
+  }
+
+  static getHumanReadablePaymentMethod(paymentMethodType) {
+    const paymentMethodMap = {
+      'card': 'Credit Card',
+      'credit_card': 'Credit Card',
+      'debit_card': 'Debit Card',
+      'paypal': 'PayPal',
+      'apple_pay': 'Apple Pay',
+      'google_pay': 'Google Pay',
+      'bank_transfer': 'Bank Transfer',
+      'ach_debit': 'Bank Transfer (ACH)',
+      'sepa_debit': 'SEPA Debit',
+      'link': 'Link',
+      'us_bank_account': 'US Bank Account',
+      'affirm': 'Affirm',
+      'klarna': 'Klarna',
+      'afterpay_clearpay': 'Afterpay/Clearpay'
+    };
+
+    return paymentMethodMap[paymentMethodType] || 'Credit Card';
   }
 
   static async handleCheckoutSessionCompleted(session) {
@@ -1058,21 +1080,17 @@ class PersonalizedBook {
     }
   }
 
-  /**
-   * Handle refund webhook
-   */
+  
   static async handleRefund(charge) {
     try {
       const { payment_intent: paymentIntentId, amount_refunded } = charge;
 
-      // Find receipt by payment intent ID
       const receipt = await Receipt.findByPaymentIntentId(paymentIntentId);
       if (!receipt) {
         logger.warn("No receipt found for refund webhook", { paymentIntentId });
         return;
       }
 
-      // Mark receipt as refunded
       await Receipt.markAsRefunded(
         receipt._id,
         amount_refunded / 100,
@@ -1091,9 +1109,7 @@ class PersonalizedBook {
     }
   }
 
-  /**
-   * Get payment receipt for a book
-   */
+
   static async getReceipt(bookId, userId) {
     try {
       const book = await this.findById(bookId);
@@ -1109,7 +1125,6 @@ class PersonalizedBook {
         throw new ErrorHandler("No payment found for this book", 404);
       }
 
-      // Find receipt by payment ID
       const receipt = await Receipt.findByReferenceCode(
         book.payment_id,
         userId,
@@ -1122,9 +1137,7 @@ class PersonalizedBook {
     }
   }
 
-  /**
-   * Get payment history for a user's personalized books
-   */
+
   static async getPaymentHistory(userId, options = {}) {
     try {
       const {
@@ -1150,7 +1163,6 @@ class PersonalizedBook {
         is_paid: true,
       });
 
-      // Get receipt details for each paid book
       const paymentHistory = await Promise.all(
         paidBooks.map(async (book) => {
           try {
@@ -1169,7 +1181,6 @@ class PersonalizedBook {
               receipt: receipt,
             };
           } catch (error) {
-            // If receipt not found, return basic book info
             return {
               book: {
                 child_name: book.child_name,

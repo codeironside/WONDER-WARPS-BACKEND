@@ -74,6 +74,7 @@
                 </p>
               </div>
 
+              <!-- Order Details Section -->
               <div style="
                     background: #f9fafb;
                     padding: 30px;
@@ -108,6 +109,24 @@
                           font-weight: 600;
                         ">
                       #{{ORDER_ID}}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="
+                          padding: 8px 0;
+                          color: #6b7280;
+                          font-size: 14px;
+                          width: 40%;
+                        ">
+                      Reference Code:
+                    </td>
+                    <td style="
+                          padding: 8px 0;
+                          color: #1f2937;
+                          font-size: 14px;
+                          font-weight: 600;
+                        ">
+                      {{REFERENCE_CODE}}
                     </td>
                   </tr>
                   <tr>
@@ -155,6 +174,31 @@
                     </td>
                   </tr>
                 </table>
+
+                <!-- Location Section -->
+                <div
+                  style="margin: 20px 0; padding: 20px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;">
+                  <p style="
+                    margin: 0 0 10px 0;
+                    color: #374151;
+                    font-size: 16px;
+                    font-weight: 600;
+                    text-align: center;
+                  ">
+                    Order Details:
+                  </p>
+                  <p style="
+                    margin: 0;
+                    color: #6b7280;
+                    font-size: 14px;
+                    line-height: 1.6;
+                    text-align: center;
+                  ">
+                    Location: <span style="color: #fb923c">{{LOCATION}}</span><br />
+                    Payment Method: <span style="color: #fb923c">{{PAYMENT_METHOD}}</span><br />
+                    Status: <span style="color: #10b981">Confirmed</span>
+                  </p>
+                </div>
 
                 <div style="border-top: 1px solid #e5e7eb; padding-top: 20px">
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
