@@ -3,8 +3,8 @@ import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
-import crypto from 'crypto';
-import os from 'os';
+import crypto from "crypto";
+import os from "os";
 
 const receiptSchema = new mongoose.Schema(
   {
@@ -329,8 +329,10 @@ class Receipt {
           status: "succeeded",
           payment_method: paymentData.payment_method || "card",
           paid_at: new Date(),
-          stripe_customer_id: paymentData.customer_id || existingReceipt.stripe_customer_id,
-          stripe_charge_id: paymentData.charge_id || existingReceipt.stripe_charge_id,
+          stripe_customer_id:
+            paymentData.customer_id || existingReceipt.stripe_customer_id,
+          stripe_charge_id:
+            paymentData.charge_id || existingReceipt.stripe_charge_id,
           receipt_url: existingReceipt.receipt_url || "pending",
           receipt_number: existingReceipt.receipt_number || "pending",
         };
@@ -815,22 +817,34 @@ class Receipt {
   }
 
   static generateReferenceCode() {
-    const timestamp = Date.now().toString(36) + process.hrtime.bigint().toString(36);
-    const cryptoRandom = crypto.randomBytes(8).toString('hex');
-    const systemId = process.pid.toString(36) +
-      os.hostname().split('').reduce((a, b) => a + b.charCodeAt(0), 0).toString(36) +
+    const timestamp =
+      Date.now().toString(36) + process.hrtime.bigint().toString(36);
+    const cryptoRandom = crypto.randomBytes(8).toString("hex");
+    const systemId =
+      process.pid.toString(36) +
+      os
+        .hostname()
+        .split("")
+        .reduce((a, b) => a + b.charCodeAt(0), 0)
+        .toString(36) +
       Math.random().toString(36).substring(2, 6);
-    const sequence = (this.generateReferenceCode.counter = (this.generateReferenceCode.counter || 0) + 1).toString(36);
+    const sequence = (this.generateReferenceCode.counter =
+      (this.generateReferenceCode.counter || 0) + 1).toString(36);
 
     const parts = [
-      timestamp.padStart(12, '0').slice(-12),
-      cryptoRandom.padStart(16, '0').slice(-16),
-      systemId.padStart(10, '0').slice(-10),
-      sequence.padStart(4, '0').slice(-4)
+      timestamp.padStart(12, "0").slice(-12),
+      cryptoRandom.padStart(16, "0").slice(-16),
+      systemId.padStart(10, "0").slice(-10),
+      sequence.padStart(4, "0").slice(-4),
     ];
 
-    const referenceCode = `MSH-${parts.join('-')}`;
-    const checksum = crypto.createHash('md5').update(referenceCode).digest('hex').slice(0, 4).toUpperCase();
+    const referenceCode = `MSH-${parts.join("-")}`;
+    const checksum = crypto
+      .createHash("md5")
+      .update(referenceCode)
+      .digest("hex")
+      .slice(0, 4)
+      .toUpperCase();
 
     return `${referenceCode}-${checksum}`;
   }

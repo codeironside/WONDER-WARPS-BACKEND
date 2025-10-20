@@ -179,7 +179,8 @@ class EmailService {
     total,
   ) {
     try {
-      console.log(email,
+      console.log(
+        email,
         username,
         amount,
         paymentDate,
@@ -189,7 +190,8 @@ class EmailService {
         subtotal,
         shipping,
         tax,
-        total)
+        total,
+      );
       let htmlContent = this.templates.payment;
       htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
       htmlContent = htmlContent.replace("{{AMOUNT}}", amount);

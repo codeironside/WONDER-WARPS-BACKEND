@@ -67,10 +67,13 @@ class StripeService {
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
 
-      logger.warn("Could not retrieve receipt from Stripe, returning basic info", {
-        paymentIntentId,
-        error: error.message,
-      });
+      logger.warn(
+        "Could not retrieve receipt from Stripe, returning basic info",
+        {
+          paymentIntentId,
+          error: error.message,
+        },
+      );
 
       return {
         receipt_url: null,

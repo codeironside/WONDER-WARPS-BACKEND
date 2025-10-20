@@ -302,9 +302,7 @@ class PersonalizedBook {
 
   static async findByIdWithUserInfo(bookId, userId) {
     try {
-      const user = await User.findById(userId)
-        .select("name email") 
-        .lean();
+      const user = await User.findById(userId).select("name email").lean();
 
       if (!user) {
         throw new ErrorHandler("User not found", 404);
@@ -740,7 +738,7 @@ class PersonalizedBook {
     }
   }
 
-  static async confirmPaymentWithSession(req,sessionId) {
+  static async confirmPaymentWithSession(req, sessionId) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -759,7 +757,7 @@ class PersonalizedBook {
       }
 
       const bookId = checkoutSession.metadata.personalized_book_id;
-      console.log('book id', bookId);
+      console.log("book id", bookId);
       if (!bookId) {
         throw new ErrorHandler("Book ID not found in session metadata", 400);
       }
@@ -793,8 +791,11 @@ class PersonalizedBook {
       if (!user) {
         throw new ErrorHandler("User not found", 404);
       }
-      let paymentMethod; 
-      if (checkoutSession.payment_method_types && checkoutSession.payment_method_types.length > 0) {
+      let paymentMethod;
+      if (
+        checkoutSession.payment_method_types &&
+        checkoutSession.payment_method_types.length > 0
+      ) {
         const methodType = checkoutSession.payment_method_types[0];
         paymentMethod = this.getHumanReadablePaymentMethod(methodType);
       }
@@ -843,7 +844,7 @@ class PersonalizedBook {
         ).toFixed(2),
         (checkoutSession.amount_total / 100).toFixed(2),
         receipt.reference_code,
-        paymentMethod
+        paymentMethod,
       );
 
       await session.commitTransaction();
@@ -886,23 +887,23 @@ class PersonalizedBook {
 
   static getHumanReadablePaymentMethod(paymentMethodType) {
     const paymentMethodMap = {
-      'card': 'Credit Card',
-      'credit_card': 'Credit Card',
-      'debit_card': 'Debit Card',
-      'paypal': 'PayPal',
-      'apple_pay': 'Apple Pay',
-      'google_pay': 'Google Pay',
-      'bank_transfer': 'Bank Transfer',
-      'ach_debit': 'Bank Transfer (ACH)',
-      'sepa_debit': 'SEPA Debit',
-      'link': 'Link',
-      'us_bank_account': 'US Bank Account',
-      'affirm': 'Affirm',
-      'klarna': 'Klarna',
-      'afterpay_clearpay': 'Afterpay/Clearpay'
+      card: "Credit Card",
+      credit_card: "Credit Card",
+      debit_card: "Debit Card",
+      paypal: "PayPal",
+      apple_pay: "Apple Pay",
+      google_pay: "Google Pay",
+      bank_transfer: "Bank Transfer",
+      ach_debit: "Bank Transfer (ACH)",
+      sepa_debit: "SEPA Debit",
+      link: "Link",
+      us_bank_account: "US Bank Account",
+      affirm: "Affirm",
+      klarna: "Klarna",
+      afterpay_clearpay: "Afterpay/Clearpay",
     };
 
-    return paymentMethodMap[paymentMethodType] || 'Credit Card';
+    return paymentMethodMap[paymentMethodType] || "Credit Card";
   }
 
   static async handleCheckoutSessionCompleted(session) {
@@ -1080,7 +1081,6 @@ class PersonalizedBook {
     }
   }
 
-  
   static async handleRefund(charge) {
     try {
       const { payment_intent: paymentIntentId, amount_refunded } = charge;
@@ -1109,7 +1109,6 @@ class PersonalizedBook {
     }
   }
 
-
   static async getReceipt(bookId, userId) {
     try {
       const book = await this.findById(bookId);
@@ -1136,7 +1135,6 @@ class PersonalizedBook {
       throw new ErrorHandler("Failed to retrieve receipt", 500);
     }
   }
-
 
   static async getPaymentHistory(userId, options = {}) {
     try {

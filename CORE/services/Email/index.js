@@ -170,7 +170,7 @@ Questions? Contact us at support@mystoryhat.com
     tax,
     total,
     referenceCode,
-    paymentMethod
+    paymentMethod,
   ) {
     try {
       console.log("Sending payment confirmation email with data:", {
@@ -187,7 +187,7 @@ Questions? Contact us at support@mystoryhat.com
         total,
         referenceCode,
 
-        paymentMethod
+        paymentMethod,
       });
       const loginDetails = await getLoginDetails(req);
 
@@ -203,10 +203,9 @@ Questions? Contact us at support@mystoryhat.com
       htmlContent = htmlContent.replace("{{SHIPPING}}", shipping);
       htmlContent = htmlContent.replace("{{TAX}}", tax);
       htmlContent = htmlContent.replace("{{TOTAL}}", total);
-      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location); 
-      htmlContent = htmlContent.replace("{{PAYMENT_METHOD}}", paymentMethod); 
+      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
+      htmlContent = htmlContent.replace("{{PAYMENT_METHOD}}", paymentMethod);
 
-  
       const result = await resend.emails.send({
         from: config.resend.from,
         to: email,
@@ -218,7 +217,7 @@ Questions? Contact us at support@mystoryhat.com
       );
       return result;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       logger.error("Failed to send payment confirmation email:", error);
       throw new Error("Failed to send payment confirmation email");
     }

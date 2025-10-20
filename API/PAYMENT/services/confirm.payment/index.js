@@ -8,7 +8,10 @@ export const confirmPayment = async (req, res, next) => {
     if (!sessionId) {
       throw new ErrorHandler("session id are required", 400);
     }
-    const result = await PersonalizedBook.confirmPaymentWithSession(req,sessionId);
+    const result = await PersonalizedBook.confirmPaymentWithSession(
+      req,
+      sessionId,
+    );
 
     res.status(200).json({
       success: true,
