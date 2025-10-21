@@ -1,7 +1,7 @@
-import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
-import { sendResponse } from "../../../../CORE/utils/response.handler/index.js";
-import fileUpload from "../../../../CORE/services/fileupload/index.js";
-import logger from "../../../../CORE/utils/logger/index.js";
+import ErrorHandler from "../../../../../CORE/middleware/errorhandler/index.js";
+import { sendResponse } from "../../../../../CORE/utils/response.handler/index.js";
+import fileUpload from "../../../../../CORE/services/fileupload/index.js";
+import logger from "../../../../../CORE/utils/logger/index.js";
 
 export const uploadPhoto = async (req, res, next) => {
   try {

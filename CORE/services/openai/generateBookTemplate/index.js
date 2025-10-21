@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { config } from "@/config";
 import ErrorHandler from "@/Error";
+
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
     "full scene",
@@ -85,6 +86,7 @@ class StorybookGenerator {
     const apiKey = config.openai.API_KEY;
     this.openai = new OpenAI({ apiKey });
   }
+
   getAgeGroup(ageMin) {
     if (ageMin <= 6) return "YOUNGER_CHILD";
     if (ageMin <= 10) return "MIDDLE_CHILD";
@@ -105,100 +107,23 @@ class StorybookGenerator {
     return [...new Set([...ageFonts, ...themeFonts])];
   }
 
-  async generateStory1({
-    theme,
-    name = "",
-    photo_url = "",
-    skin_tone = "",
-    hair_type = "",
-    hairstyle = "",
-    hair_color = "",
-    eye_color = "",
-    facial_features = "",
-    clothing = "",
-    gender = "",
-    milestone_date = "",
-    age_min = 5,
-    age_max = 10,
-    prompt_message,
-    title = "Untitled Story",
-  }) {
-    let prompt = `${theme}:\nWrite a full, detailed children’s storybook with the following details:\n`;
-
-    if (name) prompt += `- Name: ${name}\n`;
-    if (photo_url) prompt += `- Photo URL: ${photo_url}\n`;
-    if (skin_tone) prompt += `- Skin tone: ${skin_tone}\n`;
-    if (hair_type) prompt += `- Hair type: ${hair_type}\n`;
-    if (hairstyle) prompt += `- Hairstyle: ${hairstyle}\n`;
-    if (hair_color) prompt += `- Hair color: ${hair_color}\n`;
-    if (eye_color) prompt += `- Eye color: ${eye_color}\n`;
-    if (facial_features) prompt += `- Facial features: ${facial_features}\n`;
-    if (clothing) prompt += `- Clothing: ${clothing}\n`;
-    if (gender) prompt += `- Gender: ${gender}\n`;
-
-    prompt += `\n${prompt_message}\n`;
-
-    try {
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: `You are a professional children's storyteller. You will write a fun, magical, and joyful story for a child aged ${age_min} to ${age_max}, the gender is ${gender}.
-
-**Story Rules:**
-* The story must have a clear beginning, middle, and end.
-* It must be at least **three chapters** long, and 10 chapters at most.
-* The tone should be similar to a whimsical Studio Ghibli film, full of imagination and wonder.
-* The story must confirm to the age range
-
-You will return the story as a single JSON object with the following format:
-{
-  "book_title": "The title of the book",
-  "author": "${name}",
-  "chapters": [
-    {
-      "chapter_title": "The title of chapter 1",
-      "chapter_content": "The full content of chapter 1, formatted with Markdown.",
-      "image_description": "A brief, vivid description for an illustration.",
-      "image_position": "A description of the image's position (e.g., 'background' or 'full scene')"
+  calculateChapterCount(ageMin, ageMax, theme) {
+    const baseCount = 3;
+    let additionalChapters = 0;
+    if (ageMin > 8) additionalChapters += 1;
+    if (ageMax > 10) additionalChapters += 1;
+    const complexThemes = ["adventure", "fantasy", "mystery", "quest"];
+    if (complexThemes.some((t) => theme.toLowerCase().includes(t))) {
+      additionalChapters += 1;
     }
-  ],
-  "suggested_font": "Font name for the story"
-}`,
-          },
-          {
-            role: "user",
-            content: `Using the details below, weave a captivating story with a magical adventure. Make sure the child feels like the protagonist.
-            
-            Details for the story:
-            ${prompt}`,
-          },
-        ],
-        max_tokens: 1500,
-        temperature: 0.7,
-      });
+    const randomVariation = Math.floor(Math.random() * 2); // 0 or 1
 
-      const storyData = this.formatBookData(
-        response.choices[0].message.content.trim(),
-      );
-
-      const images = await this.generateImagesForChapters(
-        storyData.chapters,
-        age_min,
-        age_max,
-        gender,
-      );
-      const coverImage = await this.generateCoverImage(storyData, gender);
-
-      const storybookContent = this.addImagesToStory(storyData, images);
-
-      return { ...storybookContent, coverImage, author: name, title };
-    } catch (error) {
-      console.error("Error generating story:", error);
-      throw new ErrorHandler("Failed to generate the story.", 500);
-    }
+    return Math.min(
+      10,
+      Math.max(3, baseCount + additionalChapters + randomVariation),
+    );
   }
+
   async generateStory({
     theme,
     name = "",
@@ -234,6 +159,11 @@ You will return the story as a single JSON object with the following format:
     const ageGroup = this.getAgeGroup(age_min);
     const imagePositions = this.getImagePositions(ageGroup);
     const suggestedFonts = this.getSuggestedFonts(ageGroup, theme);
+    const targetChapterCount = this.calculateChapterCount(
+      age_min,
+      age_max,
+      theme,
+    );
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -245,9 +175,15 @@ You will return the story as a single JSON object with the following format:
 
 **Story Rules:**
 * The story must have a clear beginning, middle, and end.
-* It must be at least **three chapters** long, and 10 chapters at most.
+* Create a natural story length with ${targetChapterCount} chapters that fits the narrative perfectly.
 * The tone should be similar to a whimsical Studio Ghibli film, full of imagination and wonder.
 * The story must be appropriate for the age range ${age_min}-${age_max}
+* Make sure ${name} is the main character throughout the entire story.
+
+**Chapter Structure:**
+- Chapter 1: Introduction and setup
+- Chapter 2-${targetChapterCount - 1}: Development and adventures
+- Chapter ${targetChapterCount}: Resolution and conclusion
 
 **Image Position Guidance:**
 For age ${age_min}-${age_max}, choose image positions that enhance engagement. Available positions: ${imagePositions.join(", ")}
@@ -260,13 +196,13 @@ Choose from these age-appropriate fonts: ${suggestedFonts.join(", ")}
 
 You will return the story as a single JSON object with the following format:
 {
-  "book_title": "The title of the book",
+  "book_title": "Creative title featuring ${name}'s adventure",
   "author": "${name}",
   "chapters": [
     {
-      "chapter_title": "The title of chapter 1",
-      "chapter_content": "The full content of chapter 1, formatted with Markdown.",
-      "image_description": "A brief, vivid description for an illustration.",
+      "chapter_title": "Engaging chapter title",
+      "chapter_content": "The full content of chapter 1, formatted with Markdown. Ensure ${name} is prominently featured.",
+      "image_description": "A brief, vivid description for an illustration featuring ${name}.",
       "image_position": "Choose from the available positions above"
     }
   ],
@@ -275,90 +211,111 @@ You will return the story as a single JSON object with the following format:
           },
           {
             role: "user",
-            content: `Using the details below, weave a captivating story with a magical adventure. Make sure the child feels like the protagonist.
+            content: `Using the details below, weave a captivating story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across ${targetChapterCount} chapters.
             
             Details for the story:
             ${prompt}`,
           },
         ],
-        max_tokens: 1500,
-        temperature: 0.7,
+        max_tokens: 4000,
+        temperature: 0.8,
       });
 
-      const storyData = this.formatBookData(
-        response.choices[0].message.content.trim(),
-      );
+      let storyData;
+      try {
+        storyData = JSON.parse(response.choices[0].message.content.trim());
+      } catch (parseError) {
+        console.error("Failed to parse JSON, trying to fix:", parseError);
+        const content = response.choices[0].message.content.trim();
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          storyData = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("Invalid JSON response from AI");
+        }
+      }
+      if (!storyData.chapters || storyData.chapters.length === 0) {
+        throw new Error("No chapters generated");
+      }
+
+      console.log(`Generated story with ${storyData.chapters.length} chapters`);
 
       const images = await this.generateImagesForChapters(
         storyData.chapters,
         age_min,
         age_max,
         gender,
+        name,
       );
-      const coverImage = await this.generateCoverImage(storyData, gender);
+      const coverImage = await this.generateCoverImage(storyData, gender, name);
 
       const storybookContent = this.addImagesToStory(storyData, images);
 
       return { ...storybookContent, coverImage, author: name };
     } catch (error) {
       console.error("Error generating story:", error);
-      throw new ErrorHandler("Failed to generate the story.", 500);
+      throw new ErrorHandler(
+        `Failed to generate the story: ${error.message}`,
+        500,
+      );
     }
   }
 
-  formatBookData(jsonString) {
-    try {
-      return JSON.parse(jsonString);
-    } catch (error) {
-      console.error("Failed to parse JSON string:", error);
-      return null;
-    }
-  }
-
-  async generateImagesForChapters(chapters, age_min, age_max, gender) {
+  async generateImagesForChapters(chapters, age_min, age_max, gender, name) {
     const imagePromises = chapters.map(async (chapter) => {
-      const imageDescription = chapter.image_description;
-      const backgroundStory = chapter.chapter_content;
+      try {
+        const imageDescription = chapter.image_description;
+        const backgroundStory = chapter.chapter_content;
 
-      const image = await this.openai.images.generate({
-        model: "dall-e-3",
-        response_format: "url",
-        prompt: `A dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The story is for a ${gender} child, aged ${age_min} to ${age_max}. The image should depict a scene from this story: ${backgroundStory}. The main subject of the illustration is: ${imageDescription}. The lighting should be intense and cinematic. Absolutely no text, words, or letters should be present in any part of the image, again NO TEXT.`,
-        n: 1,
-        quality: "standard",
-        size: "1024x1024",
-      });
+        const image = await this.openai.images.generate({
+          model: "dall-e-3",
+          response_format: "url",
+          prompt: `A dramatic, high-contrast illustration for a children's storybook featuring ${name}. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The story is for a ${gender} child named ${name}, aged ${age_min} to ${age_max}. The image should depict: ${imageDescription}. The scene must show: ${backgroundStory}. The lighting should be intense and cinematic. Absolutely no text, words, or letters should be present in any part of the image.`,
+          n: 1,
+          quality: "standard",
+          size: "1024x1024",
+        });
 
-      return image.data[0].url;
+        return image.data[0].url;
+      } catch (error) {
+        console.error("Error generating chapter image:", error);
+        return null;
+      }
     });
 
-    return await Promise.all(imagePromises);
+    const images = await Promise.all(imagePromises);
+    return images.filter((url) => url !== null);
   }
 
-  async generateCoverImage(storyData, gender) {
-    console.log(gender);
+  async generateCoverImage(storyData, gender, name) {
     const fullStoryText = storyData.chapters
       .map((chapter) => chapter.chapter_content)
       .join(" ");
 
-    const prompt = `A dramatic, high-contrast illustration for a children's storybook. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation, with no text, words, or lettering in the image. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image. NO TEXT`;
-    // const prompt = `A beautiful and whimsical children's book illustration in the enchanting style of Studio Ghibli, with no text, words, or lettering in the image. The book is titled "${storyData.book_title}" and the story is about ${fullStoryText}. The image should be magical and joyful, designed for a ${gender} child aged ${storyData.age_min} to ${storyData.age_max}. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
+    const prompt = `A dramatic, high-contrast cover illustration for a children's storybook featuring ${name}. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The book is titled "${storyData.book_title}" and features ${name} as the main character. The story involves: ${fullStoryText.substring(0, 500)}... The image should be magical and joyful, designed for a ${gender} child. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
 
-    const coverImage = await this.openai.images.generate({
-      model: "dall-e-3",
-      response_format: "url",
-      prompt,
-      n: 1,
-      quality: "hd",
-      size: "1024x1024",
-    });
+    try {
+      const coverImage = await this.openai.images.generate({
+        model: "dall-e-3",
+        response_format: "url",
+        prompt,
+        n: 1,
+        quality: "hd",
+        size: "1024x1024",
+      });
 
-    return coverImage.data[0].url;
+      return coverImage.data[0].url;
+    } catch (error) {
+      console.error("Error generating cover image:", error);
+      return null;
+    }
   }
 
   addImagesToStory(storyData, imageUrls) {
     storyData.chapters.forEach((chapter, index) => {
-      chapter.image_url = imageUrls[index];
+      if (imageUrls[index]) {
+        chapter.image_url = imageUrls[index];
+      }
     });
     return storyData;
   }

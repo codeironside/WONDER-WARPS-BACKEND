@@ -1,7 +1,7 @@
-import BookToPDF from "../../../../CORE/services/booktopdf/index.js";
-import PersonalizedBook from "../../../PERSONALISATION/model/index.js";
-import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
-import logger from "../../../../CORE/utils/logger/index.js";
+import BookToPDF from "../../../../../CORE/services/booktopdf/index.js";
+import PersonalizedBook from "../../../../PERSONALISATION/model/index.js";
+import ErrorHandler from "../../../../../CORE/middleware/errorhandler/index.js";
+import logger from "../../../../../CORE/utils/logger/index.js";
 
 const generateFileName = (book) => {
   const title = book.personalized_content?.book_title || "story-book";

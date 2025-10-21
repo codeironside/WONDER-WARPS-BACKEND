@@ -3,9 +3,8 @@ import { UserRouter } from "../../API/AUTH/routes/index.js";
 import { BookTemplateRouter } from "../../API/BOOK_TEMPLATE/routes/index.js";
 import { RoleRouter } from "../../API/ROLES/route/index.js";
 import { BookPersonalizer } from "../../API/PERSONALISATION/routes/index.js";
-import { fileRouter } from "../../API/FILE_UPLOAD/routes/index.js";
+import { fileRouter } from "../../API/FILES/routes/index.js";
 import { PaymentRouter } from "../../API/PAYMENT/routes/index.js";
-import { DownloadRouter } from "../../API/DOWNLOAD/routes/index.js";
 
 export const apiRouter = Router();
 
@@ -15,4 +14,3 @@ apiRouter.use("/role", RoleRouter);
 apiRouter.use("/file", fileRouter);
 apiRouter.use("/personalization", BookPersonalizer);
 apiRouter.use("/payment", PaymentRouter);
-apiRouter.use("/download", DownloadRouter);
