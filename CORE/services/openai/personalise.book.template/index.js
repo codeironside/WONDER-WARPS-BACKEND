@@ -4,6 +4,7 @@ import ErrorHandler from "@/Error";
 import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 import PersonalizedBook from "../../../../API/PERSONALISATION/model/index.js";
 import S3Service from "../../s3/index.js";
+import ImageValidator from "../validatePicture/index.js";
 
 class StoryPersonalizer {
   constructor() {
@@ -14,6 +15,7 @@ class StoryPersonalizer {
 
     this.openai = new OpenAI({ apiKey });
     this.s3Service = new S3Service();
+    this.imageValidator = new ImageValidator();
   }
 
   async personalizeStory(templateId, personalizationDetails) {
@@ -29,6 +31,7 @@ class StoryPersonalizer {
         clothing,
         gender,
         photoUrl,
+        validationResult,
       } = personalizationDetails;
 
       if (!templateId || !childName) {
@@ -48,6 +51,13 @@ class StoryPersonalizer {
         `Personalizing template "${template.book_title}" for ${childName}`,
       );
       console.log("Photo URL provided:", !!photoUrl);
+
+      if (photoUrl && validationResult) {
+        this.checkPersonalizationAccuracy(
+          validationResult,
+          personalizationDetails,
+        );
+      }
 
       const personalizedStory = await this.rewriteStoryWithAI(
         template,
@@ -80,6 +90,9 @@ class StoryPersonalizer {
           original_template_id: templateId,
           original_template_title: template.book_title,
           used_photo: !!photoUrl,
+          data_quality:
+            validationResult?.dataQuality?.overallConfidence || "manual_input",
+          confidence_warnings: validationResult?.warnings || [],
         },
       };
     } catch (error) {
@@ -91,8 +104,38 @@ class StoryPersonalizer {
     }
   }
 
+  checkPersonalizationAccuracy(validationResult, personalizationDetails) {
+    const { dataQuality, warnings } = validationResult;
+
+    if (dataQuality && dataQuality.overallConfidence === "low") {
+      console.warn("LOW CONFIDENCE PERSONALIZATION:", {
+        childName: personalizationDetails.childName,
+        warnings: dataQuality.warnings,
+        recommendations: dataQuality.recommendations,
+      });
+
+      if (!dataQuality.canProceed) {
+        throw new ErrorHandler(
+          "Image quality is too poor for accurate personalization. " +
+            "Please use a different photo or manually specify characteristics.",
+          400,
+        );
+      }
+    }
+
+    if (warnings && warnings.length > 0) {
+      warnings.forEach((warning) => {
+        console.warn(
+          `Personalization Warning for ${personalizationDetails.childName}:`,
+          warning,
+        );
+      });
+    }
+  }
+
   async rewriteStoryWithAI(template, personalizationDetails) {
-    const { childName, childAge, gender } = personalizationDetails;
+    const { childName, childAge, gender, validationResult } =
+      personalizationDetails;
 
     try {
       const originalStory = {
@@ -105,8 +148,17 @@ class StoryPersonalizer {
         })),
       };
 
+      let characteristicsNote = "";
+      if (
+        validationResult &&
+        validationResult.dataQuality &&
+        validationResult.dataQuality.overallConfidence === "low"
+      ) {
+        characteristicsNote = `\n\nNOTE: Image analysis had low confidence. Focus on the provided name, age, and gender rather than physical characteristics from the photo.`;
+      }
+
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-4o",
         messages: [
           {
             role: "system",
@@ -119,6 +171,7 @@ class StoryPersonalizer {
 4. ONLY CHANGE CHARACTER DETAILS: Replace the main character's name, age, and gender references
 5. CONSISTENT CHARACTER: Ensure ${childName} appears as the main character in every chapter
 6. RETURN FORMAT: You MUST return a valid JSON object with the exact structure below
+7. AVOID PHYSICAL DESCRIPTIONS: If image quality is poor, avoid detailed physical descriptions${characteristicsNote}
 
 **JSON Structure:**
 {
@@ -139,7 +192,7 @@ class StoryPersonalizer {
 - Keep all other characters, settings, and events exactly the same
 - Maintain original image descriptions but ensure they reference ${childName}
 
-Return ONLY the JSON object, no other text.`,
+Return ONLY the JSON object, no other text. NO MARKDOWN CODE BLOCKS.`,
           },
           {
             role: "user",
@@ -156,13 +209,25 @@ Please personalize this story exactly, keeping the same plot and structure but m
         ],
         max_tokens: 4000,
         temperature: 0.2,
+        response_format: { type: "json_object" },
       });
 
       const content = response.choices[0].message.content.trim();
       let personalizedStory;
 
       try {
-        personalizedStory = JSON.parse(content);
+        let jsonContent = content;
+        if (jsonContent.startsWith("```json")) {
+          jsonContent = jsonContent
+            .replace(/```json\s*/, "")
+            .replace(/\s*```$/, "");
+        } else if (jsonContent.startsWith("```")) {
+          jsonContent = jsonContent
+            .replace(/```\s*/, "")
+            .replace(/\s*```$/, "");
+        }
+
+        personalizedStory = JSON.parse(jsonContent);
       } catch (parseError) {
         console.error("Failed to parse personalized story JSON:", parseError);
         console.log("Raw response:", content);
@@ -229,6 +294,7 @@ Please personalize this story exactly, keeping the same plot and structure but m
       clothing,
       gender,
       photoUrl,
+      validationResult,
     } = personalizationDetails;
 
     const imagePromises = template.chapters.map(
@@ -238,15 +304,32 @@ Please personalize this story exactly, keeping the same plot and structure but m
 
           let imageUrl;
           if (photoUrl) {
-            imageUrl = await this.generateImageFromPhotoWithGPT(
-              photoUrl,
-              personalizedChapter.image_description,
-              originalChapter.image_position,
-              childName,
-              childAge,
-              gender,
-            );
+            // Only customize images to look like photo when photo URL is provided
+            const canUsePhoto =
+              !validationResult ||
+              (validationResult.dataQuality &&
+                validationResult.dataQuality.canProceed !== false);
+
+            if (canUsePhoto) {
+              imageUrl = await this.generateImageFromPhotoWithGPT(
+                photoUrl,
+                personalizedChapter.image_description,
+                originalChapter.image_position,
+                childName,
+                childAge,
+                gender,
+                validationResult?.characteristics,
+              );
+            } else {
+              // Fall back to description-based generation if photo quality is poor
+              imageUrl = await this.generateImageFromDescriptionWithGPT(
+                personalizedChapter.image_description,
+                originalChapter.image_position,
+                personalizationDetails,
+              );
+            }
           } else {
+            // No photo URL provided - use description only
             imageUrl = await this.generateImageFromDescriptionWithGPT(
               personalizedChapter.image_description,
               originalChapter.image_position,
@@ -284,41 +367,9 @@ Please personalize this story exactly, keeping the same plot and structure but m
     childName,
     childAge,
     gender,
+    characteristics,
   ) {
     try {
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-4-vision-preview",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Create a children's book illustration based on the reference photo and this scene description. 
-
-SCENE: ${imageDescription}
-IMAGE POSITION: ${imagePosition}
-CHILD: ${childName}, ${childAge} years old, ${gender}
-
-Requirements:
-- Use the child's appearance from the reference photo exactly
-- Maintain the artistic style: whimsical Studio Ghibli style
-- Use the specified image position: ${imagePosition}
-- Create exactly ONE image - no multiple images or panels
-- Create a colorful, engaging children's book illustration
-
-Return ONLY the generated image URL.`,
-              },
-              {
-                type: "image_url",
-                image_url: { url: photoUrl },
-              },
-            ],
-          },
-        ],
-        max_tokens: 300,
-      });
-
       const enhancedPrompt = await this.createEnhancedPromptFromPhoto(
         photoUrl,
         imageDescription,
@@ -326,6 +377,7 @@ Return ONLY the generated image URL.`,
         childName,
         childAge,
         gender,
+        characteristics,
       );
 
       return await this.generateDalleImage(enhancedPrompt);
@@ -342,14 +394,36 @@ Return ONLY the generated image URL.`,
     childName,
     childAge,
     gender,
+    characteristics,
   ) {
     const appearanceDescription = await this.analyzePhotoWithGPT(photoUrl);
+
+    let characteristicsText = "";
+    if (characteristics) {
+      const highConfidenceFeatures = [];
+
+      Object.entries(characteristics).forEach(([key, value]) => {
+        if (
+          value &&
+          typeof value === "object" &&
+          value.confidence === "high" &&
+          value.value !== "unknown"
+        ) {
+          highConfidenceFeatures.push(`${key}: ${value.value}`);
+        }
+      });
+
+      if (highConfidenceFeatures.length > 0) {
+        characteristicsText = `CONFIRMED FEATURES: ${highConfidenceFeatures.join(", ")}. `;
+      }
+    }
 
     return `Children's book illustration in Studio Ghibli style.
 
 SCENE: ${imageDescription}
 IMAGE POSITION: ${imagePosition}
 MAIN CHARACTER: ${childName}, ${childAge} years old, ${gender}
+${characteristicsText}
 CHARACTER APPEARANCE: ${appearanceDescription}
 
 CRITICAL REQUIREMENTS - DO NOT IGNORE:
@@ -359,23 +433,24 @@ CRITICAL REQUIREMENTS - DO NOT IGNORE:
 - NO BOOK TITLES: Do not include any book titles or text on the image
 - PURE ILLUSTRATION: This must be a pure illustration with only visual elements
 - SINGLE IMAGE: Create exactly one image - no multiple images or panels
+- CHARACTER LIKENESS: The main character must look like the reference photo
 
 Style: Whimsical, magical Studio Ghibli animation style with soft lighting and vibrant colors.
 Composition: Use ${imagePosition} layout as specified.
-Focus on creating an engaging, professional children's book illustration that is completely free of any text elements.`;
+Focus on creating an engaging, professional children's book illustration that is completely free of any text elements and resembles the child in the reference photo.`;
   }
 
   async analyzePhotoWithGPT(photoUrl) {
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4-vision-preview",
+        model: "gpt-4o",
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Describe this child's appearance in detail, focusing on: skin tone, hair style, hair color, eye color, facial features, and clothing. Be specific and descriptive for illustration purposes.",
+                text: "Describe this child's appearance in detail, focusing on: skin tone, hair style, hair color, eye color, facial features, and clothing. Be specific and descriptive for illustration purposes. If any features are unclear, mention that they are not clearly visible.",
               },
               {
                 type: "image_url",
@@ -384,7 +459,7 @@ Focus on creating an engaging, professional children's book illustration that is
             ],
           },
         ],
-        max_tokens: 200,
+        max_tokens: 300,
       });
 
       return response.choices[0].message.content;
@@ -443,13 +518,21 @@ Create a professional children's book illustration that is completely free of an
     personalizationDetails,
   ) {
     try {
-      const { childName, photoUrl } = personalizationDetails;
+      const { childName, photoUrl, validationResult } = personalizationDetails;
 
       let coverPrompt;
 
       if (photoUrl) {
-        const appearanceDescription = await this.analyzePhotoWithGPT(photoUrl);
-        coverPrompt = `Children's book cover illustration in Studio Ghibli style.
+        // Only customize cover to look like photo when photo URL is provided
+        const canUsePhoto =
+          !validationResult ||
+          (validationResult.dataQuality &&
+            validationResult.dataQuality.canProceed !== false);
+
+        if (canUsePhoto) {
+          const appearanceDescription =
+            await this.analyzePhotoWithGPT(photoUrl);
+          coverPrompt = `Children's book cover illustration in Studio Ghibli style.
 
 MAIN CHARACTER: ${childName}
 CHARACTER APPEARANCE: ${appearanceDescription}
@@ -462,10 +545,38 @@ CRITICAL REQUIREMENTS - DO NOT IGNORE:
 - PURE ILLUSTRATION: This must be a pure illustration with only visual elements
 - SINGLE IMAGE: Create exactly one image - no multiple images or panels
 - COVER STYLE: Create a magical, engaging cover illustration that represents adventure and wonder
+- CHARACTER LIKENESS: The main character must look like the reference photo
+
+Style: Magical Studio Ghibli cover art, vibrant colors, engaging composition.
+Create a cover illustration that represents the story's adventure and magic while being completely free of any text elements and resembles the child in the reference photo.`;
+        } else {
+          // Fall back to description-based cover
+          const { skinTone, hairColor, eyeColor, clothing, gender, childAge } =
+            personalizationDetails;
+
+          coverPrompt = `Children's book cover illustration in Studio Ghibli style.
+
+MAIN CHARACTER: ${childName}, ${childAge} years old, ${gender}
+CHARACTER DETAILS:
+${skinTone ? `- Skin tone: ${skinTone}` : ""}
+${hairColor ? `- Hair color: ${hairColor}` : ""}
+${eyeColor ? `- Eye color: ${eyeColor}` : ""}
+${clothing ? `- Clothing: ${clothing}` : ""}
+
+CRITICAL REQUIREMENTS - DO NOT IGNORE:
+- ABSOLUTELY NO TEXT: The image must contain zero text, words, letters, numbers, symbols, or writing of any kind
+- NO SPEECH BUBBLES: Do not include speech bubbles or dialogue containers
+- NO LABELS: Do not include any labels, captions, or text elements
+- NO BOOK TITLES: Do not include any book titles or text on the image
+- PURE ILLUSTRATION: This must be a pure illustration with only visual elements
+- SINGLE IMAGE: Create exactly one image - no multiple images or panels
+- COVER STYLE: Create a magical, engaging cover illustration that represents adventure and wonder
 
 Style: Magical Studio Ghibli cover art, vibrant colors, engaging composition.
 Create a cover illustration that represents the story's adventure and magic while being completely free of any text elements.`;
+        }
       } else {
+        // No photo URL provided - use description only
         const { skinTone, hairColor, eyeColor, clothing, gender, childAge } =
           personalizationDetails;
 
@@ -545,6 +656,22 @@ Create a cover illustration that represents the story's adventure and magic whil
         );
       }
 
+      let validationResult = null;
+      if (personalizationDetails.photoUrl) {
+        try {
+          validationResult =
+            await this.imageValidator.validateImageForPersonalization(
+              personalizationDetails.photoUrl,
+            );
+          personalizationDetails.validationResult = validationResult;
+        } catch (validationError) {
+          console.warn(
+            "Image validation failed, proceeding with manual characteristics:",
+            validationError.message,
+          );
+        }
+      }
+
       const personalizedContent = await this.personalizeStory(
         templateId,
         personalizationDetails,
@@ -562,6 +689,7 @@ Create a cover illustration that represents the story's adventure and magic whil
         price: price,
         personalized_content: personalizedContent,
         is_paid: false,
+        // Removed validation_data field as it's not allowed in the schema
       };
 
       const personalizedBook =
@@ -580,6 +708,10 @@ Create a cover illustration that represents the story's adventure and magic whil
       return {
         personalizedBook,
         price,
+        validation: validationResult,
+        dataQuality: validationResult?.dataQuality || {
+          overallConfidence: "manual_input",
+        },
       };
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
@@ -595,6 +727,10 @@ Create a cover illustration that represents the story's adventure and magic whil
     return basePrice
       ? parseFloat(basePrice) + personalizationFee
       : personalizationFee;
+  }
+
+  getIdealPhotoGuidelines() {
+    return this.imageValidator.getIdealImageSpecifications();
   }
 }
 

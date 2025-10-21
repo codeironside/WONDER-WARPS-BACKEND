@@ -18,6 +18,7 @@ export const personalizeBook = async (req, res, next) => {
       eyeColor,
       clothing,
       gender,
+      photoUrl,
     } = req.body;
 
     if (!templateId || !childName) {
@@ -34,6 +35,7 @@ export const personalizeBook = async (req, res, next) => {
       eyeColor,
       clothing,
       gender,
+      photoUrl,
     };
 
     const result = await storyPersonalizer.createPersonalizedBook(
