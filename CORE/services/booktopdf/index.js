@@ -16,8 +16,7 @@ class BookToPDF {
     this.pageWidth = 595.28;
     this.pageHeight = 841.89;
     this.contentWidth = this.pageWidth - this.margins.left - this.margins.right;
-    this.contentHeight =
-      this.pageHeight - this.margins.top - this.margins.bottom;
+    this.contentHeight = this.pageHeight - this.margins.top - this.margins.bottom;
   }
 
   async generatePDF() {
@@ -27,9 +26,7 @@ class BookToPDF {
           margin: 0,
           size: "A4",
           info: {
-            Title:
-              this.book.personalized_content?.book_title ||
-              "Personalized Story Book",
+            Title: this.book.personalized_content?.book_title || "Personalized Story Book",
             Author: this.book.child_name || "My Story Hat",
             Subject: `Personalized story for ${this.book.child_name}`,
             Keywords: `personalized, children, story, ${this.book.child_name}`,
@@ -105,47 +102,46 @@ class BookToPDF {
   }
 
   getFontFamily() {
-    const suggestedFont =
-      this.book.personalized_content?.suggested_font || "Comic Sans MS";
+    const suggestedFont = this.book.personalized_content?.suggested_font || "Comic Sans MS";
 
     const fontMap = {
       "Comic Sans MS": "Helvetica",
       "KG Primary Penmanship": "Helvetica",
       "DK Crayon Crumble": "Helvetica",
-      OpenDyslexic: "Helvetica",
+      "OpenDyslexic": "Helvetica",
       "Sassoon Primary": "Helvetica",
       "Century Gothic": "Helvetica",
-      Verdana: "Helvetica",
+      "Verdana": "Helvetica",
       "Arial Rounded": "Helvetica",
       "Gill Sans": "Helvetica",
       "Trebuchet MS": "Helvetica",
-      Palatino: "Times-Roman",
-      Georgia: "Times-Roman",
-      Calibri: "Helvetica",
-      Cabin: "Helvetica",
-      Quicksand: "Helvetica",
-      Nunito: "Helvetica",
+      "Palatino": "Times-Roman",
+      "Georgia": "Times-Roman",
+      "Calibri": "Helvetica",
+      "Cabin": "Helvetica",
+      "Quicksand": "Helvetica",
+      "Nunito": "Helvetica",
       "Times New Roman": "Times-Roman",
-      Garamond: "Times-Roman",
-      Baskerville: "Times-Roman",
-      Helvetica: "Helvetica",
-      Lato: "Helvetica",
-      Merriweather: "Times-Roman",
-      Roboto: "Helvetica",
+      "Garamond": "Times-Roman",
+      "Baskerville": "Times-Roman",
+      "Helvetica": "Helvetica",
+      "Lato": "Helvetica",
+      "Merriweather": "Times-Roman",
+      "Roboto": "Helvetica",
       "Source Sans Pro": "Helvetica",
-      Papyrus: "Times-Roman",
+      "Papyrus": "Times-Roman",
       "Trajan Pro": "Times-Roman",
       "Uncial Antiqua": "Times-Roman",
-      Rockwell: "Times-Roman",
-      Copperplate: "Times-Roman",
+      "Rockwell": "Times-Roman",
+      "Copperplate": "Times-Roman",
       "Franklin Gothic": "Helvetica",
-      Orbitron: "Courier",
-      Eurostile: "Helvetica",
+      "Orbitron": "Courier",
+      "Eurostile": "Helvetica",
       "Bank Gothic": "Helvetica",
       "Courier New": "Courier",
       "American Typewriter": "Courier",
       "Marker Felt": "Helvetica",
-      Chalkboard: "Helvetica",
+      "Chalkboard": "Helvetica"
     };
 
     return fontMap[suggestedFont] || "Helvetica";
@@ -170,8 +166,7 @@ class BookToPDF {
           .rect(0, titleBoxY, this.pageWidth, titleBoxHeight)
           .fill("#ffffff");
 
-        const title =
-          this.book.personalized_content?.book_title || "My Story Book";
+        const title = this.book.personalized_content?.book_title || "My Story Book";
         const author = this.book.child_name;
 
         this.doc
@@ -191,6 +186,7 @@ class BookToPDF {
             width: this.contentWidth,
             align: "center",
           });
+
       } catch (error) {
         this.addFallbackCover();
       }
@@ -211,15 +207,10 @@ class BookToPDF {
       .font("Helvetica-Bold")
       .fontSize(32)
       .fillColor("#1f2937")
-      .text(
-        this.book.personalized_content?.book_title || "My Story Book",
-        this.margins.left,
-        centerY,
-        {
-          width: this.contentWidth,
-          align: "center",
-        },
-      )
+      .text(this.book.personalized_content?.book_title || "My Story Book", this.margins.left, centerY, {
+        width: this.contentWidth,
+        align: "center",
+      })
       .moveDown(1);
 
     this.doc
@@ -333,15 +324,10 @@ class BookToPDF {
           .font("Helvetica")
           .fontSize(16)
           .fillColor("#666666")
-          .text(
-            "Image not available",
-            this.margins.left,
-            this.margins.top + 100,
-            {
-              width: this.contentWidth,
-              align: "center",
-            },
-          );
+          .text("Image not available", this.margins.left, this.margins.top + 100, {
+            width: this.contentWidth,
+            align: "center",
+          });
       }
     }
   }
@@ -366,18 +352,13 @@ class BookToPDF {
         .font(fontFamily)
         .fontSize(14)
         .fillColor("#1f2937")
-        .text(
-          personalizedContent,
-          this.margins.left,
-          this.margins.top + (chapter.title ? 100 : 60),
-          {
-            width: this.contentWidth,
-            height: this.contentHeight - (chapter.title ? 120 : 80),
-            lineGap: 8,
-            paragraphGap: 6,
-            align: "justify",
-          },
-        );
+        .text(personalizedContent, this.margins.left, this.margins.top + (chapter.title ? 100 : 60), {
+          width: this.contentWidth,
+          height: this.contentHeight - (chapter.title ? 120 : 80),
+          lineGap: 8,
+          paragraphGap: 6,
+          align: "justify"
+        });
     }
 
     this.addDecorativeElements();
@@ -390,10 +371,9 @@ class BookToPDF {
       this.pageWidth,
       this.pageHeight,
       this.contentWidth,
-      this.contentHeight,
+      this.contentHeight
     );
 
-    // Render chapter title (centered, bold, black)
     if (chapter.chapter_title) {
       this.doc
         .font(`${fontFamily}-Bold`)
@@ -408,15 +388,10 @@ class BookToPDF {
     if (chapter.image_url) {
       try {
         const imageBuffer = await this.downloadImage(chapter.image_url);
-        const result = imagePositionHandler.handleImagePosition(
-          chapter,
-          imageBuffer,
-        );
+        const result = imagePositionHandler.handleImagePosition(chapter, imageBuffer);
 
         if (result.hasText && chapter.chapter_content) {
-          const personalizedContent = this.personalizeContent(
-            chapter.chapter_content,
-          );
+          const personalizedContent = this.personalizeContent(chapter.chapter_content);
           this.doc
             .font(fontFamily)
             .fontSize(12)
@@ -425,38 +400,27 @@ class BookToPDF {
               width: result.textWidth,
               height: result.textHeight,
               lineGap: 6,
-              align: "justify",
+              align: "justify"
             });
         }
       } catch (error) {
-        // Fallback: render text without image
         if (chapter.chapter_content) {
-          const personalizedContent = this.personalizeContent(
-            chapter.chapter_content,
-          );
+          const personalizedContent = this.personalizeContent(chapter.chapter_content);
           this.doc
             .font(fontFamily)
             .fontSize(12)
             .fillColor("#1f2937")
-            .text(
-              personalizedContent,
-              this.margins.left,
-              this.margins.top + 80,
-              {
-                width: this.contentWidth,
-                height: this.contentHeight - 100,
-                lineGap: 6,
-                align: "justify",
-              },
-            );
+            .text(personalizedContent, this.margins.left, this.margins.top + 80, {
+              width: this.contentWidth,
+              height: this.contentHeight - 100,
+              lineGap: 6,
+              align: "justify"
+            });
         }
       }
     } else {
-      // No image, just render text
       if (chapter.chapter_content) {
-        const personalizedContent = this.personalizeContent(
-          chapter.chapter_content,
-        );
+        const personalizedContent = this.personalizeContent(chapter.chapter_content);
         this.doc
           .font(fontFamily)
           .fontSize(12)
@@ -465,7 +429,7 @@ class BookToPDF {
             width: this.contentWidth,
             height: this.contentHeight - 100,
             lineGap: 6,
-            align: "justify",
+            align: "justify"
           });
       }
     }
@@ -527,12 +491,11 @@ class BookToPDF {
   async downloadImage(url) {
     try {
       const response = await axios.get(url, {
-        responseType: "arraybuffer",
+        responseType: 'arraybuffer',
         timeout: 15000,
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
       });
 
       if (response.status !== 200) {
