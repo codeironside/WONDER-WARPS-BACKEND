@@ -1,3 +1,6 @@
+import Receipt from "../../../model/index.js";
+import ErrorHandler from "../../../../../CORE/middleware/errorhandler/index.js";
+
 export const requestRefund = async (req, res, next) => {
   try {
     const { receiptId } = req.params;
@@ -7,8 +10,6 @@ export const requestRefund = async (req, res, next) => {
     if (!receiptId) {
       throw new ErrorHandler("Receipt ID is required", 400);
     }
-
-    // Verify the receipt belongs to the user
     const receipt = await Receipt.findOneForUser(receiptId, userId);
     if (!receipt) {
       throw new ErrorHandler("Receipt not found", 404);
@@ -17,8 +18,6 @@ export const requestRefund = async (req, res, next) => {
     if (receipt.refunded) {
       throw new ErrorHandler("This payment has already been refunded", 400);
     }
-
-    // Check if refund is within allowed timeframe (e.g., 30 days)
     const refundDeadline = new Date(receipt.paid_at);
     refundDeadline.setDate(refundDeadline.getDate() + 30);
 

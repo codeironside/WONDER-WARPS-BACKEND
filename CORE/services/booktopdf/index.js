@@ -1,27 +1,24 @@
 import PDFDocument from "pdfkit";
 import axios from "axios";
+import ImagePositionHandler from "./imagepositionerhandler/index.js";
 
 class BookToPDF {
   constructor(bookData) {
     this.book = bookData;
     this.doc = null;
     this.margins = {
-      top: 50,
-      bottom: 50,
+      top: 40,
+      bottom: 40,
       left: 40,
       right: 40,
     };
 
-    this.pageWidth = 595.28; // A4 width in points
-    this.pageHeight = 841.89; // A4 height in points
+    this.pageWidth = 595.28;
+    this.pageHeight = 841.89;
     this.contentWidth = this.pageWidth - this.margins.left - this.margins.right;
-    this.contentHeight =
-      this.pageHeight - this.margins.top - this.margins.bottom;
+    this.contentHeight = this.pageHeight - this.margins.top - this.margins.bottom;
   }
 
-  /**
-   * Generate PDF from book data
-   */
   async generatePDF() {
     return new Promise(async (resolve, reject) => {
       try {
@@ -29,8 +26,8 @@ class BookToPDF {
           margin: 0,
           size: "A4",
           info: {
-            Title: this.book.book_title || "Personalized Story Book",
-            Author: this.book.author || "My Story Hat",
+            Title: this.book.personalized_content?.book_title || "Personalized Story Book",
+            Author: this.book.child_name || "My Story Hat",
             Subject: `Personalized story for ${this.book.child_name}`,
             Keywords: `personalized, children, story, ${this.book.child_name}`,
             Creator: "My Story Hat",
@@ -46,12 +43,8 @@ class BookToPDF {
         });
         this.doc.on("error", reject);
 
-        // Generate expanded chapters like the FlipBook
         this.expandedChapters = this.expandChapters();
-
-        // Generate PDF content
         await this.generateContent();
-
         this.doc.end();
       } catch (error) {
         reject(error);
@@ -59,14 +52,11 @@ class BookToPDF {
     });
   }
 
-  /**
-   * Expand chapters to match FlipBook structure
-   */
   expandChapters() {
-    if (!this.book?.chapters) return [];
+    if (!this.book.personalized_content?.chapters) return [];
     const pages = [];
 
-    this.book.chapters.forEach((chapter) => {
+    this.book.personalized_content.chapters.forEach((chapter) => {
       if (chapter.image_position === "full scene") {
         pages.push({
           type: "image-only",
@@ -80,24 +70,9 @@ class BookToPDF {
           title: chapter.chapter_title,
           content: chapter.chapter_content,
         });
-      } else if (chapter.image_position === "character focus") {
-        pages.push({
-          type: "character-focus",
-          ...chapter,
-        });
-      } else if (chapter.image_position === "action spotlight") {
-        pages.push({
-          type: "action-spotlight",
-          ...chapter,
-        });
-      } else if (chapter.image_position === "background") {
-        pages.push({
-          type: "background",
-          ...chapter,
-        });
       } else {
         pages.push({
-          type: "standard",
+          type: chapter.image_position || "standard",
           ...chapter,
         });
       }
@@ -106,74 +81,113 @@ class BookToPDF {
     return pages;
   }
 
-  /**
-   * Generate all PDF content
-   */
   async generateContent() {
-    // Cover page
-    await this.addCoverPage();
-
-    // Chapters
-    await this.addChapters();
-
-    // End page
-    this.addEndPage();
+    await this.generateCoverAndFrontMatter();
+    await this.generateChapters();
+    this.generateEndPage();
   }
 
-  /**
-   * Add cover page matching FlipBook style
-   */
-  async addCoverPage() {
-    // White background
-    this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
+  async generateCoverAndFrontMatter() {
+    await this.addCoverPage();
+    this.addDedicationPage();
+  }
 
-    const coverImage = this.book?.cover_image;
+  async generateChapters() {
+    for (let i = 0; i < this.expandedChapters.length; i++) {
+      await this.addChapterPage(this.expandedChapters[i], i);
+      if (i < this.expandedChapters.length - 1) {
+        this.doc.addPage();
+      }
+    }
+  }
+
+  getFontFamily() {
+    const suggestedFont = this.book.personalized_content?.suggested_font || "Comic Sans MS";
+
+    const fontMap = {
+      "Comic Sans MS": "Helvetica",
+      "KG Primary Penmanship": "Helvetica",
+      "DK Crayon Crumble": "Helvetica",
+      "OpenDyslexic": "Helvetica",
+      "Sassoon Primary": "Helvetica",
+      "Century Gothic": "Helvetica",
+      "Verdana": "Helvetica",
+      "Arial Rounded": "Helvetica",
+      "Gill Sans": "Helvetica",
+      "Trebuchet MS": "Helvetica",
+      "Palatino": "Times-Roman",
+      "Georgia": "Times-Roman",
+      "Calibri": "Helvetica",
+      "Cabin": "Helvetica",
+      "Quicksand": "Helvetica",
+      "Nunito": "Helvetica",
+      "Times New Roman": "Times-Roman",
+      "Garamond": "Times-Roman",
+      "Baskerville": "Times-Roman",
+      "Helvetica": "Helvetica",
+      "Lato": "Helvetica",
+      "Merriweather": "Times-Roman",
+      "Roboto": "Helvetica",
+      "Source Sans Pro": "Helvetica",
+      "Papyrus": "Times-Roman",
+      "Trajan Pro": "Times-Roman",
+      "Uncial Antiqua": "Times-Roman",
+      "Rockwell": "Times-Roman",
+      "Copperplate": "Times-Roman",
+      "Franklin Gothic": "Helvetica",
+      "Orbitron": "Courier",
+      "Eurostile": "Helvetica",
+      "Bank Gothic": "Helvetica",
+      "Courier New": "Courier",
+      "American Typewriter": "Courier",
+      "Marker Felt": "Helvetica",
+      "Chalkboard": "Helvetica"
+    };
+
+    return fontMap[suggestedFont] || "Helvetica";
+  }
+
+  async addCoverPage() {
+    const coverImage = this.book.personalized_content?.cover_image?.[0];
 
     if (coverImage) {
       try {
         const imageBuffer = await this.downloadImage(coverImage);
 
-        // Calculate dimensions to match FlipBook (70% of content area)
-        const imageWidth = this.contentWidth * 0.7;
-        const imageHeight = this.contentHeight * 0.7;
-        const x = (this.pageWidth - imageWidth) / 2;
-        const y = (this.pageHeight - imageHeight) / 2 - 30;
-
-        this.doc.image(imageBuffer, x, y, {
-          width: imageWidth,
-          height: imageHeight,
+        this.doc.image(imageBuffer, 0, 0, {
+          width: this.pageWidth,
+          height: this.pageHeight,
         });
 
-        // Add title box like FlipBook
-        const titleBoxWidth = this.contentWidth * 0.8;
-        const titleBoxHeight = 60;
-        const titleBoxX = (this.pageWidth - titleBoxWidth) / 2;
-        const titleBoxY = y + imageHeight + 20;
+        const titleBoxHeight = 120;
+        const titleBoxY = this.pageHeight - titleBoxHeight - 40;
 
-        // White background with shadow effect
         this.doc
-          .rect(titleBoxX, titleBoxY, titleBoxWidth, titleBoxHeight)
-          .fill("#ffffff")
-          .stroke("#e5e5e5");
+          .rect(0, titleBoxY, this.pageWidth, titleBoxHeight)
+          .fill("#ffffff");
 
-        // Book title
+        const title = this.book.personalized_content?.book_title || "My Story Book";
+        const author = this.book.child_name;
+
         this.doc
           .font("Helvetica-Bold")
-          .fontSize(24)
+          .fontSize(32)
           .fillColor("#000000")
-          .text(
-            this.book.book_title || "My Story Book",
-            titleBoxX + 20,
-            titleBoxY + 15,
-            {
-              width: titleBoxWidth - 40,
-              align: "center",
-              lineGap: 5,
-            },
-          );
+          .text(title, this.margins.left, titleBoxY + 20, {
+            width: this.contentWidth,
+            align: "center",
+          });
+
+        this.doc
+          .font("Helvetica")
+          .fontSize(18)
+          .fillColor("#666666")
+          .text(`by ${author}`, this.margins.left, titleBoxY + 70, {
+            width: this.contentWidth,
+            align: "center",
+          });
+
       } catch (error) {
-        console.warn("Could not load cover image:", error.message);
-        // Fallback cover without image
         this.addFallbackCover();
       }
     } else {
@@ -181,11 +195,7 @@ class BookToPDF {
     }
   }
 
-  /**
-   * Fallback cover without image
-   */
   addFallbackCover() {
-    // Use a solid color background instead of gradient
     this.doc
       .fillColor("#fef7ed")
       .rect(0, 0, this.pageWidth, this.pageHeight)
@@ -197,22 +207,17 @@ class BookToPDF {
       .font("Helvetica-Bold")
       .fontSize(32)
       .fillColor("#1f2937")
-      .text(
-        this.book.book_title || "My Story Book",
-        this.margins.left,
-        centerY,
-        {
-          width: this.contentWidth,
-          align: "center",
-        },
-      )
+      .text(this.book.personalized_content?.book_title || "My Story Book", this.margins.left, centerY, {
+        width: this.contentWidth,
+        align: "center",
+      })
       .moveDown(1);
 
     this.doc
       .font("Helvetica")
       .fontSize(16)
       .fillColor("#6b7280")
-      .text(`by ${this.book.author || "My Story Hat"}`, {
+      .text(`by ${this.book.child_name}`, {
         width: this.contentWidth,
         align: "center",
       })
@@ -238,54 +243,74 @@ class BookToPDF {
     }
   }
 
-  /**
-   * Add all chapters
-   */
-  async addChapters() {
-    for (let i = 0; i < this.expandedChapters.length; i++) {
-      await this.addChapterPage(this.expandedChapters[i], i);
+  addDedicationPage() {
+    this.doc.addPage();
+    this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
 
-      // Add page break between chapters
-      if (i < this.expandedChapters.length - 1) {
-        this.doc.addPage();
-      }
+    this.doc
+      .fillColor("#1f2937")
+      .fontSize(28)
+      .font("Helvetica-Bold")
+      .text("To My Special Reader", {
+        align: "center",
+      })
+      .moveDown(2);
+
+    this.doc
+      .fontSize(16)
+      .font("Helvetica")
+      .fillColor("#4b5563")
+      .text(
+        `This story was created especially for you, ${this.book.child_name}!`,
+        {
+          align: "center",
+          width: this.contentWidth,
+        },
+      )
+      .moveDown(1);
+
+    if (this.book.child_age) {
+      this.doc.text(
+        `You are ${this.book.child_age} years old, and this is your very own adventure.`,
+        {
+          align: "center",
+          width: this.contentWidth,
+        },
+      );
     }
+
+    this.doc
+      .moveDown(3)
+      .fontSize(14)
+      .fillColor("#6b7280")
+      .text(
+        "May your imagination soar as high as the stories we create together.",
+        {
+          align: "center",
+          width: this.contentWidth,
+        },
+      );
   }
 
-  /**
-   * Add a single chapter page
-   */
   async addChapterPage(chapter, index) {
-    // White background for all pages
     this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
+
+    const fontFamily = this.getFontFamily();
 
     switch (chapter.type) {
       case "image-only":
         await this.renderImageOnlyPage(chapter);
         break;
       case "text-only":
-        await this.renderTextOnlyPage(chapter);
-        break;
-      case "character-focus":
-        await this.renderCharacterFocusPage(chapter);
-        break;
-      case "action-spotlight":
-        await this.renderActionSpotlightPage(chapter);
-        break;
-      case "background":
-        await this.renderBackgroundPage(chapter);
+        await this.renderTextOnlyPage(chapter, fontFamily);
         break;
       default:
-        await this.renderStandardPage(chapter);
+        await this.renderChapterWithImage(chapter, fontFamily);
     }
 
-    // Add page number
-    this.addPageNumber(index + 2); // +2 for cover and start counting from 1
+    this.addPageNumber(index + 3);
   }
 
-  /**
-   * Image-only page layout
-   */
   async renderImageOnlyPage(chapter) {
     if (chapter.image_url) {
       try {
@@ -295,353 +320,134 @@ class BookToPDF {
           height: this.pageHeight,
         });
       } catch (error) {
-        console.warn("Could not load image:", error.message);
+        this.doc
+          .font("Helvetica")
+          .fontSize(16)
+          .fillColor("#666666")
+          .text("Image not available", this.margins.left, this.margins.top + 100, {
+            width: this.contentWidth,
+            align: "center",
+          });
       }
     }
   }
 
-  /**
-   * Text-only page layout with decorative elements
-   */
-  async renderTextOnlyPage(chapter) {
-    // Title
-    this.doc
-      .font("Helvetica-Bold")
-      .fontSize(20)
-      .fillColor("#374151")
-      .text(chapter.title, this.margins.left, this.margins.top + 20, {
-        width: this.contentWidth,
-      });
+  async renderTextOnlyPage(chapter, fontFamily) {
+    this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
 
-    // Content
-    this.doc
-      .font("Helvetica")
-      .fontSize(12)
-      .fillColor("#1f2937")
-      .text(chapter.content, this.margins.left, this.margins.top + 60, {
-        width: this.contentWidth,
-        lineGap: 8,
-        paragraphGap: 5,
-      });
+    if (chapter.title) {
+      this.doc
+        .font(`${fontFamily}-Bold`)
+        .fontSize(24)
+        .fillColor("#000000")
+        .text(chapter.title, this.margins.left, this.margins.top + 40, {
+          width: this.contentWidth,
+          align: "center",
+        });
+    }
 
-    // Add decorative elements (simplified version of SVG decorations)
+    if (chapter.content) {
+      const personalizedContent = this.personalizeContent(chapter.content);
+      this.doc
+        .font(fontFamily)
+        .fontSize(14)
+        .fillColor("#1f2937")
+        .text(personalizedContent, this.margins.left, this.margins.top + (chapter.title ? 100 : 60), {
+          width: this.contentWidth,
+          height: this.contentHeight - (chapter.title ? 120 : 80),
+          lineGap: 8,
+          paragraphGap: 6,
+          align: "justify"
+        });
+    }
+
     this.addDecorativeElements();
   }
 
-  /**
-   * Character focus page layout
-   */
-  async renderCharacterFocusPage(chapter) {
-    // Use solid color background instead of gradient
-    this.doc
-      .fillColor("#fef3c7") // Light amber background
-      .rect(0, 0, this.pageWidth, this.pageHeight)
-      .fill();
+  async renderChapterWithImage(chapter, fontFamily) {
+    const imagePositionHandler = new ImagePositionHandler(
+      this.doc,
+      this.margins,
+      this.pageWidth,
+      this.pageHeight,
+      this.contentWidth,
+      this.contentHeight
+    );
 
-    // Title
-    this.doc
-      .font("Helvetica-Bold")
-      .fontSize(18)
-      .fillColor("#374151")
-      .text(chapter.chapter_title, this.margins.left, this.margins.top + 20, {
-        width: this.contentWidth,
-      });
-
-    if (chapter.image_url) {
-      try {
-        const imageBuffer = await this.downloadImage(chapter.image_url);
-
-        // Image with border like FlipBook
-        const imageWidth = this.contentWidth;
-        const imageHeight = 300;
-        const imageX = this.margins.left;
-        const imageY = this.margins.top + 60;
-
-        // White border
-        this.doc
-          .rect(imageX - 5, imageY - 5, imageWidth + 10, imageHeight + 10)
-          .fill("#ffffff")
-          .stroke("#e5e5e5");
-
-        this.doc.image(imageBuffer, imageX, imageY, {
-          width: imageWidth,
-          height: imageHeight,
+    // Render chapter title (centered, bold, black)
+    if (chapter.chapter_title) {
+      this.doc
+        .font(`${fontFamily}-Bold`)
+        .fontSize(24)
+        .fillColor("#000000")
+        .text(chapter.chapter_title, this.margins.left, this.margins.top + 20, {
+          width: this.contentWidth,
+          align: "center",
         });
-
-        // Content below image
-        this.doc
-          .font("Helvetica")
-          .fontSize(11)
-          .fillColor("#1f2937")
-          .text(
-            chapter.chapter_content,
-            this.margins.left + 10,
-            imageY + imageHeight + 30,
-            {
-              width: this.contentWidth - 20,
-              lineGap: 6,
-            },
-          );
-      } catch (error) {
-        console.warn("Could not load image:", error.message);
-        // Fallback without image
-        this.doc
-          .font("Helvetica")
-          .fontSize(11)
-          .fillColor("#1f2937")
-          .text(
-            chapter.chapter_content,
-            this.margins.left,
-            this.margins.top + 80,
-            {
-              width: this.contentWidth,
-              lineGap: 6,
-            },
-          );
-      }
-    }
-  }
-
-  /**
-   * Action spotlight page layout
-   */
-  async renderActionSpotlightPage(chapter) {
-    // Dark background
-    this.doc
-      .fillColor("#1e293b")
-      .rect(0, 0, this.pageWidth, this.pageHeight)
-      .fill();
-
-    // Title in amber color
-    this.doc
-      .font("Helvetica-Bold")
-      .fontSize(18)
-      .fillColor("#f59e0b")
-      .text(chapter.chapter_title, this.margins.left, this.margins.top + 20, {
-        width: this.contentWidth,
-      });
-
-    if (chapter.image_url) {
-      try {
-        const imageBuffer = await this.downloadImage(chapter.image_url);
-
-        // Image with amber border
-        const imageWidth = this.contentWidth;
-        const imageHeight = 250;
-        const imageX = this.margins.left;
-        const imageY = this.margins.top + 60;
-
-        // Amber border using solid color instead of gradient
-        this.doc
-          .fillColor("#f59e0b")
-          .opacity(0.3)
-          .rect(imageX - 3, imageY - 3, imageWidth + 6, imageHeight + 6)
-          .fill()
-          .opacity(1); // Reset opacity
-
-        this.doc.image(imageBuffer, imageX, imageY, {
-          width: imageWidth,
-          height: imageHeight,
-        });
-
-        // Content in white below image
-        this.doc
-          .font("Helvetica")
-          .fontSize(11)
-          .fillColor("#f1f5f9")
-          .text(
-            chapter.chapter_content,
-            this.margins.left + 10,
-            imageY + imageHeight + 30,
-            {
-              width: this.contentWidth - 20,
-              lineGap: 6,
-            },
-          );
-      } catch (error) {
-        console.warn("Could not load image:", error.message);
-        // Fallback without image
-        this.doc
-          .font("Helvetica")
-          .fontSize(11)
-          .fillColor("#f1f5f9")
-          .text(
-            chapter.chapter_content,
-            this.margins.left,
-            this.margins.top + 80,
-            {
-              width: this.contentWidth,
-              lineGap: 6,
-            },
-          );
-      }
-    }
-  }
-
-  /**
-   * Background page layout
-   */
-  async renderBackgroundPage(chapter) {
-    if (chapter.image_url) {
-      try {
-        const imageBuffer = await this.downloadImage(chapter.image_url);
-
-        // Full page background image
-        this.doc.image(imageBuffer, 0, 0, {
-          width: this.pageWidth,
-          height: this.pageHeight,
-        });
-
-        // Dark overlay using solid color instead of gradient
-        this.doc
-          .fillColor("black")
-          .opacity(0.5)
-          .rect(0, 0, this.pageWidth, this.pageHeight)
-          .fill()
-          .opacity(1); // Reset opacity
-      } catch (error) {
-        console.warn("Could not load background image:", error.message);
-        // Fallback dark background
-        this.doc
-          .fillColor("#1e293b")
-          .rect(0, 0, this.pageWidth, this.pageHeight)
-          .fill();
-      }
     }
 
-    // Content overlay
-    const contentY = this.pageHeight / 2 - 100;
-
-    this.doc
-      .font("Helvetica-Bold")
-      .fontSize(20)
-      .fillColor("#ffffff")
-      .text(chapter.chapter_title, this.margins.left, contentY, {
-        width: this.contentWidth,
-        align: "center",
-      });
-
-    this.doc
-      .font("Helvetica")
-      .fontSize(12)
-      .fillColor("#ffffff")
-      .text(chapter.chapter_content, this.margins.left, contentY + 50, {
-        width: this.contentWidth,
-        align: "center",
-        lineGap: 8,
-      });
-  }
-
-  /**
-   * Standard page layout
-   */
-  async renderStandardPage(chapter) {
-    // Title
-    this.doc
-      .font("Helvetica-Bold")
-      .fontSize(18)
-      .fillColor("#374151")
-      .text(chapter.chapter_title, this.margins.left, this.margins.top + 20, {
-        width: this.contentWidth,
-      });
-
     if (chapter.image_url) {
       try {
         const imageBuffer = await this.downloadImage(chapter.image_url);
+        const result = imagePositionHandler.handleImagePosition(chapter, imageBuffer);
 
-        const imageWidth = this.contentWidth;
-        const imageHeight = 200;
-        const imageY = this.margins.top + 60;
-
-        this.doc.image(imageBuffer, this.margins.left, imageY, {
-          width: imageWidth,
-          height: imageHeight,
-        });
-
-        // Content below image
-        this.doc
-          .font("Helvetica")
-          .fontSize(11)
-          .fillColor("#1f2937")
-          .text(
-            chapter.chapter_content,
-            this.margins.left,
-            imageY + imageHeight + 30,
-            {
-              width: this.contentWidth,
+        if (result.hasText && chapter.chapter_content) {
+          const personalizedContent = this.personalizeContent(chapter.chapter_content);
+          this.doc
+            .font(fontFamily)
+            .fontSize(12)
+            .fillColor(result.textColor || "#1f2937")
+            .text(personalizedContent, result.textX, result.textY, {
+              width: result.textWidth,
+              height: result.textHeight,
               lineGap: 6,
-            },
-          );
+              align: "justify"
+            });
+        }
       } catch (error) {
-        console.warn("Could not load image:", error.message);
-        // Content without image
-        this.doc
-          .font("Helvetica")
-          .fontSize(11)
-          .fillColor("#1f2937")
-          .text(
-            chapter.chapter_content,
-            this.margins.left,
-            this.margins.top + 60,
-            {
+        // Fallback: render text without image
+        if (chapter.chapter_content) {
+          const personalizedContent = this.personalizeContent(chapter.chapter_content);
+          this.doc
+            .font(fontFamily)
+            .fontSize(12)
+            .fillColor("#1f2937")
+            .text(personalizedContent, this.margins.left, this.margins.top + 80, {
               width: this.contentWidth,
+              height: this.contentHeight - 100,
               lineGap: 6,
-            },
-          );
+              align: "justify"
+            });
+        }
       }
     } else {
-      // Content without image
-      this.doc
-        .font("Helvetica")
-        .fontSize(11)
-        .fillColor("#1f2937")
-        .text(
-          chapter.chapter_content,
-          this.margins.left,
-          this.margins.top + 60,
-          {
+      // No image, just render text
+      if (chapter.chapter_content) {
+        const personalizedContent = this.personalizeContent(chapter.chapter_content);
+        this.doc
+          .font(fontFamily)
+          .fontSize(12)
+          .fillColor("#1f2937")
+          .text(personalizedContent, this.margins.left, this.margins.top + 80, {
             width: this.contentWidth,
+            height: this.contentHeight - 100,
             lineGap: 6,
-          },
-        );
+            align: "justify"
+          });
+      }
     }
   }
 
-  /**
-   * Add decorative elements for text-only pages
-   */
-  addDecorativeElements() {
-    // Simple decorative circles (approximation of SVG elements)
-    this.doc
-      .fillColor("#fb923c")
-      .opacity(0.1)
-      .circle(this.pageWidth - 80, 100, 30)
-      .fill();
-
-    this.doc
-      .fillColor("#fbcfe8")
-      .opacity(0.1)
-      .circle(60, this.pageHeight - 100, 20)
-      .fill()
-      .opacity(1); // Reset opacity
-  }
-
-  /**
-   * Add end page matching FlipBook style
-   */
-  addEndPage() {
+  generateEndPage() {
     this.doc.addPage();
-
-    // White background
     this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
 
     const centerY = this.pageHeight / 2 - 50;
 
-    // "The End" title - using solid color instead of gradient
     this.doc
       .font("Helvetica-Bold")
       .fontSize(32)
-      .fillColor("#fb923c") // Use the starting color of the gradient
+      .fillColor("#fb923c")
       .text("The End", this.margins.left, centerY, {
         width: this.contentWidth,
         align: "center",
@@ -656,16 +462,11 @@ class BookToPDF {
         align: "center",
       });
 
-    // Add page number for end page
-    this.addPageNumber(this.expandedChapters.length + 2);
+    this.addPageNumber(this.expandedChapters.length + 3);
   }
 
-  /**
-   * Add page number to current page
-   */
   addPageNumber(pageNumber) {
     const bottom = this.pageHeight - 30;
-
     this.doc
       .fontSize(10)
       .fillColor("#9ca3af")
@@ -675,20 +476,50 @@ class BookToPDF {
       });
   }
 
-  /**
-   * Download image from URL
-   */
+  addDecorativeElements() {
+    this.doc
+      .fillColor("#fb923c")
+      .opacity(0.1)
+      .circle(this.pageWidth - 80, 100, 30)
+      .fill();
+
+    this.doc
+      .fillColor("#fbcfe8")
+      .opacity(0.1)
+      .circle(60, this.pageHeight - 100, 20)
+      .fill()
+      .opacity(1);
+  }
+
   async downloadImage(url) {
     try {
       const response = await axios.get(url, {
-        responseType: "arraybuffer",
+        responseType: 'arraybuffer',
         timeout: 15000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
       });
 
-      return Buffer.from(response.data, "binary");
+      if (response.status !== 200) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return Buffer.from(response.data);
     } catch (error) {
       throw new Error(`Failed to download image: ${error.message}`);
     }
+  }
+
+  personalizeContent(content) {
+    if (!content || !this.book.child_name) return content;
+
+    return content
+      .replace(/\[child's name\]/gi, this.book.child_name)
+      .replace(/\[Child's Name\]/gi, this.book.child_name)
+      .replace(/\[child_name\]/gi, this.book.child_name)
+      .replace(/\[Child Name\]/gi, this.book.child_name)
+      .replace(/\[name\]/gi, this.book.child_name);
   }
 }
 

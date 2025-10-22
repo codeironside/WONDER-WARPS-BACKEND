@@ -269,7 +269,7 @@ userSchema.statics.verifyOTP = async function (tempUserId, otp) {
 
 userSchema.statics.getDashboardStats = async function () {
   try {
-    // Get all statistics in parallel for better performance
+  
     const [
       userStats,
       bookTemplateStats,
@@ -1596,6 +1596,138 @@ userSchema.statics.cleanupExpiredOTPs = async function () {
     return result.deletedCount;
   } catch (error) {
     logger.error("Failed to cleanup expired OTPs:", error);
+  }
+};
+
+userSchema.statics.getRecentActivities = async function (days = 7, limit = 10) {
+  try {
+    const daysAgo = new Date();
+    daysAgo.setDate(daysAgo.getDate() - days);
+
+    const BookTemplateModel = mongoose.model("BookTemplate");
+    const PersonalizedBookModel = mongoose.model("PersonalizedBook");
+    const ReceiptModel = mongoose.model("Receipt");
+
+    // Get recent user registrations
+    const recentUsers = await this.find({
+      createdAt: { $gte: daysAgo }
+    })
+      .select("username email firstname lastname createdAt")
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    // Get recent book template creations
+    const recentTemplates = await BookTemplateModel.find({
+      createdAt: { $gte: daysAgo }
+    })
+      .select("book_title user_id genre price createdAt")
+      .populate("user_id", "username email firstname lastname")
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    // Get recent personalized book creations
+    const recentPersonalizedBooks = await PersonalizedBookModel.find({
+      createdAt: { $gte: daysAgo }
+    })
+      .select("child_name child_age user_id price is_paid createdAt")
+      .populate("user_id", "username email firstname lastname")
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+    const recentPayments = await ReceiptModel.find({
+      status: "succeeded",
+      paid_at: { $gte: daysAgo }
+    })
+      .select("user_id amount book_details receipt_number paid_at")
+      .populate("user_id", "username email firstname lastname")
+      .sort({ paid_at: -1 })
+      .limit(limit)
+      .lean();
+
+    // Format the response for better readability
+    const formatActivities = {
+      recent_users: recentUsers.map(user => ({
+        type: "user_registration",
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        name: `${user.firstname} ${user.lastname}`,
+        timestamp: user.createdAt,
+        description: `New user registered: ${user.username}`
+      })),
+
+      recent_templates: recentTemplates.map(template => ({
+        type: "template_creation",
+        id: template._id,
+        title: template.book_title,
+        genre: template.genre,
+        price: template.price,
+        user: template.user_id ? {
+          id: template.user_id._id,
+          username: template.user_id.username,
+          name: `${template.user_id.firstname} ${template.user_id.lastname}`
+        } : null,
+        timestamp: template.createdAt,
+        description: `New book template created: "${template.book_title}"`
+      })),
+
+      recent_personalized_books: recentPersonalizedBooks.map(book => ({
+        type: "personalized_book_creation",
+        id: book._id,
+        child_name: book.child_name,
+        child_age: book.child_age,
+        price: book.price,
+        is_paid: book.is_paid,
+        user: book.user_id ? {
+          id: book.user_id._id,
+          username: book.user_id.username,
+          name: `${book.user_id.firstname} ${book.user_id.lastname}`
+        } : null,
+        timestamp: book.createdAt,
+        description: `Personalized book created for ${book.child_name}`
+      })),
+
+      recent_payments: recentPayments.map(payment => ({
+        type: "payment",
+        id: payment._id,
+        amount: payment.amount,
+        receipt_number: payment.receipt_number,
+        book_title: payment.book_details?.book_title,
+        user: payment.user_id ? {
+          id: payment.user_id._id,
+          username: payment.user_id.username,
+          name: `${payment.user_id.firstname} ${payment.user_id.lastname}`
+        } : null,
+        timestamp: payment.paid_at,
+        description: `Payment received: $${payment.amount} for "${payment.book_details?.book_title}"`
+      }))
+    };
+
+    // Combine all activities into a single timeline
+    const allActivities = [
+      ...formatActivities.recent_users,
+      ...formatActivities.recent_templates,
+      ...formatActivities.recent_personalized_books,
+      ...formatActivities.recent_payments
+    ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, limit);
+
+    return {
+      summary: {
+        total_users: recentUsers.length,
+        total_templates: recentTemplates.length,
+        total_personalized_books: recentPersonalizedBooks.length,
+        total_payments: recentPayments.length,
+        period: `${days} days`
+      },
+      by_type: formatActivities,
+      timeline: allActivities
+    };
+  } catch (error) {
+    console.error("Error in getRecentActivities:", error);
+    throw new ErrorHandler("Failed to fetch recent activities", 500);
   }
 };
 

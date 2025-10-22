@@ -886,7 +886,6 @@ Style: Magical Studio Ghibli artwork, vibrant colors, engaging composition, COMP
 FINAL WARNING: ${childName} must have exactly "${mergedChars.eyeColor}" eyes, "${mergedChars.hairStyle}" hairstyle, and "${mergedChars.skinTone}" skin tone. NO TEXT ELEMENTS WHATSOEVER.`;
       }
 
-      // Check prompt length and truncate if necessary
       if (coverPrompt.length > 3900) {
         console.warn(
           `Cover prompt too long (${coverPrompt.length} chars), truncating...`,
@@ -923,7 +922,6 @@ ULTIMATE REQUIREMENTS - ABSOLUTELY NO EXCEPTIONS:
 8. NO PHOTOGRAPHIC ELEMENTS: Pure illustration only
 9. VISUAL STORYTELLING ONLY: Tell the story through visuals alone`;
 
-    // Check final prompt length
     if (enhancedPrompt.length > 4000) {
       console.warn(
         `Final DALL-E prompt too long (${enhancedPrompt.length} chars), using original prompt`,

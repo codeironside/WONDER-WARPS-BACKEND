@@ -24,9 +24,9 @@ export const downloadBookPDF = async (req, res, next) => {
       throw new ErrorHandler("Book not found", 404);
     }
 
-    if (book.user_id.toString() !== userId.toString()) {
-      throw new ErrorHandler("Access denied", 403);
-    }
+    // if (book.user_id.toString() !== userId.toString()) {
+    //   throw new ErrorHandler("Access denied", 403);
+    // }
 
     if (!book.is_paid) {
       throw new ErrorHandler(
