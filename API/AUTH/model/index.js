@@ -1657,7 +1657,6 @@ userSchema.statics.getRecentActivities = async function (days = 7, limit = 10) {
     const PersonalizedBookModel = mongoose.model("PersonalizedBook");
     const ReceiptModel = mongoose.model("Receipt");
 
-    // Get recent user registrations
     const recentUsers = await this.find({
       createdAt: { $gte: daysAgo },
     })
@@ -1666,7 +1665,6 @@ userSchema.statics.getRecentActivities = async function (days = 7, limit = 10) {
       .limit(limit)
       .lean();
 
-    // Get recent book template creations
     const recentTemplates = await BookTemplateModel.find({
       createdAt: { $gte: daysAgo },
     })
@@ -1676,15 +1674,26 @@ userSchema.statics.getRecentActivities = async function (days = 7, limit = 10) {
       .limit(limit)
       .lean();
 
-    // Get recent personalized book creations
     const recentPersonalizedBooks = await PersonalizedBookModel.find({
       createdAt: { $gte: daysAgo },
     })
       .select("child_name child_age user_id price is_paid createdAt")
-      .populate("user_id", "username email firstname lastname")
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
+
+    const userIds = recentPersonalizedBooks
+      .map((book) => book.user_id)
+      .filter((id) => id);
+    const users = await this.find({ _id: { $in: userIds } })
+      .select("username firstname lastname email")
+      .lean();
+
+    const userMap = {};
+    users.forEach((user) => {
+      userMap[user._id.toString()] = user;
+    });
+
     const recentPayments = await ReceiptModel.find({
       status: "succeeded",
       paid_at: { $gte: daysAgo },
@@ -1695,7 +1704,6 @@ userSchema.statics.getRecentActivities = async function (days = 7, limit = 10) {
       .limit(limit)
       .lean();
 
-    // Format the response for better readability
     const formatActivities = {
       recent_users: recentUsers.map((user) => ({
         type: "user_registration",
@@ -1724,23 +1732,26 @@ userSchema.statics.getRecentActivities = async function (days = 7, limit = 10) {
         description: `New book template created: "${template.book_title}"`,
       })),
 
-      recent_personalized_books: recentPersonalizedBooks.map((book) => ({
-        type: "personalized_book_creation",
-        id: book._id,
-        child_name: book.child_name,
-        child_age: book.child_age,
-        price: book.price,
-        is_paid: book.is_paid,
-        user: book.user_id
-          ? {
-              id: book.user_id._id,
-              username: book.user_id.username,
-              name: `${book.user_id.firstname} ${book.user_id.lastname}`,
-            }
-          : null,
-        timestamp: book.createdAt,
-        description: `Personalized book created for ${book.child_name}`,
-      })),
+      recent_personalized_books: recentPersonalizedBooks.map((book) => {
+        const user = userMap[book.user_id];
+        return {
+          type: "personalized_book_creation",
+          id: book._id,
+          child_name: book.child_name,
+          child_age: book.child_age,
+          price: book.price,
+          is_paid: book.is_paid,
+          user: user
+            ? {
+                id: user._id,
+                username: user.username,
+                name: `${user.firstname} ${user.lastname}`,
+              }
+            : null,
+          timestamp: book.createdAt,
+          description: `Personalized book created for ${book.child_name}`,
+        };
+      }),
 
       recent_payments: recentPayments.map((payment) => ({
         type: "payment",
@@ -1760,7 +1771,6 @@ userSchema.statics.getRecentActivities = async function (days = 7, limit = 10) {
       })),
     };
 
-    // Combine all activities into a single timeline
     const allActivities = [
       ...formatActivities.recent_users,
       ...formatActivities.recent_templates,
