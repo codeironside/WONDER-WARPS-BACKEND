@@ -47,15 +47,18 @@ class StoryPersonalizer {
         throw new ErrorHandler("This book template is not personalizable", 400);
       }
 
-      console.log(
-        `Personalizing template "${template.book_title}" for ${childName}`,
+      const finalGender = await this.extractGenderFromPhoto(
+        gender,
+        validationResult,
+        photoUrl,
       );
-      console.log("Photo URL provided:", !!photoUrl);
+      personalizationDetails.gender = finalGender;
 
-      if (photoUrl && validationResult) {
-        this.checkPersonalizationAccuracy(
-          validationResult,
-          personalizationDetails,
+      const usePhotoData = this.shouldUsePhotoData(validationResult);
+
+      if (photoUrl && validationResult && !usePhotoData) {
+        console.warn(
+          "Photo data insufficient, falling back to manual characteristics",
         );
       }
 
@@ -68,11 +71,16 @@ class StoryPersonalizer {
         template,
         personalizedStory,
         personalizationDetails,
+        usePhotoData,
       );
+
+      const storySummary = await this.generateStorySummary(personalizedStory);
 
       const personalizedCover = await this.generatePersonalizedCoverWithGPT(
         personalizedStory,
         personalizationDetails,
+        usePhotoData,
+        storySummary,
       );
 
       const storybookContent = this.assemblePersonalizedBook(
@@ -90,9 +98,17 @@ class StoryPersonalizer {
           original_template_id: templateId,
           original_template_title: template.book_title,
           used_photo: !!photoUrl,
+          used_photo_data: usePhotoData,
           data_quality:
             validationResult?.dataQuality?.overallConfidence || "manual_input",
           confidence_warnings: validationResult?.warnings || [],
+          extracted_gender: finalGender,
+          gender_source: gender
+            ? "manual"
+            : validationResult
+              ? "photo"
+              : "default",
+          story_summary: storySummary,
         },
       };
     } catch (error) {
@@ -104,38 +120,340 @@ class StoryPersonalizer {
     }
   }
 
-  checkPersonalizationAccuracy(validationResult, personalizationDetails) {
-    const { dataQuality, warnings } = validationResult;
-
-    if (dataQuality && dataQuality.overallConfidence === "low") {
-      console.warn("LOW CONFIDENCE PERSONALIZATION:", {
-        childName: personalizationDetails.childName,
-        warnings: dataQuality.warnings,
-        recommendations: dataQuality.recommendations,
+  async generateStorySummary(personalizedStory) {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `Create a brief, vivid summary of this children's story that captures its main themes, settings, and magical elements. Focus on the overall adventure and emotional journey. Return ONLY a JSON object:
+            {
+              "summary": "2-3 sentence summary of the entire story",
+              "main_themes": ["array of 3-5 key themes"],
+              "key_settings": ["array of 2-4 main locations"],
+              "magical_elements": ["array of 3-5 magical/fantasy elements"]
+            }`,
+          },
+          {
+            role: "user",
+            content: `STORY TITLE: ${personalizedStory.book_title}
+            
+            CHAPTERS:
+            ${personalizedStory.chapters
+              .map(
+                (chapter, index) =>
+                  `Chapter ${index + 1}: ${chapter.chapter_title}\n${chapter.chapter_content}`,
+              )
+              .join("\n\n")}`,
+          },
+        ],
+        max_tokens: 800,
+        response_format: { type: "json_object" },
       });
 
-      if (!dataQuality.canProceed) {
-        throw new ErrorHandler(
-          "Image quality is too poor for accurate personalization. " +
-            "Please use a different photo or manually specify characteristics.",
-          400,
+      const content = response.choices[0].message.content.trim();
+      return JSON.parse(content);
+    } catch (error) {
+      console.error("Error generating story summary:", error);
+      return {
+        summary: "A magical adventure story filled with wonder and excitement",
+        main_themes: ["adventure", "friendship", "courage"],
+        key_settings: ["magical lands", "enchanted forests"],
+        magical_elements: ["magic", "fantasy creatures", "wonder"],
+      };
+    }
+  }
+
+  async extractGenderFromPhoto(manualGender, validationResult, photoUrl) {
+    if (
+      manualGender &&
+      (manualGender === "male" || manualGender === "female")
+    ) {
+      return manualGender;
+    }
+    if (
+      validationResult?.analysis?.gender &&
+      validationResult.analysis.gender !== "unknown"
+    ) {
+      const photoGender = validationResult.analysis.gender;
+      return photoGender;
+    }
+    if (photoUrl && !manualGender) {
+      try {
+        const genderFromPhoto = await this.extractGenderDirectly(photoUrl);
+        if (genderFromPhoto) {
+          return genderFromPhoto;
+        }
+      } catch (error) {
+        console.warn(
+          "Failed to extract gender directly from photo:",
+          error.message,
         );
       }
     }
 
-    if (warnings && warnings.length > 0) {
-      warnings.forEach((warning) => {
-        console.warn(
-          `Personalization Warning for ${personalizationDetails.childName}:`,
-          warning,
-        );
+    if (manualGender) {
+      return manualGender;
+    }
+
+    return "female";
+  }
+
+  async extractGenderDirectly(photoUrl) {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this image and determine the gender of the child. Return ONLY a JSON object with this structure:
+                {
+                  "gender": "male" or "female" or "unknown",
+                  "confidence": "high" or "medium" or "low",
+                  "reasons": ["short array of reasons"]
+                }`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: photoUrl },
+              },
+            ],
+          },
+        ],
+        max_tokens: 500,
+        response_format: { type: "json_object" },
       });
+
+      const content = response.choices[0].message.content;
+      if (!content) {
+        console.warn("Empty response from OpenAI for gender extraction");
+        return null;
+      }
+
+      const trimmedContent = content.trim();
+      const result = JSON.parse(trimmedContent);
+
+      if (
+        result.gender &&
+        result.gender !== "unknown" &&
+        result.confidence === "high"
+      ) {
+        return result.gender;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error extracting gender directly:", error);
+      return null;
     }
   }
 
+  shouldUsePhotoData(validationResult) {
+    if (
+      !validationResult ||
+      !validationResult.analysis ||
+      !validationResult.analysis.characteristics
+    ) {
+      return false;
+    }
+
+    const characteristics = validationResult.analysis.characteristics;
+    const requiredFields = [
+      "skin_tone",
+      "hair_type",
+      "hairstyle",
+      "hair_color",
+      "eye_color",
+    ];
+    const highConfidenceFields = requiredFields.filter(
+      (field) =>
+        characteristics[field]?.confidence === "high" &&
+        characteristics[field]?.value &&
+        characteristics[field]?.value !== "unknown" &&
+        characteristics[field]?.value.trim() !== "",
+    );
+
+    const hasSufficientData = highConfidenceFields.length >= 3;
+
+    return hasSufficientData;
+  }
+
+  getMergedCharacteristics(personalizationDetails, usePhotoData) {
+    const {
+      skinTone,
+      hairType,
+      hairStyle,
+      hairColor,
+      eyeColor,
+      clothing,
+      validationResult,
+    } = personalizationDetails;
+
+    if (usePhotoData && validationResult?.analysis?.characteristics) {
+      const photoChars = validationResult.analysis.characteristics;
+
+      const enhancedCharacteristics = this.extractEnhancedCharacteristics(
+        photoChars,
+        validationResult.analysis,
+      );
+
+      const mergedCharacteristics = {
+        skinTone: this.getBestCharacteristic(photoChars.skin_tone, skinTone),
+        hairType: this.getBestCharacteristic(photoChars.hair_type, hairType),
+        hairStyle: this.getBestCharacteristic(photoChars.hairstyle, hairStyle),
+        hairColor: this.getBestCharacteristic(photoChars.hair_color, hairColor),
+        eyeColor: this.getBestCharacteristic(photoChars.eye_color, eyeColor),
+        clothing: this.getBestCharacteristic(photoChars.clothing, clothing),
+
+        faceShape: enhancedCharacteristics.faceShape,
+        facialFeatures: enhancedCharacteristics.facialFeatures,
+        eyebrowShape: enhancedCharacteristics.eyebrowShape,
+        noseShape: enhancedCharacteristics.noseShape,
+        lipShape: enhancedCharacteristics.lipShape,
+        eyeShape: enhancedCharacteristics.eyeShape,
+        cheekShape: enhancedCharacteristics.cheekShape,
+        jawline: enhancedCharacteristics.jawline,
+        forehead: enhancedCharacteristics.forehead,
+        earShape: enhancedCharacteristics.earShape,
+        distinctiveMarks: enhancedCharacteristics.distinctiveMarks,
+        expression: enhancedCharacteristics.expression,
+        hairTexture: enhancedCharacteristics.hairTexture,
+        hairLength: enhancedCharacteristics.hairLength,
+        hairParting: enhancedCharacteristics.hairParting,
+        eyebrowColor: enhancedCharacteristics.eyebrowColor,
+        eyelashType: enhancedCharacteristics.eyelashType,
+        complexion: enhancedCharacteristics.complexion,
+
+        source: "photo",
+      };
+
+      return mergedCharacteristics;
+    }
+
+    const manualCharacteristics = {
+      skinTone: skinTone || "light",
+      hairType: hairType || "straight",
+      hairStyle: hairStyle || "simple",
+      hairColor: hairColor || "brown",
+      eyeColor: eyeColor || "brown",
+      clothing: clothing || "casual",
+      source: "manual",
+    };
+
+    return manualCharacteristics;
+  }
+
+  extractEnhancedCharacteristics(characteristics, analysis) {
+    const enhanced = {
+      faceShape: this.inferFaceShape(characteristics),
+      cheekShape: "rounded",
+      jawline: "soft",
+      forehead: "average",
+      eyeShape: "almond",
+      noseShape: "button",
+      lipShape: "full",
+      earShape: "standard",
+      hairTexture: this.inferHairTexture(characteristics.hair_type?.value),
+      hairLength: this.inferHairLength(characteristics.hairstyle?.value),
+      hairParting: this.inferHairParting(characteristics.hairstyle?.value),
+      eyebrowShape: "natural",
+      eyebrowColor: characteristics.hair_color?.value || "natural",
+      eyelashType: "natural",
+      complexion: this.inferComplexion(characteristics.skin_tone?.value),
+      distinctiveMarks: [],
+      expression: "happy",
+      facialFeatures: [],
+    };
+
+    if (characteristics.facial_features?.values) {
+      enhanced.facialFeatures = characteristics.facial_features.values;
+    }
+
+    this.addInferredFeatures(enhanced, characteristics, analysis);
+
+    return enhanced;
+  }
+
+  inferFaceShape(characteristics) {
+    if (characteristics.facial_features?.values) {
+      const features = characteristics.facial_features.values;
+      if (features.some((f) => f.includes("round") || f.includes("chubby")))
+        return "round";
+      if (features.some((f) => f.includes("oval"))) return "oval";
+      if (features.some((f) => f.includes("heart"))) return "heart";
+    }
+    return "oval";
+  }
+
+  inferHairTexture(hairType) {
+    if (!hairType) return "medium";
+    if (hairType.includes("curly") || hairType.includes("afro")) return "curly";
+    if (hairType.includes("wavy")) return "wavy";
+    if (hairType.includes("straight")) return "straight";
+    return "medium";
+  }
+
+  inferHairLength(hairstyle) {
+    if (!hairstyle) return "medium";
+    if (
+      hairstyle.includes("long") ||
+      hairstyle.includes("braid") ||
+      hairstyle.includes("ponytail")
+    )
+      return "long";
+    if (hairstyle.includes("short") || hairstyle.includes("buzz"))
+      return "short";
+    if (hairstyle.includes("shoulder")) return "medium";
+    return "medium";
+  }
+
+  inferHairParting(hairstyle) {
+    if (!hairstyle) return "center";
+    if (hairstyle.includes("side")) return "side";
+    if (hairstyle.includes("middle")) return "center";
+    return "center";
+  }
+
+  inferComplexion(skinTone) {
+    if (!skinTone) return "clear";
+    if (skinTone.includes("fair") || skinTone.includes("light")) return "fair";
+    if (skinTone.includes("olive")) return "olive";
+    if (skinTone.includes("dark") || skinTone.includes("deep")) return "deep";
+    return "clear";
+  }
+
+  addInferredFeatures(enhanced, characteristics, analysis) {
+    enhanced.facialFeatures.push("youthful", "soft_features");
+    if (analysis.face_confidence === "high") {
+      enhanced.facialFeatures.push("clear_visibility", "well_defined");
+    }
+    if (characteristics.eye_color?.value) {
+      enhanced.facialFeatures.push(`${characteristics.eye_color.value}_eyes`);
+    }
+
+    if (characteristics.hair_color?.value) {
+      enhanced.facialFeatures.push(`${characteristics.hair_color.value}_hair`);
+    }
+  }
+
+  getBestCharacteristic(photoChar, manualChar) {
+    if (
+      photoChar?.confidence === "high" &&
+      photoChar?.value &&
+      photoChar.value !== "unknown" &&
+      photoChar.value.trim() !== ""
+    ) {
+      return photoChar.value;
+    }
+    return manualChar;
+  }
+
   async rewriteStoryWithAI(template, personalizationDetails) {
-    const { childName, childAge, gender, validationResult } =
-      personalizationDetails;
+    const { childName, childAge, gender } = personalizationDetails;
 
     try {
       const originalStory = {
@@ -147,15 +465,6 @@ class StoryPersonalizer {
           image_position: chapter.image_position,
         })),
       };
-
-      let characteristicsNote = "";
-      if (
-        validationResult &&
-        validationResult.dataQuality &&
-        validationResult.dataQuality.overallConfidence === "low"
-      ) {
-        characteristicsNote = `\n\nNOTE: Image analysis had low confidence. Focus on the provided name, age, and gender rather than physical characteristics from the photo.`;
-      }
 
       const response = await this.openai.chat.completions.create({
         model: "gpt-4o",
@@ -171,7 +480,6 @@ class StoryPersonalizer {
 4. ONLY CHANGE CHARACTER DETAILS: Replace the main character's name, age, and gender references
 5. CONSISTENT CHARACTER: Ensure ${childName} appears as the main character in every chapter
 6. RETURN FORMAT: You MUST return a valid JSON object with the exact structure below
-7. AVOID PHYSICAL DESCRIPTIONS: If image quality is poor, avoid detailed physical descriptions${characteristicsNote}
 
 **JSON Structure:**
 {
@@ -230,8 +538,6 @@ Please personalize this story exactly, keeping the same plot and structure but m
         personalizedStory = JSON.parse(jsonContent);
       } catch (parseError) {
         console.error("Failed to parse personalized story JSON:", parseError);
-        console.log("Raw response:", content);
-
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
@@ -282,58 +588,37 @@ Please personalize this story exactly, keeping the same plot and structure but m
     template,
     personalizedStory,
     personalizationDetails,
+    usePhotoData,
   ) {
-    const {
-      childName,
-      childAge,
-      skinTone,
-      hairType,
-      hairStyle,
-      hairColor,
-      eyeColor,
-      clothing,
-      gender,
-      photoUrl,
-      validationResult,
-    } = personalizationDetails;
+    const { childName, photoUrl, validationResult } = personalizationDetails;
 
     const imagePromises = template.chapters.map(
       async (originalChapter, index) => {
         try {
           const personalizedChapter = personalizedStory.chapters[index];
+          const mergedChars = this.getMergedCharacteristics(
+            personalizationDetails,
+            usePhotoData,
+          );
 
           let imageUrl;
-          if (photoUrl) {
-            // Only customize images to look like photo when photo URL is provided
-            const canUsePhoto =
-              !validationResult ||
-              (validationResult.dataQuality &&
-                validationResult.dataQuality.canProceed !== false);
-
-            if (canUsePhoto) {
-              imageUrl = await this.generateImageFromPhotoWithGPT(
-                photoUrl,
-                personalizedChapter.image_description,
-                originalChapter.image_position,
-                childName,
-                childAge,
-                gender,
-                validationResult?.characteristics,
-              );
-            } else {
-              // Fall back to description-based generation if photo quality is poor
-              imageUrl = await this.generateImageFromDescriptionWithGPT(
-                personalizedChapter.image_description,
-                originalChapter.image_position,
-                personalizationDetails,
-              );
-            }
+          if (photoUrl && usePhotoData) {
+            imageUrl = await this.generateImageFromPhotoWithGPT(
+              photoUrl,
+              personalizedChapter.image_description,
+              originalChapter.image_position,
+              childName,
+              personalizationDetails,
+              validationResult,
+              mergedChars,
+            );
           } else {
-            // No photo URL provided - use description only
             imageUrl = await this.generateImageFromDescriptionWithGPT(
               personalizedChapter.image_description,
               originalChapter.image_position,
+              childName,
               personalizationDetails,
+              mergedChars,
             );
           }
 
@@ -365,244 +650,251 @@ Please personalize this story exactly, keeping the same plot and structure but m
     imageDescription,
     imagePosition,
     childName,
-    childAge,
-    gender,
-    characteristics,
+    personalizationDetails,
+    validationResult,
+    mergedChars,
   ) {
     try {
-      const enhancedPrompt = await this.createEnhancedPromptFromPhoto(
-        photoUrl,
-        imageDescription,
-        imagePosition,
-        childName,
-        childAge,
-        gender,
-        characteristics,
+      const { childAge, gender } = personalizationDetails;
+
+      let characteristicsText = this.buildComprehensiveCharacteristics(
+        validationResult?.analysis?.characteristics,
+        mergedChars,
       );
 
-      return await this.generateDalleImage(enhancedPrompt);
+      const prompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
+${characteristicsText}
+
+SCENE DESCRIPTION: ${imageDescription}
+IMAGE POSITION: ${imagePosition}
+CHARACTER: ${childName}, ${childAge} years old, ${gender}
+
+ABSOLUTELY MANDATORY - NO EXCEPTIONS:
+- CHARACTER MUST MATCH REFERENCE PHOTO EXACTLY - NO DEVIATIONS
+- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
+- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
+- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
+- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE CONSISTENT IN EVERY IMAGE
+- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
+- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
+- NO SPEECH BUBBLES: No dialogue containers or thought bubbles
+- NO LABELS: No captions, titles, or text elements
+- NO BOOK COVERS: No book-like elements that might contain text
+- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
+- SINGLE IMAGE ONLY: One unified illustration, no multiple panels or split scenes
+- NO BORDERS: No decorative borders that might frame text
+- NO BACKGROUND TEXT: No text in the background, on objects, or anywhere
+- EXACT CHARACTER MATCH: The character must look IDENTICAL to the reference photo
+- CONSISTENT FEATURES: Maintain exact skin tone, hair, eyes, and facial features from photo
+
+Style: Whimsical Studio Ghibli animation with soft lighting, vibrant colors, NO TEXT ELEMENTS.
+Composition: Single ${imagePosition} scene, no multiple images.
+
+FINAL WARNING: The character must be an exact visual match to the reference photo with "${mergedChars.eyeColor}" eyes and "${mergedChars.hairStyle}" hairstyle. NO TEXT ANYWHERE.`;
+
+      return await this.generateStrictDalleImage(prompt);
     } catch (error) {
       console.error("Error generating image from photo with GPT:", error);
       throw error;
     }
   }
 
-  async createEnhancedPromptFromPhoto(
-    photoUrl,
-    imageDescription,
-    imagePosition,
-    childName,
-    childAge,
-    gender,
-    characteristics,
-  ) {
-    const appearanceDescription = await this.analyzePhotoWithGPT(photoUrl);
+  buildComprehensiveCharacteristics(characteristics, mergedChars) {
+    let characteristicsText =
+      "CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:\n";
 
-    let characteristicsText = "";
-    if (characteristics) {
-      const highConfidenceFeatures = [];
+    characteristicsText += `- Skin tone: "${mergedChars.skinTone}" (EXACT MATCH REQUIRED)\n`;
+    characteristicsText += `- Hair color: "${mergedChars.hairColor}" (EXACT MATCH REQUIRED)\n`;
+    characteristicsText += `- Hairstyle: "${mergedChars.hairStyle}" (EXACT MATCH REQUIRED)\n`;
+    characteristicsText += `- Eye color: "${mergedChars.eyeColor}" (MUST BE EXACT IN EVERY IMAGE)\n`;
+    characteristicsText += `- Clothing style: "${mergedChars.clothing}"\n`;
 
-      Object.entries(characteristics).forEach(([key, value]) => {
-        if (
-          value &&
-          typeof value === "object" &&
-          value.confidence === "high" &&
-          value.value !== "unknown"
-        ) {
-          highConfidenceFeatures.push(`${key}: ${value.value}`);
-        }
-      });
+    if (mergedChars.faceShape)
+      characteristicsText += `- Face shape: "${mergedChars.faceShape}"\n`;
+    if (mergedChars.eyeShape)
+      characteristicsText += `- Eye shape: "${mergedChars.eyeShape}"\n`;
+    if (mergedChars.noseShape)
+      characteristicsText += `- Nose shape: "${mergedChars.noseShape}"\n`;
+    if (mergedChars.lipShape)
+      characteristicsText += `- Lip shape: "${mergedChars.lipShape}"\n`;
+    if (mergedChars.hairTexture)
+      characteristicsText += `- Hair texture: "${mergedChars.hairTexture}"\n`;
+    if (mergedChars.complexion)
+      characteristicsText += `- Complexion: "${mergedChars.complexion}"\n`;
 
-      if (highConfidenceFeatures.length > 0) {
-        characteristicsText = `CONFIRMED FEATURES: ${highConfidenceFeatures.join(", ")}. `;
-      }
+    if (mergedChars.facialFeatures && mergedChars.facialFeatures.length > 0) {
+      characteristicsText += `- Distinctive features: ${mergedChars.facialFeatures.slice(0, 3).join(", ")}\n`;
     }
 
-    return `Children's book illustration in Studio Ghibli style.
+    characteristicsText +=
+      "ALL CHARACTERISTICS MUST BE VISUALLY EXACT IN THE FINAL IMAGE. NO DEVIATIONS ALLOWED.";
 
-SCENE: ${imageDescription}
-IMAGE POSITION: ${imagePosition}
-MAIN CHARACTER: ${childName}, ${childAge} years old, ${gender}
-${characteristicsText}
-CHARACTER APPEARANCE: ${appearanceDescription}
-
-CRITICAL REQUIREMENTS - DO NOT IGNORE:
-- ABSOLUTELY NO TEXT: The image must contain zero text, words, letters, numbers, symbols, or writing of any kind
-- NO SPEECH BUBBLES: Do not include speech bubbles or dialogue containers
-- NO LABELS: Do not include any labels, captions, or text elements
-- NO BOOK TITLES: Do not include any book titles or text on the image
-- PURE ILLUSTRATION: This must be a pure illustration with only visual elements
-- SINGLE IMAGE: Create exactly one image - no multiple images or panels
-- CHARACTER LIKENESS: The main character must look like the reference photo
-
-Style: Whimsical, magical Studio Ghibli animation style with soft lighting and vibrant colors.
-Composition: Use ${imagePosition} layout as specified.
-Focus on creating an engaging, professional children's book illustration that is completely free of any text elements and resembles the child in the reference photo.`;
-  }
-
-  async analyzePhotoWithGPT(photoUrl) {
-    try {
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Describe this child's appearance in detail, focusing on: skin tone, hair style, hair color, eye color, facial features, and clothing. Be specific and descriptive for illustration purposes. If any features are unclear, mention that they are not clearly visible.",
-              },
-              {
-                type: "image_url",
-                image_url: { url: photoUrl },
-              },
-            ],
-          },
-        ],
-        max_tokens: 300,
-      });
-
-      return response.choices[0].message.content;
-    } catch (error) {
-      console.error("Error analyzing photo with GPT:", error);
-      return "a child with typical features";
-    }
+    return characteristicsText;
   }
 
   async generateImageFromDescriptionWithGPT(
     imageDescription,
     imagePosition,
+    childName,
     personalizationDetails,
+    mergedChars,
   ) {
-    const {
-      childName,
-      childAge,
-      skinTone,
-      hairType,
-      hairStyle,
-      hairColor,
-      eyeColor,
-      clothing,
-      gender,
-    } = personalizationDetails;
+    const { childAge, gender } = personalizationDetails;
 
-    const prompt = `Children's book illustration in Studio Ghibli style.
+    const prompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
 
-SCENE: ${imageDescription}
+CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:
+- Skin tone: "${mergedChars.skinTone}" (EXACT MATCH REQUIRED)
+- Hair color: "${mergedChars.hairColor}" (EXACT MATCH REQUIRED)
+- Hairstyle: "${mergedChars.hairStyle}" (EXACT MATCH REQUIRED)
+- Eye color: "${mergedChars.eyeColor}" (MUST BE EXACT IN EVERY IMAGE)
+- Clothing style: "${mergedChars.clothing}" (MAINTAIN CONSISTENCY)
+
+SCENE DESCRIPTION: ${imageDescription}
 IMAGE POSITION: ${imagePosition}
-MAIN CHARACTER: ${childName}, ${childAge} years old, ${gender}
-CHARACTER DETAILS:
-${skinTone ? `- Skin tone: ${skinTone}` : ""}
-${hairColor ? `- Hair color: ${hairColor}` : ""}
-${hairStyle ? `- Hairstyle: ${hairStyle}` : ""}
-${eyeColor ? `- Eye color: ${eyeColor}` : ""}
-${clothing ? `- Clothing: ${clothing}` : ""}
+CHARACTER: ${childName}, ${childAge} years old, ${gender}
 
-CRITICAL REQUIREMENTS - DO NOT IGNORE:
-- ABSOLUTELY NO TEXT: The image must contain zero text, words, letters, numbers, symbols, or writing of any kind
-- NO SPEECH BUBBLES: Do not include speech bubbles or dialogue containers
-- NO LABELS: Do not include any labels, captions, or text elements
-- NO BOOK TITLES: Do not include any book titles or text on the image
-- PURE ILLUSTRATION: This must be a pure illustration with only visual elements, without any text of any sort or kind
-- SINGLE IMAGE: Create exactly one image - no multiple images or panels
+ABSOLUTELY MANDATORY - NO EXCEPTIONS:
+- CHARACTER MUST MATCH THE SPECIFIED APPEARANCE EXACTLY - NO DEVIATIONS
+- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
+- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
+- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
+- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE CONSISTENT IN EVERY IMAGE
+- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
+- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
+- NO SPEECH BUBBLES: No dialogue containers or thought bubbles
+- NO LABELS: No captions, titles, or text elements
+- NO BOOK COVERS: No book-like elements that might contain text
+- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
+- SINGLE IMAGE ONLY: One unified illustration, no multiple panels or split scenes
+- NO BORDERS: No decorative borders that might frame text
+- NO BACKGROUND TEXT: No text in the background, on objects, or anywhere
+- NO PHOTO REFERENCES: Do not include any photographic elements or real-life references
 
-Style: Whimsical, magical Studio Ghibli animation style with soft lighting and vibrant colors.
-Composition: Use ${imagePosition} layout as specified.
-Create a professional children's book illustration that is completely free of any text elements.`;
+Style: Whimsical Studio Ghibli animation with soft lighting, vibrant colors, NO TEXT ELEMENTS.
+Composition: Single ${imagePosition} scene, no multiple images.
 
-    return await this.generateDalleImage(prompt);
+FINAL WARNING: The character must have exactly "${mergedChars.eyeColor}" eyes, "${mergedChars.hairStyle}" hairstyle, and "${mergedChars.skinTone}" skin tone. NO TEXT ANYWHERE.`;
+
+    return await this.generateStrictDalleImage(prompt);
   }
 
   async generatePersonalizedCoverWithGPT(
     personalizedStory,
     personalizationDetails,
+    usePhotoData,
+    storySummary,
   ) {
     try {
       const { childName, photoUrl, validationResult } = personalizationDetails;
+      const mergedChars = this.getMergedCharacteristics(
+        personalizationDetails,
+        usePhotoData,
+      );
 
       let coverPrompt;
 
-      if (photoUrl) {
-        // Only customize cover to look like photo when photo URL is provided
-        const canUsePhoto =
-          !validationResult ||
-          (validationResult.dataQuality &&
-            validationResult.dataQuality.canProceed !== false);
+      if (photoUrl && usePhotoData) {
+        const characteristics = validationResult?.analysis?.characteristics;
+        const characteristicsText = this.buildComprehensiveCharacteristics(
+          characteristics,
+          mergedChars,
+        );
 
-        if (canUsePhoto) {
-          const appearanceDescription =
-            await this.analyzePhotoWithGPT(photoUrl);
-          coverPrompt = `Children's book cover illustration in Studio Ghibli style.
+        coverPrompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
+${characteristicsText}
 
-MAIN CHARACTER: ${childName}
-CHARACTER APPEARANCE: ${appearanceDescription}
+STORY CONTEXT:
+- Title: ${personalizedStory.book_title}
+- Summary: ${storySummary.summary.substring(0, 200)}...
+- Main Themes: ${storySummary.main_themes.slice(0, 3).join(", ")}
+- Key Settings: ${storySummary.key_settings.slice(0, 2).join(", ")}
+- Magical Elements: ${storySummary.magical_elements.slice(0, 3).join(", ")}
 
-CRITICAL REQUIREMENTS - DO NOT IGNORE:
-- ABSOLUTELY NO TEXT: The image must contain zero text, words, letters, numbers, symbols, or writing of any kind
-- NO SPEECH BUBBLES: Do not include speech bubbles or dialogue containers
-- NO LABELS: Do not include any labels, captions, or text elements
-- NO BOOK TITLES: Do not include any book titles or text on the image
-- PURE ILLUSTRATION: This must be a pure illustration with only visual elements
-- SINGLE IMAGE: Create exactly one image - no multiple images or panels
-- COVER STYLE: Create a magical, engaging cover illustration that represents adventure and wonder
-- CHARACTER LIKENESS: The main character must look like the reference photo
+CHARACTER: ${childName}
+COVER REQUIREMENTS:
+- Capture the essence of the entire story journey
+- Show ${childName} in a moment that represents the story's adventure
+- Include visual references to main settings and magical elements
 
-Style: Magical Studio Ghibli cover art, vibrant colors, engaging composition.
-Create a cover illustration that represents the story's adventure and magic while being completely free of any text elements and resembles the child in the reference photo.`;
-        } else {
-          // Fall back to description-based cover
-          const { skinTone, hairColor, eyeColor, clothing, gender, childAge } =
-            personalizationDetails;
+ABSOLUTELY MANDATORY - NO EXCEPTIONS:
+- CHARACTER MUST MATCH REFERENCE PHOTO EXACTLY - NO DEVIATIONS
+- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
+- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
+- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
+- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE EXACT
+- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
+- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
+- NO TITLES: No book titles, author names, or any text
+- NO SPEECH BUBBLES: No dialogue containers
+- NO LABELS: No captions or text elements
+- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
+- SINGLE IMAGE ONLY: One unified illustration, no multiple panels
+- NO BOOK COVER DESIGN: Avoid traditional cover layout that suggests text areas
+- NO BORDERS: No frames or borders
+- EXACT CHARACTER MATCH: The character must look IDENTICAL to the reference photo
+- EYE COLOR CONSISTENCY: Eye color must be exactly "${mergedChars.eyeColor}"
+- MAGICAL ATMOSPHERE: Create a sense of wonder and adventure without text
 
-          coverPrompt = `Children's book cover illustration in Studio Ghibli style.
+Style: Magical Studio Ghibli artwork, vibrant colors, engaging composition, COMPLETELY TEXT-FREE.
 
-MAIN CHARACTER: ${childName}, ${childAge} years old, ${gender}
-CHARACTER DETAILS:
-${skinTone ? `- Skin tone: ${skinTone}` : ""}
-${hairColor ? `- Hair color: ${hairColor}` : ""}
-${eyeColor ? `- Eye color: ${eyeColor}` : ""}
-${clothing ? `- Clothing: ${clothing}` : ""}
-
-CRITICAL REQUIREMENTS - DO NOT IGNORE:
-- ABSOLUTELY NO TEXT: The image must contain zero text, words, letters, numbers, symbols, or writing of any kind
-- NO SPEECH BUBBLES: Do not include speech bubbles or dialogue containers
-- NO LABELS: Do not include any labels, captions, or text elements
-- NO BOOK TITLES: Do not include any book titles or text on the image
-- PURE ILLUSTRATION: This must be a pure illustration with only visual elements
-- SINGLE IMAGE: Create exactly one image - no multiple images or panels
-- COVER STYLE: Create a magical, engaging cover illustration that represents adventure and wonder
-
-Style: Magical Studio Ghibli cover art, vibrant colors, engaging composition.
-Create a cover illustration that represents the story's adventure and magic while being completely free of any text elements.`;
-        }
+FINAL WARNING: ${childName} must look exactly like the reference photo with "${mergedChars.eyeColor}" eyes and "${mergedChars.hairStyle}" hairstyle. NO TEXT ELEMENTS WHATSOEVER.`;
       } else {
-        // No photo URL provided - use description only
-        const { skinTone, hairColor, eyeColor, clothing, gender, childAge } =
-          personalizationDetails;
+        const { childAge, gender } = personalizationDetails;
+        coverPrompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
 
-        coverPrompt = `Children's book cover illustration in Studio Ghibli style.
+CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:
+- Skin tone: "${mergedChars.skinTone}" (EXACT MATCH REQUIRED)
+- Hair color: "${mergedChars.hairColor}" (EXACT MATCH REQUIRED)
+- Hairstyle: "${mergedChars.hairStyle}" (EXACT MATCH REQUIRED)
+- Eye color: "${mergedChars.eyeColor}" (MUST BE EXACT IN EVERY IMAGE)
+- Clothing style: "${mergedChars.clothing}" (MAINTAIN CONSISTENCY)
 
-MAIN CHARACTER: ${childName}, ${childAge} years old, ${gender}
-CHARACTER DETAILS:
-${skinTone ? `- Skin tone: ${skinTone}` : ""}
-${hairColor ? `- Hair color: ${hairColor}` : ""}
-${eyeColor ? `- Eye color: ${eyeColor}` : ""}
-${clothing ? `- Clothing: ${clothing}` : ""}
+STORY CONTEXT:
+- Title: ${personalizedStory.book_title}
+- Summary: ${storySummary.summary.substring(0, 200)}...
+- Main Themes: ${storySummary.main_themes.slice(0, 3).join(", ")}
+- Key Settings: ${storySummary.key_settings.slice(0, 2).join(", ")}
+- Magical Elements: ${storySummary.magical_elements.slice(0, 3).join(", ")}
 
-CRITICAL REQUIREMENTS - DO NOT IGNORE:
-- ABSOLUTELY NO TEXT: The image must contain zero text, words, letters, numbers, symbols, or writing of any kind
-- NO SPEECH BUBBLES: Do not include speech bubbles or dialogue containers
-- NO LABELS: Do not include any labels, captions, or text elements
-- NO BOOK TITLES: Do not include any book titles or text on the image
-- PURE ILLUSTRATION: This must be a pure illustration with only visual elements
-- SINGLE IMAGE: Create exactly one image - no multiple images or panels
-- COVER STYLE: Create a magical, engaging cover illustration that represents adventure and wonder
+CHARACTER: ${childName}, ${childAge} years old, ${gender}
+COVER REQUIREMENTS:
+- Capture the essence of the entire story journey
+- Show ${childName} in a moment that represents the story's adventure
+- Include visual references to main settings and magical elements
 
-Style: Magical Studio Ghibli cover art, vibrant colors, engaging composition.
-Create a cover illustration that represents the story's adventure and magic while being completely free of any text elements.`;
+ABSOLUTELY MANDATORY - NO EXCEPTIONS:
+- CHARACTER MUST MATCH THE SPECIFIED APPEARANCE EXACTLY - NO DEVIATIONS
+- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
+- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
+- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
+- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE EXACT
+- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
+- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
+- NO TITLES: No book titles, author names, or any text
+- NO SPEECH BUBBLES: No dialogue containers
+- NO LABELS: No captions or text elements
+- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
+- SINGLE IMAGE ONLY: One unified illustration, no multiple panels
+- NO BOOK COVER DESIGN: Avoid traditional cover layout that suggests text areas
+- NO BORDERS: No frames or borders
+- MAGICAL ATMOSPHERE: Create a sense of wonder and adventure without text
+- NO PHOTO REFERENCES: Do not include any photographic elements or real-life references
+
+Style: Magical Studio Ghibli artwork, vibrant colors, engaging composition, COMPLETELY TEXT-FREE.
+
+FINAL WARNING: ${childName} must have exactly "${mergedChars.eyeColor}" eyes, "${mergedChars.hairStyle}" hairstyle, and "${mergedChars.skinTone}" skin tone. NO TEXT ELEMENTS WHATSOEVER.`;
       }
 
-      const imageUrl = await this.generateDalleImage(coverPrompt);
+      // Check prompt length and truncate if necessary
+      if (coverPrompt.length > 3900) {
+        console.warn(
+          `Cover prompt too long (${coverPrompt.length} chars), truncating...`,
+        );
+        coverPrompt = coverPrompt.substring(0, 3900) + "... [TRUNCATED]";
+      }
+
+      const imageUrl = await this.generateStrictDalleImage(coverPrompt);
 
       const s3Key = this.s3Service.generateImageKey(
         `personalized-books/${childName}/covers`,
@@ -615,10 +907,37 @@ Create a cover illustration that represents the story's adventure and magic whil
     }
   }
 
-  async generateDalleImage(prompt) {
+  async generateStrictDalleImage(prompt) {
     const enhancedPrompt =
       prompt +
-      " EXTREMELY IMPORTANT: The image must be completely free of any text, words, letters, numbers, or symbols. This is a pure visual illustration with zero text elements of any kind. again NO TEXT of any kind";
+      `
+
+ULTIMATE REQUIREMENTS - ABSOLUTELY NO EXCEPTIONS:
+1. CHARACTER APPEARANCE MUST BE EXACT AS SPECIFIED - NO DEVIATIONS
+2. ABSOLUTELY ZERO TEXT: No text, words, letters, numbers, or symbols anywhere
+3. SINGLE IMAGE: One unified illustration only
+4. NO SUGGESTIONS OF TEXT: Avoid any elements that might look like text
+5. PURE ILLUSTRATION: Visual-only artwork with zero textual elements
+6. NO EXCEPTIONS: No text in the final image under any circumstances
+7. CONSISTENT CHARACTER FEATURES: Maintain exact specified appearance
+8. NO PHOTOGRAPHIC ELEMENTS: Pure illustration only
+9. VISUAL STORYTELLING ONLY: Tell the story through visuals alone`;
+
+    // Check final prompt length
+    if (enhancedPrompt.length > 4000) {
+      console.warn(
+        `Final DALL-E prompt too long (${enhancedPrompt.length} chars), using original prompt`,
+      );
+      return await this.openai.images
+        .generate({
+          model: "dall-e-3",
+          prompt: prompt.substring(0, 4000),
+          size: "1024x1024",
+          quality: "hd",
+          n: 1,
+        })
+        .then((image) => image.data[0].url);
+    }
 
     const image = await this.openai.images.generate({
       model: "dall-e-3",
@@ -689,7 +1008,6 @@ Create a cover illustration that represents the story's adventure and magic whil
         price: price,
         personalized_content: personalizedContent,
         is_paid: false,
-        // Removed validation_data field as it's not allowed in the schema
       };
 
       const personalizedBook =
@@ -697,7 +1015,6 @@ Create a cover illustration that represents the story's adventure and magic whil
 
       try {
         await BookTemplate.incrementPopularity(templateId);
-        console.log(`Increased popularity for template ${templateId}`);
       } catch (error) {
         console.error(
           `Failed to increment popularity for template ${templateId}:`,
