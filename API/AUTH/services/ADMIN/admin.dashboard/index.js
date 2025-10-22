@@ -17,4 +17,3 @@ export async function getAdminDashboard(req, res, next) {
     next(error);
   }
 }
-
