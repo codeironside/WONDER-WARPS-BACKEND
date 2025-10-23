@@ -18,7 +18,6 @@ export const getAllReceiptsForAdmin = async (req, res, next) => {
 
     const receipts = await Receipt.findAllForAdmin({
       page: parseInt(page),
-      limit: parseInt(limit),
       sortBy,
       sortOrder,
       filters: {

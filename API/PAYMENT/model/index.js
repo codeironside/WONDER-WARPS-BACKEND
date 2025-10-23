@@ -604,9 +604,9 @@ class Receipt {
       return {
         receipts,
         pagination: {
-          page,
-          limit,
-          total,
+          page: parseInt(page),
+          limit: limit,
+          total: total,
           pages: Math.ceil(total / limit),
         },
       };
