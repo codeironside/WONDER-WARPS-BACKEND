@@ -564,12 +564,12 @@ class Receipt {
     try {
       const {
         page = 1,
-        limit = 20,
         sortBy = "createdAt",
         sortOrder = "desc",
         filters = {},
       } = options;
 
+      const limit = 20;
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
@@ -614,7 +614,6 @@ class Receipt {
       throw new ErrorHandler("Failed to retrieve receipts for admin", 500);
     }
   }
-
   static async findByReferenceCode(referenceCode, userId = null) {
     try {
       const query = { reference_code: referenceCode };
