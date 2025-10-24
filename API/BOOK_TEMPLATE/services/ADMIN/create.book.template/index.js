@@ -53,6 +53,7 @@ export const createBookTemplate = async (req, res, next) => {
     );
     sendResponse(res, 201, "Book template generated successfully", story);
   } catch (error) {
+    console.log(error)
     logger.error(`Failed to generate book template: ${error.message}`);
 
     if (error instanceof ErrorHandler) {
