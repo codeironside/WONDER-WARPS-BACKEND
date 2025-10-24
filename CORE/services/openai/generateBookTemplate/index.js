@@ -116,7 +116,7 @@ class StorybookGenerator {
     if (complexThemes.some((t) => theme.toLowerCase().includes(t))) {
       additionalChapters += 1;
     }
-    const randomVariation = Math.floor(Math.random() * 2); // 0 or 1
+    const randomVariation = Math.floor(Math.random() * 2);
 
     return Math.min(
       10,
@@ -251,7 +251,26 @@ You will return the story as a single JSON object with the following format:
 
       const storybookContent = this.addImagesToStory(storyData, images);
 
-      return { ...storybookContent, cover_image: [coverImage], author: name };
+      return {
+        story: {
+          ...storybookContent,
+          cover_image: [coverImage],
+          author: name,
+          genre: theme,
+          photo_url: photo_url || null,
+          skin_tone,
+          name,
+          hair_type,
+          hair_style: hairstyle,
+          hair_color,
+          eye_color,
+          facial_features: facial_features || null,
+          clothing,
+          gender,
+          age_min: age_min.toString(),
+          age_max: age_max.toString(),
+        },
+      };
     } catch (error) {
       console.error("Error generating story:", error);
       throw new ErrorHandler(
