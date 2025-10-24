@@ -611,7 +611,7 @@ class BookTemplate {
 
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
-      const query = { is_public: true };
+      const query = { is_personalizable: true };
       if (filters.genre) query.genre = filters.genre;
       if (filters.age_min) query.age_min = filters.age_min;
       if (filters.age_max) query.age_max = filters.age_max;
