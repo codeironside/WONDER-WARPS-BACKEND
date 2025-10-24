@@ -508,7 +508,7 @@ userSchema.statics.getPaymentStatistics = async function () {
 
     // Get total number of receipts
     const totalReceipts = await ReceiptModel.countDocuments({
-      status: "succeeded"
+      status: "succeeded",
     });
 
     // Revenue by month (last 6 months)

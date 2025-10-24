@@ -251,7 +251,7 @@ You will return the story as a single JSON object with the following format:
 
       const storybookContent = this.addImagesToStory(storyData, images);
 
-      return { ...storybookContent, coverImage, author: name };
+      return { ...storybookContent, cover_image: [coverImage], author: name };
     } catch (error) {
       console.error("Error generating story:", error);
       throw new ErrorHandler(
