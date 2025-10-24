@@ -490,6 +490,7 @@ userSchema.statics.getPersonalizedBookStatistics = async function () {
 userSchema.statics.getPaymentStatistics = async function () {
   try {
     const PersonalizedBookModel = mongoose.model("PersonalizedBook");
+    const ReceiptModel = mongoose.model("Receipt");
 
     const revenueStats = await PersonalizedBookModel.aggregate([
       {
@@ -504,6 +505,11 @@ userSchema.statics.getPaymentStatistics = async function () {
         },
       },
     ]);
+
+    // Get total number of receipts
+    const totalReceipts = await ReceiptModel.countDocuments({
+      status: "succeeded"
+    });
 
     // Revenue by month (last 6 months)
     const sixMonthsAgo = new Date();
@@ -551,10 +557,13 @@ userSchema.statics.getPaymentStatistics = async function () {
     ]);
 
     return {
-      revenue_statistics: revenueStats[0] || {
-        total_revenue: 0,
-        average_payment: 0,
-        count: 0,
+      revenue_statistics: {
+        ...(revenueStats[0] || {
+          total_revenue: 0,
+          average_payment: 0,
+          count: 0,
+        }),
+        total_receipts: totalReceipts,
       },
       revenue_by_month: revenueByMonth,
     };
@@ -562,7 +571,6 @@ userSchema.statics.getPaymentStatistics = async function () {
     throw new ErrorHandler("Failed to fetch payment statistics", 500);
   }
 };
-
 userSchema.statics.getAllRoles = async function () {
   try {
     return await RoleModel.getAllRoles();
