@@ -4,73 +4,32 @@ import ErrorHandler from "@/Error";
 
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
-    "full scene",
-    "character focus",
-    "action spotlight",
-    "top third",
-    "bottom third",
-    "diagonal spread",
-    "circular frame",
-    "speech bubble",
+    "full scene", "character focus", "action spotlight", "top third",
+    "bottom third", "diagonal spread", "circular frame", "speech bubble",
   ],
-
   MIDDLE_CHILD: [
-    "left panel",
-    "right panel",
-    "background layered",
-    "floating elements",
-    "comic strip",
-    "map integration",
-    "cutaway view",
-    "split screen",
+    "left panel", "right panel", "background layered", "floating elements",
+    "comic strip", "map integration", "cutaway view", "split screen",
   ],
-
   OLDER_CHILD: [
-    "text wrap",
-    "border integrated",
-    "corner accent",
-    "header banner",
-    "footer illustration",
-    "side bar",
-    "watermark style",
-    "interactive element",
+    "text wrap", "border integrated", "corner accent", "header banner",
+    "footer illustration", "side bar", "watermark style", "interactive element",
   ],
 };
 
 const SUGGESTED_FONTS = {
   YOUNGER_CHILD: [
-    "Comic Sans MS",
-    "KG Primary Penmanship",
-    "DK Crayon Crumble",
-    "OpenDyslexic",
-    "Sassoon Primary",
-    "Century Gothic",
-    "Verdana",
-    "Arial Rounded",
+    "Comic Sans MS", "KG Primary Penmanship", "DK Crayon Crumble", "OpenDyslexic",
+    "Sassoon Primary", "Century Gothic", "Verdana", "Arial Rounded",
   ],
-
   MIDDLE_CHILD: [
-    "Gill Sans",
-    "Trebuchet MS",
-    "Palatino",
-    "Georgia",
-    "Calibri",
-    "Cabin",
-    "Quicksand",
-    "Nunito",
+    "Gill Sans", "Trebuchet MS", "Palatino", "Georgia",
+    "Calibri", "Cabin", "Quicksand", "Nunito",
   ],
-
   OLDER_CHILD: [
-    "Times New Roman",
-    "Garamond",
-    "Baskerville",
-    "Helvetica",
-    "Lato",
-    "Merriweather",
-    "Roboto",
-    "Source Sans Pro",
+    "Times New Roman", "Garamond", "Baskerville", "Helvetica",
+    "Lato", "Merriweather", "Roboto", "Source Sans Pro",
   ],
-
   THEMED_FONTS: {
     fantasy: ["Papyrus", "Trajan Pro", "Uncial Antiqua"],
     adventure: ["Rockwell", "Copperplate", "Franklin Gothic"],
@@ -103,7 +62,6 @@ class StorybookGenerator {
       theme.toLowerCase().includes(key),
     );
     const themeFonts = themeKey ? SUGGESTED_FONTS.THEMED_FONTS[themeKey] : [];
-
     return [...new Set([...ageFonts, ...themeFonts])];
   }
 
@@ -117,32 +75,58 @@ class StorybookGenerator {
       additionalChapters += 1;
     }
     const randomVariation = Math.floor(Math.random() * 2);
+    return Math.min(10, Math.max(3, baseCount + additionalChapters + randomVariation));
+  }
 
-    return Math.min(
-      10,
-      Math.max(3, baseCount + additionalChapters + randomVariation),
-    );
+  cleanContent(text) {
+    return text
+      .replace(/^#+\s*Chapter\s*\d+:?\s*/gim, '')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  sanitizeImagePrompt(prompt) {
+    return prompt
+      .replace(/[#*_`]/g, '')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/[^\w\s.,!?\-]/g, '')
+      .trim()
+      .substring(0, 800);
+  }
+
+  _getVisualStyle(ageMin, theme) {
+    const lowerTheme = theme.toLowerCase();
+
+    if (lowerTheme.includes("sci_fi") || lowerTheme.includes("robot")) {
+      return "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots'";
+    }
+    if (lowerTheme.includes("humor") || lowerTheme.includes("funny")) {
+      return "in a quirky, expressive cartoon style like 'Mr. Bean: The Animated Series' or 'The Simpsons'";
+    }
+    if (lowerTheme.includes("fantasy") || lowerTheme.includes("magic")) {
+      return "with the vibrant, detailed animation of Disney's 'Frozen II' or the epic feel of 'Mulan'";
+    }
+    if (lowerTheme.includes("adventure") || lowerTheme.includes("explore")) {
+      return "in the beautiful, dynamic CGI style of Disney's 'Moana' or the anime-influenced look of 'Avatar: The Last Airbender'";
+    }
+
+    if (ageMin <= 6) {
+      return "in a simple, friendly 2D cartoon style with bold outlines and bright colors, like 'Peppa Pig' or classic 'Tom and Jerry'";
+    }
+    if (ageMin <= 10) {
+      return "in a modern 3D animation style with expressive characters and vibrant colors, reminiscent of Pixar's 'Inside Out' or Disney's 'Encanto'";
+    }
+    return "in a sophisticated, cinematic animation style with rich textures and atmospheric lighting, inspired by 'Klaus' or 'Avatar: The Last Airbender'";
   }
 
   async generateStory({
-    theme,
-    name = "",
-    photo_url = "",
-    skin_tone = "",
-    hair_type = "",
-    hairstyle = "",
-    hair_color = "",
-    eye_color = "",
-    facial_features = "",
-    clothing = "",
-    gender = "",
-    milestone_date = "",
-    age_min = 5,
-    age_max = 10,
-    prompt_message,
+    theme, name = "", photo_url = "", skin_tone = "", hair_type = "", hairstyle = "",
+    hair_color = "", eye_color = "", facial_features = "", clothing = "", gender = "",
+    milestone_date = "", age_min = 5, age_max = 10, prompt_message,
   }) {
     let prompt = `${theme}:\nWrite a full, detailed children's storybook with the following details:\n`;
-
     if (name) prompt += `- Name: ${name}\n`;
     if (photo_url) prompt += `- Photo URL: ${photo_url}\n`;
     if (skin_tone) prompt += `- Skin tone: ${skin_tone}\n`;
@@ -153,17 +137,12 @@ class StorybookGenerator {
     if (facial_features) prompt += `- Facial features: ${facial_features}\n`;
     if (clothing) prompt += `- Clothing: ${clothing}\n`;
     if (gender) prompt += `- Gender: ${gender}\n`;
-
     prompt += `\n${prompt_message}\n`;
 
     const ageGroup = this.getAgeGroup(age_min);
     const imagePositions = this.getImagePositions(ageGroup);
     const suggestedFonts = this.getSuggestedFonts(ageGroup, theme);
-    const targetChapterCount = this.calculateChapterCount(
-      age_min,
-      age_max,
-      theme,
-    );
+    const targetChapterCount = this.calculateChapterCount(age_min, age_max, theme);
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -179,6 +158,8 @@ class StorybookGenerator {
 * The tone should be similar to a whimsical Studio Ghibli film, full of imagination and wonder.
 * The story must be appropriate for the age range ${age_min}-${age_max}
 * Make sure ${name} is the main character throughout the entire story.
+* Do NOT use markdown formatting, chapter numbers, or special characters in chapter content.
+* Write chapter content as plain text paragraphs without any formatting.
 
 **Chapter Structure:**
 - Chapter 1: Introduction and setup
@@ -201,7 +182,7 @@ You will return the story as a single JSON object with the following format:
   "chapters": [
     {
       "chapter_title": "Engaging chapter title",
-      "chapter_content": "The full content of chapter 1, formatted with Markdown. Ensure ${name} is prominently featured.",
+      "chapter_content": "The full content of chapter 1 as plain text without markdown or chapter numbers. Ensure ${name} is prominently featured.",
       "image_description": "A brief, vivid description for an illustration featuring ${name}.",
       "image_position": "Choose from the available positions above"
     }
@@ -211,7 +192,7 @@ You will return the story as a single JSON object with the following format:
           },
           {
             role: "user",
-            content: `Using the details below, weave a captivating story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across ${targetChapterCount} chapters.
+            content: `Using the details below, weave a captivating story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across ${targetChapterCount} chapters. Use plain text without markdown or chapter numbers.
             
             Details for the story:
             ${prompt}`,
@@ -238,16 +219,26 @@ You will return the story as a single JSON object with the following format:
         throw new Error("No chapters generated");
       }
 
+      storyData.chapters.forEach(chapter => {
+        chapter.chapter_content = this.cleanContent(chapter.chapter_content);
+      });
+
       console.log(`Generated story with ${storyData.chapters.length} chapters`);
 
       const images = await this.generateImagesForChapters(
         storyData.chapters,
         age_min,
-        age_max,
         gender,
         name,
+        theme,
+        skin_tone,
+        hair_type,
+        hairstyle,
+        hair_color,
+        eye_color,
+        clothing
       );
-      const coverImage = await this.generateCoverImage(storyData, gender, name);
+      const coverImage = await this.generateCoverImage(storyData, gender, name, theme, age_min);
 
       const storybookContent = this.addImagesToStory(storyData, images);
 
@@ -268,28 +259,30 @@ You will return the story as a single JSON object with the following format:
           clothing,
           gender,
           age_min: age_min.toString(),
-          age_max: age_max.toString(),
-        },
+          age_max: age_max.toString()
+        }
       };
     } catch (error) {
       console.error("Error generating story:", error);
-      throw new ErrorHandler(
-        `Failed to generate the story: ${error.message}`,
-        500,
-      );
+      throw new ErrorHandler(`Failed to generate the story: ${error.message}`, 500);
     }
   }
 
-  async generateImagesForChapters(chapters, age_min, age_max, gender, name) {
+  async generateImagesForChapters(chapters, age_min, gender, name, theme, skin_tone, hair_type, hairstyle, hair_color, eye_color, clothing) {
     const imagePromises = chapters.map(async (chapter) => {
       try {
-        const imageDescription = chapter.image_description;
-        const backgroundStory = chapter.chapter_content;
+        const cleanImageDescription = this.sanitizeImagePrompt(chapter.image_description);
+        const visualStyle = this._getVisualStyle(age_min, theme);
+
+        const safePrompt = `Children's storybook illustration ${visualStyle}.
+        Main character: ${name}, a ${gender} child with ${skin_tone} skin, ${hair_color} ${hairstyle} ${hair_type} hair, ${eye_color} eyes, wearing ${clothing}.
+        Scene: ${cleanImageDescription}.
+        The illustration should be bright, friendly, whimsical, and child-friendly. No text or words in the image.`;
 
         const image = await this.openai.images.generate({
           model: "dall-e-3",
           response_format: "url",
-          prompt: `A dramatic, high-contrast illustration for a children's storybook featuring ${name}. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The story is for a ${gender} child named ${name}, aged ${age_min} to ${age_max}. The image should depict: ${imageDescription}. The scene must show: ${backgroundStory}. The lighting should be intense and cinematic. Absolutely no text, words, or letters should be present in any part of the image.`,
+          prompt: safePrompt,
           n: 1,
           quality: "standard",
           size: "1024x1024",
@@ -298,7 +291,7 @@ You will return the story as a single JSON object with the following format:
         return image.data[0].url;
       } catch (error) {
         console.error("Error generating chapter image:", error);
-        return null;
+        return `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`;
       }
     });
 
@@ -306,18 +299,19 @@ You will return the story as a single JSON object with the following format:
     return images.filter((url) => url !== null);
   }
 
-  async generateCoverImage(storyData, gender, name) {
-    const fullStoryText = storyData.chapters
-      .map((chapter) => chapter.chapter_content)
-      .join(" ");
+  async generateCoverImage(storyData, gender, name, theme, age_min) {
+    const visualStyle = this._getVisualStyle(age_min, theme);
 
-    const prompt = `A dramatic, high-contrast cover illustration for a children's storybook featuring ${name}. The style is bold, with exaggerated, cartoonish features and strong, angular shapes, reminiscent of rotoscoped animation. The book is titled "${storyData.book_title}" and features ${name} as the main character. The story involves: ${fullStoryText.substring(0, 500)}... The image should be magical and joyful, designed for a ${gender} child. Focus on soft, cinematic lighting, vibrant colors, and a hand-drawn, peaceful atmosphere. Absolutely no text, words, or letters should be present in any part of the image.`;
+    const safePrompt = `Children's book cover illustration ${visualStyle}.
+    Book title: "${storyData.book_title}".
+    A magical and joyful scene featuring the main character, ${name}, a ${gender} child protagonist.
+    The cover should be bright, friendly, and enchanting, suitable for a children's storybook. No text or words in the image.`;
 
     try {
       const coverImage = await this.openai.images.generate({
         model: "dall-e-3",
         response_format: "url",
-        prompt,
+        prompt: safePrompt,
         n: 1,
         quality: "hd",
         size: "1024x1024",
@@ -326,7 +320,7 @@ You will return the story as a single JSON object with the following format:
       return coverImage.data[0].url;
     } catch (error) {
       console.error("Error generating cover image:", error);
-      return null;
+      return `https://via.placeholder.com/1024x1024/FF6B6B/FFFFFF?text=Cover+Image+Coming+Soon`;
     }
   }
 
