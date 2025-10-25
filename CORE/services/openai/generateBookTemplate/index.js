@@ -4,31 +4,67 @@ import ErrorHandler from "@/Error";
 
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
-    "full scene", "character focus", "action spotlight", "top third",
-    "bottom third", "diagonal spread", "circular frame", "speech bubble",
+    "full scene",
+    "character focus",
+    "action spotlight",
+    "top third",
+    "bottom third",
+    "diagonal spread",
+    "circular frame",
+    "speech bubble",
   ],
   MIDDLE_CHILD: [
-    "left panel", "right panel", "background layered", "floating elements",
-    "comic strip", "map integration", "cutaway view", "split screen",
+    "left panel",
+    "right panel",
+    "background layered",
+    "floating elements",
+    "comic strip",
+    "map integration",
+    "cutaway view",
+    "split screen",
   ],
   OLDER_CHILD: [
-    "text wrap", "border integrated", "corner accent", "header banner",
-    "footer illustration", "side bar", "watermark style", "interactive element",
+    "text wrap",
+    "border integrated",
+    "corner accent",
+    "header banner",
+    "footer illustration",
+    "side bar",
+    "watermark style",
+    "interactive element",
   ],
 };
 
 const SUGGESTED_FONTS = {
   YOUNGER_CHILD: [
-    "Comic Sans MS", "KG Primary Penmanship", "DK Crayon Crumble", "OpenDyslexic",
-    "Sassoon Primary", "Century Gothic", "Verdana", "Arial Rounded",
+    "Comic Sans MS",
+    "KG Primary Penmanship",
+    "DK Crayon Crumble",
+    "OpenDyslexic",
+    "Sassoon Primary",
+    "Century Gothic",
+    "Verdana",
+    "Arial Rounded",
   ],
   MIDDLE_CHILD: [
-    "Gill Sans", "Trebuchet MS", "Palatino", "Georgia",
-    "Calibri", "Cabin", "Quicksand", "Nunito",
+    "Gill Sans",
+    "Trebuchet MS",
+    "Palatino",
+    "Georgia",
+    "Calibri",
+    "Cabin",
+    "Quicksand",
+    "Nunito",
   ],
   OLDER_CHILD: [
-    "Times New Roman", "Garamond", "Baskerville", "Helvetica",
-    "Lato", "Merriweather", "Roboto", "Source Sans Pro",
+    "Times New Roman",
+    "Garamond",
+    "Baskerville",
+    "Helvetica",
+    "Lato",
+    "Merriweather",
+    "Roboto",
+    "Source Sans Pro",
   ],
   THEMED_FONTS: {
     fantasy: ["Papyrus", "Trajan Pro", "Uncial Antiqua"],
@@ -75,56 +111,237 @@ class StorybookGenerator {
       additionalChapters += 1;
     }
     const randomVariation = Math.floor(Math.random() * 2);
-    return Math.min(10, Math.max(3, baseCount + additionalChapters + randomVariation));
+    return Math.min(
+      10,
+      Math.max(3, baseCount + additionalChapters + randomVariation),
+    );
   }
 
   cleanContent(text) {
     return text
-      .replace(/^#+\s*Chapter\s*\d+:?\s*/gim, '')
-      .replace(/\n/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/^#+\s*Chapter\s*\d+:?\s*/gim, "")
+      .replace(/\n/g, " ")
+      .replace(/\s+/g, " ")
       .trim();
   }
 
   sanitizeImagePrompt(prompt) {
     return prompt
-      .replace(/[#*_`]/g, '')
-      .replace(/\n/g, ' ')
-      .replace(/\s+/g, ' ')
-      .replace(/[^\w\s.,!?\-]/g, '')
+      .replace(/[#*_`]/g, "")
+      .replace(/\n/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/[^\w\s.,!?\-]/g, "")
       .trim()
       .substring(0, 800);
+  }
+
+  extractKeywords(storyData) {
+    const allContent = storyData.chapters
+      .map((chapter) => chapter.chapter_content + " " + chapter.chapter_title)
+      .join(" ")
+      .toLowerCase();
+
+    const commonKeywords = [
+      "adventure",
+      "friendship",
+      "magic",
+      "fantasy",
+      "bravery",
+      "courage",
+      "explore",
+      "journey",
+      "discovery",
+      "mystery",
+      "hero",
+      "quest",
+      "animal",
+      "forest",
+      "ocean",
+      "space",
+      "school",
+      "family",
+      "teamwork",
+      "imagination",
+      "dream",
+      "rescue",
+      "secret",
+      "treasure",
+      "map",
+      "island",
+      "castle",
+      "dragon",
+      "unicorn",
+      "fairy",
+      "wizard",
+      "robot",
+      "alien",
+      "pirate",
+      "knight",
+      "princess",
+      "superhero",
+      "detective",
+    ];
+
+    const foundKeywords = commonKeywords.filter((keyword) =>
+      allContent.includes(keyword),
+    );
+
+    const genderKeyword = storyData.chapters[0]?.chapter_content
+      .toLowerCase()
+      .includes(" she ")
+      ? "girl"
+      : storyData.chapters[0]?.chapter_content.toLowerCase().includes(" he ")
+        ? "boy"
+        : "";
+
+    const finalKeywords = [
+      ...new Set([...foundKeywords, genderKeyword].filter(Boolean)),
+    ];
+
+    return finalKeywords.slice(0, 6);
   }
 
   _getVisualStyle(ageMin, theme) {
     const lowerTheme = theme.toLowerCase();
 
-    if (lowerTheme.includes("sci_fi") || lowerTheme.includes("robot")) {
-      return "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots'";
+    const styleMappings = {
+      sci_fi: {
+        modern:
+          "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots' with realistic textures and atmospheric lighting",
+        cinematic:
+          "in a cinematic sci-fi CGI style with detailed models, complex lighting, and sophisticated rendering suitable for mature audiences",
+      },
+      humor: {
+        simpsons:
+          "in the iconic cartoon style of 'The Simpsons' with yellow skin tones, simple character construction, and prominent overbites",
+        caricature:
+          "in an exaggerated caricature style like 'Mr. Bean: The Animated Series' with bulbous noses, big eyes, and over-the-top expressions",
+        modern_cartoon:
+          "in a quirky, expressive cartoon style like 'Regular Show' or 'Adventure Time' with simple designs and anthropomorphic characters",
+      },
+      fantasy: {
+        disney_renaissance:
+          "in the classic Disney Renaissance 2D style of 'Mulan' with strong character acting, fluid motion, and detailed epic backgrounds",
+        modern_disney:
+          "with the vibrant, detailed CGI animation of Disney's 'Frozen II' or 'Encanto' with realistic textures and emotionally expressive characters",
+        anime_fantasy:
+          "in an anime-influenced style like 'Avatar: The Last Airbender' with dynamic action sequences, expressive eyes, and elemental effects",
+      },
+      adventure: {
+        pixar:
+          "in a modern Pixar CGI style like 'Inside Out' with high-fidelity rendering, realistic textures, and emotionally expressive rounded characters",
+        dreamworks:
+          "in a DreamWorks CGI style like 'The Boss Baby' with polished, streamlined, and cartoonishly stylized characters and vibrant environments",
+        moana:
+          "in the beautiful, dynamic CGI style of Disney's 'Moana' with expressive characters, vibrant colors, and oceanic themes",
+        volumetric:
+          "in a volumetric lighting 2D style like 'Klaus' that looks hand-drawn but incorporates three-dimensional lighting and painterly depth",
+      },
+      classic: {
+        hanna_barbera:
+          "in the classic Hanna-Barbera style of 'Tom and Jerry' with bold thick outlines, flat color palettes, and efficient character-driven animation",
+        golden_age:
+          "in the Disney Golden Age 2D style of 'Bambi' with soft painterly backgrounds, naturalistic rendering, and gentle lifelike animal movement",
+        flintstones:
+          "in the classic cartoon style of 'The Flintstones' with simple geometric shapes, limited animation, and prehistoric aesthetic",
+      },
+      preschool: {
+        peppa_pig:
+          "in a simple vector style like 'Peppa Pig' with extremely simple flat 2D designs, minimal detail, and thin limbs in side-profile view",
+        simple_cartoon:
+          "in a simple friendly 2D cartoon style with bold outlines and bright colors, perfect for very young audiences",
+      },
+      action: {
+        fast_furious:
+          "in an action-oriented CGI style with detailed vehicles, motion blur, and special effects to convey speed and dynamic action",
+        cartoon_network:
+          "in a modern Cartoon Network style with graphic angular designs, exaggerated proportions, and dynamic action sequences",
+      },
+    };
+
+    if (
+      lowerTheme.includes("sci_fi") ||
+      lowerTheme.includes("robot") ||
+      lowerTheme.includes("space")
+    ) {
+      return ageMin <= 10
+        ? styleMappings.sci_fi.modern
+        : styleMappings.sci_fi.cinematic;
     }
-    if (lowerTheme.includes("humor") || lowerTheme.includes("funny")) {
-      return "in a quirky, expressive cartoon style like 'Mr. Bean: The Animated Series' or 'The Simpsons'";
+
+    if (
+      lowerTheme.includes("humor") ||
+      lowerTheme.includes("funny") ||
+      lowerTheme.includes("comedy")
+    ) {
+      if (ageMin <= 6) return styleMappings.preschool.simple_cartoon;
+      if (ageMin <= 10) return styleMappings.humor.modern_cartoon;
+      return styleMappings.humor.simpsons;
     }
-    if (lowerTheme.includes("fantasy") || lowerTheme.includes("magic")) {
-      return "with the vibrant, detailed animation of Disney's 'Frozen II' or the epic feel of 'Mulan'";
+
+    if (
+      lowerTheme.includes("fantasy") ||
+      lowerTheme.includes("magic") ||
+      lowerTheme.includes("kingdom")
+    ) {
+      if (ageMin <= 6) return styleMappings.classic.golden_age;
+      if (ageMin <= 10) return styleMappings.fantasy.anime_fantasy;
+      return styleMappings.fantasy.disney_renaissance;
     }
-    if (lowerTheme.includes("adventure") || lowerTheme.includes("explore")) {
-      return "in the beautiful, dynamic CGI style of Disney's 'Moana' or the anime-influenced look of 'Avatar: The Last Airbender'";
+
+    if (
+      lowerTheme.includes("adventure") ||
+      lowerTheme.includes("explore") ||
+      lowerTheme.includes("journey")
+    ) {
+      if (ageMin <= 6) return styleMappings.adventure.dreamworks;
+      if (ageMin <= 10) return styleMappings.adventure.moana;
+      return styleMappings.adventure.volumetric;
+    }
+
+    if (
+      lowerTheme.includes("action") ||
+      lowerTheme.includes("battle") ||
+      lowerTheme.includes("hero")
+    ) {
+      return ageMin <= 10
+        ? styleMappings.action.cartoon_network
+        : styleMappings.action.fast_furious;
+    }
+
+    if (
+      lowerTheme.includes("classic") ||
+      lowerTheme.includes("vintage") ||
+      lowerTheme.includes("retro")
+    ) {
+      return styleMappings.classic.hanna_barbera;
     }
 
     if (ageMin <= 6) {
-      return "in a simple, friendly 2D cartoon style with bold outlines and bright colors, like 'Peppa Pig' or classic 'Tom and Jerry'";
+      return styleMappings.preschool.peppa_pig;
     }
     if (ageMin <= 10) {
-      return "in a modern 3D animation style with expressive characters and vibrant colors, reminiscent of Pixar's 'Inside Out' or Disney's 'Encanto'";
+      return styleMappings.adventure.pixar;
     }
-    return "in a sophisticated, cinematic animation style with rich textures and atmospheric lighting, inspired by 'Klaus' or 'Avatar: The Last Airbender'";
+    return styleMappings.fantasy.modern_disney;
   }
 
   async generateStory({
-    theme, name = "", photo_url = "", skin_tone = "", hair_type = "", hairstyle = "",
-    hair_color = "", eye_color = "", facial_features = "", clothing = "", gender = "",
-    milestone_date = "", age_min = 5, age_max = 10, prompt_message,
+    theme,
+    name = "",
+    photo_url = "",
+    skin_tone = "",
+    hair_type = "",
+    hairstyle = "",
+    hair_color = "",
+    eye_color = "",
+    facial_features = "",
+    clothing = "",
+    gender = "",
+    milestone_date = "",
+    age_min = 5,
+    age_max = 10,
+    prompt_message,
   }) {
     let prompt = `${theme}:\nWrite a full, detailed children's storybook with the following details:\n`;
     if (name) prompt += `- Name: ${name}\n`;
@@ -142,7 +359,11 @@ class StorybookGenerator {
     const ageGroup = this.getAgeGroup(age_min);
     const imagePositions = this.getImagePositions(ageGroup);
     const suggestedFonts = this.getSuggestedFonts(ageGroup, theme);
-    const targetChapterCount = this.calculateChapterCount(age_min, age_max, theme);
+    const targetChapterCount = this.calculateChapterCount(
+      age_min,
+      age_max,
+      theme,
+    );
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -219,12 +440,13 @@ You will return the story as a single JSON object with the following format:
         throw new Error("No chapters generated");
       }
 
-      storyData.chapters.forEach(chapter => {
+      storyData.chapters.forEach((chapter) => {
         chapter.chapter_content = this.cleanContent(chapter.chapter_content);
       });
 
       console.log(`Generated story with ${storyData.chapters.length} chapters`);
 
+      const keywords = this.extractKeywords(storyData);
       const images = await this.generateImagesForChapters(
         storyData.chapters,
         age_min,
@@ -236,9 +458,15 @@ You will return the story as a single JSON object with the following format:
         hairstyle,
         hair_color,
         eye_color,
-        clothing
+        clothing,
       );
-      const coverImage = await this.generateCoverImage(storyData, gender, name, theme, age_min);
+      const coverImage = await this.generateCoverImage(
+        storyData,
+        gender,
+        name,
+        theme,
+        age_min,
+      );
 
       const storybookContent = this.addImagesToStory(storyData, images);
 
@@ -259,19 +487,37 @@ You will return the story as a single JSON object with the following format:
           clothing,
           gender,
           age_min: age_min.toString(),
-          age_max: age_max.toString()
-        }
+          age_max: age_max.toString(),
+          keywords: keywords,
+        },
       };
     } catch (error) {
       console.error("Error generating story:", error);
-      throw new ErrorHandler(`Failed to generate the story: ${error.message}`, 500);
+      throw new ErrorHandler(
+        `Failed to generate the story: ${error.message}`,
+        500,
+      );
     }
   }
 
-  async generateImagesForChapters(chapters, age_min, gender, name, theme, skin_tone, hair_type, hairstyle, hair_color, eye_color, clothing) {
+  async generateImagesForChapters(
+    chapters,
+    age_min,
+    gender,
+    name,
+    theme,
+    skin_tone,
+    hair_type,
+    hairstyle,
+    hair_color,
+    eye_color,
+    clothing,
+  ) {
     const imagePromises = chapters.map(async (chapter) => {
       try {
-        const cleanImageDescription = this.sanitizeImagePrompt(chapter.image_description);
+        const cleanImageDescription = this.sanitizeImagePrompt(
+          chapter.image_description,
+        );
         const visualStyle = this._getVisualStyle(age_min, theme);
 
         const safePrompt = `Children's storybook illustration ${visualStyle}.
