@@ -95,7 +95,7 @@ userSchema.statics.registerWithOTP = async function (userData) {
         throw new ErrorHandler("Username is already in use.", 406);
       }
     }
-    const exisitingNumber = await User.findOne({
+    const existingNumber = await User.findOne({
       phonenumber: userData.phoneNumber,
     });
     if (existingNumber) {
