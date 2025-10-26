@@ -70,9 +70,9 @@ class EmailService {
       const result = await resend.emails.send({
         from: config.resend.from,
         to: email,
-        subject: "Your Wonder Wrap Verification Code",
+        subject: "Your My Story hat Verification Code",
         html: htmlContent,
-        text: `Your Wonder Wrap verification code is: ${otpCode}. This code will expire in 10 minutes.`,
+        text: `Your My Story Hat verification code is: ${otpCode}. This code will expire in 10 minutes.`,
       });
       console.log(result);
       logger.info(`OTP email sent to ${email}: ${result.data.id}`);
@@ -92,7 +92,7 @@ class EmailService {
       const result = await resend.emails.send({
         from: config.resend.from,
         to: email,
-        subject: "Welcome to Wonder Wrap!",
+        subject: "Welcome to My Story Hat!",
         html: htmlContent,
         text: `Welcome to Wonder Wrap, ${username}! Thank you for joining our community.`,
       });
