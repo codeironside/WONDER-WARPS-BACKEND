@@ -48,4 +48,7 @@ export const config = {
     cancel_url: `http://localhost:5173/payment-cancelled`,
     // cancel_url: `${process.env.FRONTEND_DEV}/payment-cancelled`,
   },
+  google: {
+    api_key: process.env.GOOGLE_API_KEY,
+  },
 };

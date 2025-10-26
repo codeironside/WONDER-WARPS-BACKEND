@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { config } from "@/config";
 import ErrorHandler from "@/Error";
+import VeoGenerator from "../../googlegenai/index.js";
 
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
@@ -80,8 +81,8 @@ class StorybookGenerator {
   constructor() {
     const apiKey = config.openai.API_KEY;
     this.openai = new OpenAI({ apiKey });
+    this.veoGenerator = new VeoGenerator();
   }
-
   getAgeGroup(ageMin) {
     if (ageMin <= 6) return "YOUNGER_CHILD";
     if (ageMin <= 10) return "MIDDLE_CHILD";
@@ -326,6 +327,174 @@ class StorybookGenerator {
     return styleMappings.fantasy.modern_disney;
   }
 
+  async generateVeoAnimation(storyData, theme, ageMin, name, gender) {
+    try {
+      const promptData = await this.generateStorySpecificVeoPrompt(
+        storyData,
+        theme,
+        ageMin,
+        name,
+        gender,
+      );
+
+      const animationResult =
+        await this.veoGenerator.generateStorybookAnimation(
+          storyData.book_title,
+          name,
+          gender,
+          theme,
+          promptData.visualStyle,
+          promptData.storySummary,
+          promptData.keyMoments,
+        );
+
+      return animationResult.video_uri || animationResult.fallback_url || null;
+    } catch (error) {
+      console.error("Error generating Veo animation:", error);
+      return null;
+    }
+  }
+  extractKeyStoryMoments(storyData) {
+    const moments = [];
+
+    storyData.chapters.forEach((chapter, chapterIndex) => {
+      const sentences = chapter.chapter_content
+        .split(/[.!?]+/)
+        .filter((s) => s.trim().length > 10);
+
+      // Extract key moments from each chapter
+      sentences.slice(0, 2).forEach((sentence) => {
+        const cleanSentence = sentence.trim();
+        if (cleanSentence.length > 20 && cleanSentence.length < 150) {
+          moments.push({
+            chapter: chapterIndex + 1,
+            moment: cleanSentence,
+            chapter_title: chapter.chapter_title,
+          });
+        }
+      });
+    });
+
+    return moments.slice(0, 5).map((m) => m.moment);
+  }
+
+  createStorySummary(storyData) {
+    const firstChapter = storyData.chapters[0]?.chapter_content || "";
+    const lastChapter =
+      storyData.chapters[storyData.chapters.length - 1]?.chapter_content || "";
+
+    return `${firstChapter.substring(0, 150)}... ${lastChapter.substring(0, 100)}`.substring(
+      0,
+      300,
+    );
+  }
+
+  async generateStorySpecificVeoPrompt(storyData, theme, ageMin, name, gender) {
+    try {
+      const visualStyle = this._getVisualStyle(ageMin, theme);
+      const storySummary = this.createStorySummary(storyData);
+      const keyMoments = this.extractKeyStoryMoments(storyData);
+
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional animation director. Create highly specific video prompts based on exact story content.`,
+          },
+          {
+            role: "user",
+            content: `Create an EXCLUSIVE animation prompt for "${storyData.book_title}" using these exact story details:
+
+EXACT STORY CONTENT:
+${storyData.chapters.map((chapter) => `Chapter: ${chapter.chapter_title}\nContent: ${chapter.chapter_content.substring(0, 200)}`).join("\n\n")}
+
+CHARACTER: ${name} (${gender})
+THEME: ${theme}
+VISUAL STYLE: ${visualStyle}
+KEY STORY MOMENTS: ${keyMoments.join(" | ")}
+
+Create a 5-second animation prompt that captures the ESSENCE of this specific story, not a generic theme. Focus on actual events and character journey from the story above.`,
+          },
+        ],
+        max_tokens: 600,
+        temperature: 0.7,
+      });
+
+      return {
+        prompt: response.choices[0].message.content.trim(),
+        storySummary: storySummary,
+        keyMoments: keyMoments,
+        visualStyle: visualStyle,
+      };
+    } catch (error) {
+      console.error("Error generating story-specific Veo prompt:", error);
+      // Fallback to basic prompt
+      const visualStyle = this._getVisualStyle(ageMin, theme);
+      const storySummary = this.createStorySummary(storyData);
+      const keyMoments = this.extractKeyStoryMoments(storyData);
+
+      return {
+        prompt: `5-second cinematic animation for "${storyData.book_title}" featuring ${name}. Story: ${storySummary}. Key moments: ${keyMoments.join(", ")}. Visual style: ${visualStyle}.`,
+        storySummary: storySummary,
+        keyMoments: keyMoments,
+        visualStyle: visualStyle,
+      };
+    }
+  }
+
+  async generateVeoAnimation(storyData, theme, ageMin, name, gender) {
+    try {
+      const promptData = await this.generateStorySpecificVeoPrompt(
+        storyData,
+        theme,
+        ageMin,
+        name,
+        gender,
+      );
+
+      const animationResult =
+        await this.veoGenerator.generateStorybookAnimation(
+          storyData.book_title,
+          name,
+          gender,
+          theme,
+          promptData.visualStyle,
+          promptData.storySummary,
+          promptData.keyMoments,
+        );
+
+      const storyboardFrames = await this.veoGenerator.generateAnimationFrames(
+        storyData.book_title,
+        promptData.keyMoments,
+        4,
+      );
+
+      return {
+        veo_animation: animationResult,
+        storyboard_frames: storyboardFrames,
+        story_specific_prompt: promptData.prompt,
+        key_story_moments: promptData.keyMoments,
+        duration_seconds: 5,
+        visual_style: promptData.visualStyle,
+      };
+    } catch (error) {
+      console.error("Error generating Veo animation:", error);
+      return {
+        veo_animation: {
+          success: false,
+          error: error.message,
+          fallback_url: this.veoGenerator.generateFallbackUrl(
+            `Animation for ${storyData.book_title}`,
+          ),
+        },
+        storyboard_frames: [],
+        duration_seconds: 5,
+        visual_style: this._getVisualStyle(ageMin, theme),
+      };
+    }
+  }
+
   async generateStory({
     theme,
     name = "",
@@ -419,8 +588,8 @@ You will return the story as a single JSON object with the following format:
             ${prompt}`,
           },
         ],
-        max_tokens: 4000,
-        temperature: 0.8,
+        max_tokens: 3500,
+        temperature: 0.85,
       });
 
       let storyData;
@@ -467,6 +636,13 @@ You will return the story as a single JSON object with the following format:
         theme,
         age_min,
       );
+      const veoAnimation = await this.generateVeoAnimation(
+        storyData,
+        theme,
+        age_min,
+        name,
+        gender,
+      );
 
       const storybookContent = this.addImagesToStory(storyData, images);
 
@@ -489,6 +665,7 @@ You will return the story as a single JSON object with the following format:
           age_min: age_min.toString(),
           age_max: age_max.toString(),
           keywords: keywords,
+          video_url: veoAnimation.veo_animation.video_uri,
         },
       };
     } catch (error) {
@@ -523,7 +700,9 @@ You will return the story as a single JSON object with the following format:
         const safePrompt = `Children's storybook illustration ${visualStyle}.
         Main character: ${name}, a ${gender} child with ${skin_tone} skin, ${hair_color} ${hairstyle} ${hair_type} hair, ${eye_color} eyes, wearing ${clothing}.
         Scene: ${cleanImageDescription}.
-        The illustration should be bright, friendly, whimsical, and child-friendly. No text or words in the image.`;
+        ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
+        No book titles, no captions, no speech bubbles, no labels.
+        Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
 
         const image = await this.openai.images.generate({
           model: "dall-e-3",
@@ -548,10 +727,12 @@ You will return the story as a single JSON object with the following format:
   async generateCoverImage(storyData, gender, name, theme, age_min) {
     const visualStyle = this._getVisualStyle(age_min, theme);
 
-    const safePrompt = `Children's book cover illustration ${visualStyle}.
-    Book title: "${storyData.book_title}".
+    const safePrompt = `Children's book  illustration ${visualStyle}.
     A magical and joyful scene featuring the main character, ${name}, a ${gender} child protagonist.
-    The cover should be bright, friendly, and enchanting, suitable for a children's storybook. No text or words in the image.`;
+    The cover should be bright, friendly, and enchanting, suitable for a children's storybook.
+    ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
+    No book titles, no captions, no speech bubbles, no labels.
+    Pure visual illustration only with captivating magical atmosphere.`;
 
     try {
       const coverImage = await this.openai.images.generate({

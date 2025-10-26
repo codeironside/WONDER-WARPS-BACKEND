@@ -150,6 +150,19 @@ const bookTemplateSchema = new mongoose.Schema(
       default: 1,
       index: true,
     },
+    // Simple video URL field
+    video_url: {
+      type: String,
+      maxlength: 1000,
+      default: null,
+      validate: {
+        validator: function (v) {
+          // Allow null/empty or valid URL
+          return v === null || v === "" || /^https?:\/\/.+\..+/.test(v);
+        },
+        message: "Video URL must be a valid URL",
+      },
+    },
   },
   {
     timestamps: true,
@@ -161,6 +174,7 @@ bookTemplateSchema.index({ user_id: 1, book_title: 1 }, { unique: true });
 bookTemplateSchema.index({ createdAt: -1 });
 bookTemplateSchema.index({ price: 1 });
 bookTemplateSchema.index({ age_min: 1, age_max: 1 });
+bookTemplateSchema.index({ video_url: 1 }); // Index for video URL queries
 
 // Create models
 const Chapter = mongoose.model("Chapter", chapterSchema);
@@ -201,6 +215,7 @@ class BookTemplate {
     keywords: Joi.array().items(Joi.string()).default([]),
     is_personalizable: Joi.boolean().default(true),
     is_public: Joi.boolean().default(false),
+    video_url: Joi.string().uri().max(1000).allow(null, "").optional(),
   }).unknown(false);
 
   static async findByTitle(book_title, user_id = null) {
@@ -231,12 +246,12 @@ class BookTemplate {
       );
     }
 
-    // Upload images to S3 before saving
+    // Upload images AND video to S3 before saving
     try {
-      await this.uploadImagesToS3(validatedData);
+      await this.uploadMediaToS3(validatedData);
     } catch (error) {
-      console.error("Error uploading images to S3:", error);
-      throw new ErrorHandler(`Failed to upload images: ${error.message}`, 500);
+      console.error("Error uploading media to S3:", error);
+      throw new ErrorHandler(`Failed to upload media: ${error.message}`, 500);
     }
 
     const session = await mongoose.startSession();
@@ -273,6 +288,173 @@ class BookTemplate {
       session.endSession();
       console.error("Database error:", err);
       throw new ErrorHandler(err.message, 500);
+    }
+  }
+
+  static async uploadMediaToS3(templateData) {
+    console.log("Uploading media to S3...");
+
+    // Upload cover images to S3
+    if (templateData.cover_image && Array.isArray(templateData.cover_image)) {
+      const uploadedCoverImages = [];
+
+      for (const imageUrl of templateData.cover_image) {
+        if (!imageUrl) {
+          throw new ErrorHandler("Cover image URL cannot be empty", 400);
+        }
+
+        try {
+          console.log(`Uploading cover image: ${imageUrl}`);
+          const s3Key = this.s3Service.generateImageKey(
+            `books/${templateData.book_title}/covers`,
+            imageUrl,
+          );
+          const s3Url = await this.s3Service.uploadImageFromUrl(
+            imageUrl,
+            s3Key,
+          );
+          console.log(`Cover image uploaded to: ${s3Url}`);
+          uploadedCoverImages.push(s3Url);
+        } catch (error) {
+          console.error(`Failed to upload cover image: ${error.message}`);
+          throw new ErrorHandler(
+            `Failed to upload cover image: ${error.message}`,
+            500,
+          );
+        }
+      }
+
+      templateData.cover_image = uploadedCoverImages;
+    } else {
+      throw new ErrorHandler("Cover image is required", 400);
+    }
+
+    // Upload video to S3 if provided
+    if (templateData.video_url) {
+      try {
+        console.log(`Uploading video: ${templateData.video_url}`);
+        const s3Key = this.s3Service.generateVideoKey(
+          `books/${templateData.book_title}/videos`,
+          templateData.video_url,
+        );
+        const s3Url = await this.s3Service.uploadVideoFromUrl(
+          templateData.video_url,
+          s3Key,
+        );
+        console.log(`Video uploaded to: ${s3Url}`);
+        templateData.video_url = s3Url;
+      } catch (error) {
+        console.error(`Failed to upload video: ${error.message}`);
+        // Keep the original URL if upload fails, or set to null
+        templateData.video_url = null;
+      }
+    }
+
+    // Upload chapter images to S3
+    if (templateData.chapters && Array.isArray(templateData.chapters)) {
+      for (const chapter of templateData.chapters) {
+        if (!chapter.image_url) continue;
+
+        try {
+          console.log(`Uploading chapter image: ${chapter.image_url}`);
+          const s3Key = this.s3Service.generateImageKey(
+            `books/${templateData.book_title}/chapters`,
+            chapter.image_url,
+          );
+          const s3Url = await this.s3Service.uploadImageFromUrl(
+            chapter.image_url,
+            s3Key,
+          );
+          console.log(`Chapter image uploaded to: ${s3Url}`);
+          chapter.image_url = s3Url;
+        } catch (error) {
+          console.error(`Failed to upload chapter image: ${error.message}`);
+          // Keep the original URL if upload fails
+        }
+      }
+    }
+  }
+
+  static async findById(id) {
+    return await BookTemplateModel.findById(id);
+  }
+
+  static async findByIdWithChapters(id) {
+    const template = await BookTemplateModel.findById(id);
+    if (!template) return null;
+
+    const chapters = await Chapter.find({ book_template_id: id })
+      .sort({ order: 1 })
+      .select("-book_template_id -__v");
+
+    return {
+      ...template.toObject(),
+      chapters,
+    };
+  }
+
+  static async updateVideoUrl(id, videoUrl) {
+    try {
+      // Validate the video URL
+      const { error } = Joi.string().uri().max(1000).validate(videoUrl);
+      if (error) {
+        throw new ErrorHandler("Invalid video URL", 400);
+      }
+
+      const template = await BookTemplateModel.findById(id);
+      if (!template) {
+        throw new ErrorHandler("Book template not found", 404);
+      }
+
+      // Upload video to S3
+      let finalVideoUrl = videoUrl;
+      if (videoUrl) {
+        try {
+          const s3Key = this.s3Service.generateVideoKey(
+            `books/${template.book_title}/videos`,
+            videoUrl,
+          );
+          finalVideoUrl = await this.s3Service.uploadVideoFromUrl(
+            videoUrl,
+            s3Key,
+          );
+          console.log(`Video uploaded to S3: ${finalVideoUrl}`);
+        } catch (error) {
+          console.error(`Failed to upload video to S3: ${error.message}`);
+          throw new ErrorHandler(
+            `Failed to upload video: ${error.message}`,
+            500,
+          );
+        }
+      }
+
+      // Update the template with the S3 video URL
+      template.video_url = finalVideoUrl;
+      await template.save();
+
+      return template;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to update video URL", 500);
+    }
+  }
+
+  static async removeVideoUrl(id) {
+    try {
+      const template = await BookTemplateModel.findByIdAndUpdate(
+        id,
+        { video_url: null },
+        { new: true },
+      );
+
+      if (!template) {
+        throw new ErrorHandler("Book template not found", 404);
+      }
+
+      return template;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to remove video URL", 500);
     }
   }
 

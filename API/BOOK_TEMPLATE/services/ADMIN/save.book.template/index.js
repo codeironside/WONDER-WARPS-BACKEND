@@ -8,7 +8,7 @@ export const saveBookTemplate = async (req, res, next) => {
     const userId = req.user.id;
     const { story } = req.body;
     console.log(story);
-    if (!story || !story.book_title || !story.cover_image) {
+    if (!story || !story.book_title || !story.cover_image || !story.video_url) {
       throw new ErrorHandler("Story data with book title is required", 400);
     }
     if (
@@ -43,6 +43,7 @@ export const saveBookTemplate = async (req, res, next) => {
           : null,
       is_personalizable: Boolean(story.is_personalizable),
       suggested_font: story.suggested_font,
+      video_url: story.video_url,
     };
 
     const newTemplate = await BookTemplate.create(bookTemplateData);
