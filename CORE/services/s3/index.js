@@ -272,6 +272,22 @@ class S3Service {
       throw error;
     }
   }
+
+  async deleteImage(key) {
+    try {
+      const result = await this.deleteObject(key);
+
+      console.log(`Successfully deleted image from S3: ${key}`);
+      return {
+        success: true,
+        deletedKey: key,
+        result: result,
+      };
+    } catch (error) {
+      console.error(`Error deleting image ${key} from S3:`, error);
+      throw new Error(`Failed to delete image from S3: ${error.message}`);
+    }
+  }
 }
 
 export default S3Service;
