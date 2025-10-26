@@ -10,6 +10,7 @@ import { getPaymentStatistics } from "../services/ADMIN/get.payment.statistics/i
 import { getALLUserPersonalizedBooks } from "../services/USERS/get.all.for.users/index.js";
 import { getUserPersonalizedBook } from "../services/USERS/get.one.for.user/index.js";
 import { getPersonalizedBooksByGenre } from "../services/USERS/search.by.genre/index.js";
+import { updateDedicationMessage } from "../services/USERS/add.dedication.messsage/index.js";
 
 export const BookPersonalizer = Router();
 
@@ -67,4 +68,10 @@ BookPersonalizer.get(
   "/searchbygenre",
   authorize(["User"]),
   getPersonalizedBooksByGenre,
+);
+
+BookPersonalizer.patch(
+  "/:bookId/dedication",
+  authorize(["User", "Admin"]),
+  updateDedicationMessage,
 );

@@ -24,6 +24,7 @@ const personalizedBookSchema = new mongoose.Schema(
     },
     price: { type: Number, required: true, min: 0 },
     is_paid: { type: Boolean, default: false },
+    dedication_message: { type: String, default: " Dedication message" },
     payment_id: { type: String, trim: true, maxlength: 255, default: null },
     payment_date: { type: Date, default: null },
     personalized_content: { type: Object, required: true },
@@ -992,7 +993,62 @@ class PersonalizedBook {
       });
     }
   }
+  static async updateDedicationMessage(bookId, userId, dedicationMessage) {
+    try {
+      if (!dedicationMessage || dedicationMessage.trim().length === 0) {
+        throw new ErrorHandler("Dedication message is required", 400);
+      }
 
+      if (dedicationMessage.length > 1000) {
+        throw new ErrorHandler(
+          "Dedication message must be less than 1000 characters",
+          400,
+        );
+      }
+      const book = await PersonalizedBookModel.findOne({
+        _id: bookId,
+        user_id: userId,
+      });
+
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      if (!book.is_paid) {
+        throw new ErrorHandler(
+          "Dedication message can only be updated after payment",
+          403,
+        );
+      }
+
+      const updatedBook = await PersonalizedBookModel.findByIdAndUpdate(
+        bookId,
+        {
+          dedication_message: dedicationMessage.trim(),
+          updatedAt: new Date(),
+        },
+        { new: true, runValidators: true },
+      ).exec();
+
+      if (!updatedBook) {
+        throw new ErrorHandler("Failed to update dedication message", 500);
+      }
+
+      logger.info("Dedication message updated successfully", {
+        bookId,
+        userId,
+        messageLength: dedicationMessage.length,
+      });
+
+      return updatedBook.toObject();
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to update dedication message: ${error.message}`,
+        500,
+      );
+    }
+  }
   static async handlePaymentSuccess(paymentIntent) {
     const session = await mongoose.startSession();
     session.startTransaction();

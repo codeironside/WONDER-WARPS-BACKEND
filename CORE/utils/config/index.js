@@ -43,7 +43,7 @@ export const config = {
   stripe: {
     secret_key: process.env.STRIPE_API_KEY,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-    success_url: `${process.env.FRONTEND_DEV}/payment-successful`,
+    success_url: `${process.env.FRONTEND_DEV}/payment-pending`,
     // success_url: `http://localhost:5173/payment-pending`,
     // cancel_url: `http://localhost:5173/payment-cancelled`,
     cancel_url: `${process.env.FRONTEND_DEV}/payment-cancelled`,
