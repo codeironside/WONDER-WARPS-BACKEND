@@ -839,10 +839,30 @@ Return ONLY the JSON object, no other text.`,
     }
   }
 
+  async deleteImage(s3Key) {
+    try {
+      const deleteParams = {
+        Bucket: this.bucketName,
+        Key: s3Key,
+      };
+
+      const result = await this.s3.deleteObject(deleteParams).promise();
+
+      console.log(`Successfully deleted file from S3: ${s3Key}`);
+      return {
+        success: true,
+        deletedKey: s3Key,
+        result: result,
+      };
+    } catch (error) {
+      console.error(`Error deleting file ${s3Key} from S3:`, error);
+      throw new Error(`Failed to delete file from S3: ${error.message}`);
+    }
+  }
+
   async validateAndUploadImage(file, userId, options = {}) {
     let tempKey = null;
     try {
-      // Add file size validation
       if (file.size < 10000) {
         // 10KB minimum
         throw new ErrorHandler(
