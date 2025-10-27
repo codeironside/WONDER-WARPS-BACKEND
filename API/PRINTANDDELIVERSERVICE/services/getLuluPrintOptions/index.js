@@ -15,3 +15,15 @@ export const getLuluPrintOptions = async (req, res, next) => {
     next(error);
   }
 };
+function calculateTotalCombinations(mappings) {
+  return (
+    mappings.trim_sizes.length *
+    mappings.color_types.length *
+    mappings.print_types.length *
+    mappings.bind_types.length *
+    mappings.paper_types.length *
+    mappings.finish_types.length *
+    mappings.linen_types.length *
+    mappings.foil_types.length
+  );
+}

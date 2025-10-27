@@ -110,19 +110,6 @@ export const validatePodPackageId = async (req, res, next) => {
   }
 };
 
-function calculateTotalCombinations(mappings) {
-  return (
-    mappings.trim_sizes.length *
-    mappings.color_types.length *
-    mappings.print_types.length *
-    mappings.bind_types.length *
-    mappings.paper_types.length *
-    mappings.finish_types.length *
-    mappings.linen_types.length *
-    mappings.foil_types.length
-  );
-}
-
 function generateDescription(components) {
   const {
     trim_size,

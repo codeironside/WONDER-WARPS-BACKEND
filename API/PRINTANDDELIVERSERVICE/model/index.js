@@ -23,6 +23,7 @@ class PrintOrderService {
         shipping_level,
         contact_email,
       } = orderData;
+
       const book = await PersonalizedBook.findById(personalized_book_id);
       if (!book || book.user_id.toString() !== userId.toString()) {
         throw new ErrorHandler("Personalized book not found", 404);
@@ -40,7 +41,9 @@ class PrintOrderService {
       if (!serviceOption) {
         throw new ErrorHandler("Invalid print service option", 400);
       }
-      const pageCount = book.personalized_content?.page_count || 0;
+
+      const pageCount = await this.calculateBookPageCount(book);
+
       if (
         pageCount < serviceOption.min_pages ||
         pageCount > serviceOption.max_pages
@@ -58,6 +61,7 @@ class PrintOrderService {
         shipping_address,
         shipping_level,
       );
+
       const printOrder = await PrintOrder.createOrder(userId, {
         personalized_book_id,
         service_option_id,
@@ -68,12 +72,14 @@ class PrintOrderService {
         external_id: orderData.external_id,
         production_delay: orderData.production_delay,
       });
+
       await PrintOrder.updateCostBreakdown(printOrder._id, costCalculation);
 
       logger.info("Print order created with cost calculation", {
         printOrderId: printOrder._id,
         totalCost: costCalculation.total_cost_incl_tax,
         userId,
+        calculatedPageCount: pageCount,
       });
 
       return {
@@ -84,6 +90,7 @@ class PrintOrderService {
           title: book.personalized_content?.book_title,
           child_name: book.child_name,
           page_count: pageCount,
+          calculated_structure: this.getPageBreakdown(book),
         },
       };
     } catch (error) {
@@ -93,6 +100,98 @@ class PrintOrderService {
       });
       throw error;
     }
+  }
+
+  calculateBookPageCount(book) {
+    try {
+      let pageCount = 0;
+
+      pageCount += 1;
+      if (
+        book.dedication_message &&
+        book.dedication_message.trim() !== "" &&
+        book.dedication_message !== " Dedication message"
+      ) {
+        pageCount += 1;
+      }
+      const chapters = book.personalized_content?.chapters || [];
+      chapters.forEach((chapter) => {
+        pageCount += 2;
+        if (chapter.image_position === "full scene") {
+          pageCount += 1;
+        }
+      });
+
+      pageCount += 1;
+
+      logger.debug("Page count calculation completed", {
+        bookId: book._id,
+        totalPages: pageCount,
+        chaptersCount: chapters.length,
+        hasDedication: !!(
+          book.dedication_message &&
+          book.dedication_message.trim() !== "" &&
+          book.dedication_message !== " Dedication message"
+        ),
+        fullSceneChapters: chapters.filter(
+          (ch) => ch.image_position === "full scene",
+        ).length,
+      });
+
+      return pageCount;
+    } catch (error) {
+      logger.error("Failed to calculate book page count", {
+        bookId: book?._id,
+        error: error.message,
+      });
+      return (
+        book.personalized_content?.page_count ||
+        book.personalized_content?.chapters?.length * 2 + 3 ||
+        10
+      );
+    }
+  }
+
+  getPageBreakdown(book) {
+    const chapters = book.personalized_content?.chapters || [];
+    const fullSceneChapters = chapters.filter(
+      (ch) => ch.image_position === "full scene",
+    );
+
+    return {
+      title_page: 1,
+      dedication_page:
+        book.dedication_message &&
+        book.dedication_message.trim() !== "" &&
+        book.dedication_message !== " Dedication message"
+          ? 1
+          : 0,
+      chapters: {
+        total: chapters.length,
+        base_pages: chapters.length * 2, // Title + content for each chapter
+        full_scene_pages: fullSceneChapters.length,
+        other_image_positions: chapters.length - fullSceneChapters.length,
+      },
+      end_page: 1,
+      calculated_total: this.calculateBookPageCount(book),
+      image_positions_breakdown: {
+        full_scene: fullSceneChapters.length,
+        comic_strips: chapters.filter(
+          (ch) => ch.image_position === "comic strips",
+        ).length,
+        split_screens: chapters.filter(
+          (ch) => ch.image_position === "split screens",
+        ).length,
+        side_bar: chapters.filter((ch) => ch.image_position === "side bar")
+          .length,
+        footer_illustration: chapters.filter(
+          (ch) => ch.image_position === "footer illustration",
+        ).length,
+        header_banner: chapters.filter(
+          (ch) => ch.image_position === "header banner",
+        ).length,
+      },
+    };
   }
 
   async createPrintOrderCheckout(printOrderId, userId) {
@@ -527,11 +626,21 @@ class PrintOrderService {
         },
       ];
 
+      const luluShippingOption = this.mapToLuluShippingOption(shippingLevel);
+
       const costCalculation = await this.luluService.calculatePrintJobCost(
         lineItems,
         shippingAddress,
-        shippingLevel,
+        luluShippingOption,
       );
+
+      logger.info("Print costs calculated successfully", {
+        podPackageId,
+        pageCount,
+        quantity,
+        totalCost: costCalculation.total_cost_incl_tax,
+        currency: costCalculation.currency,
+      });
 
       return costCalculation;
     } catch (error) {
@@ -543,6 +652,18 @@ class PrintOrderService {
       });
       throw new ErrorHandler("Failed to calculate printing costs", 500);
     }
+  }
+
+  mapToLuluShippingOption(shippingLevel) {
+    const shippingMap = {
+      MAIL: "MAIL",
+      PRIORITY_MAIL: "PRIORITY_MAIL",
+      GROUND: "GROUND",
+      EXPEDITED: "EXPEDITED",
+      EXPRESS: "EXPRESS",
+    };
+
+    return shippingMap[shippingLevel] || "GROUND";
   }
 
   async generatePrintFiles(book) {

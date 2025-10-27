@@ -2,12 +2,14 @@ import axios from "axios";
 import ErrorHandler from "../../middleware/errorhandler/index.js";
 import logger from "../../utils/logger/index.js";
 import { config } from "../../utils/config/index.js";
+
 class LuluAPIService {
   constructor() {
-    this.baseURL = process.env.LULU_API_BASE_URL || "https://api.lulu.com";
+    this.baseURL =
+      process.env.LULU_API_BASE_URL || "https://api.sandbox.lulu.com";
     this.authURL =
       process.env.LULU_AUTH_URL ||
-      "https://api.lulu.com/auth/realms/glasstree/protocol/openid-connect/token";
+      "https://api.sandbox.lulu.com/auth/realms/glasstree/protocol/openid-connect/token";
     this.clientKey = config.lulu.client_key;
     this.clientSecret = config.lulu.client_secret;
     this.accessToken = null;
@@ -27,7 +29,7 @@ class LuluAPIService {
       const authString = Buffer.from(
         `${this.clientKey}:${this.clientSecret}`,
       ).toString("base64");
-
+      console.log(config.lulu.client_key, config.lulu.client_secret);
       const response = await axios.post(
         this.authURL,
         "grant_type=client_credentials",
@@ -45,6 +47,7 @@ class LuluAPIService {
       logger.info("Lulu API authentication successful");
       return this.accessToken;
     } catch (error) {
+      console.log(error);
       logger.error("Lulu API authentication failed", { error: error.message });
       throw new ErrorHandler("Failed to authenticate with Lulu API", 500);
     }
@@ -54,7 +57,7 @@ class LuluAPIService {
     try {
       const token = await this.authenticate();
 
-      const config = {
+      const requestConfig = {
         method,
         url: `${this.baseURL}${endpoint}`,
         headers: {
@@ -65,12 +68,14 @@ class LuluAPIService {
       };
 
       if (data) {
-        config.data = data;
+        requestConfig.data = data;
       }
 
-      const response = await axios(config);
+      const response = await axios(requestConfig);
+
       return response.data;
     } catch (error) {
+      console.log(error.response);
       logger.error("Lulu API request failed", {
         endpoint,
         method,
@@ -120,19 +125,121 @@ class LuluAPIService {
   }
 
   async calculatePrintJobCost(lineItems, shippingAddress, shippingOption) {
-    return await this.makeRequest("POST", "/print-job-cost-calculations/", {
-      line_items: lineItems,
-      shipping_address: shippingAddress,
-      shipping_option: shippingOption,
-    });
-  }
+    try {
+      if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
+        throw new ErrorHandler(
+          "Line items are required and must be an array",
+          400,
+        );
+      }
 
+      if (!shippingAddress) {
+        throw new ErrorHandler("Shipping address is required", 400);
+      }
+
+      if (!shippingOption) {
+        throw new ErrorHandler("Shipping option is required", 400);
+      }
+      const validShippingOptions = [
+        "MAIL",
+        "PRIORITY_MAIL",
+        "GROUND_HD",
+        "GROUND_BUS",
+        "GROUND",
+        "EXPEDITED",
+        "EXPRESS",
+      ];
+      if (!validShippingOptions.includes(shippingOption)) {
+        throw new ErrorHandler(
+          `Invalid shipping option. Must be one of: ${validShippingOptions.join(", ")}`,
+          400,
+        );
+      }
+
+      const payload = {
+        line_items: lineItems.map((item) => ({
+          page_count: parseInt(item.page_count),
+          pod_package_id: item.pod_package_id,
+          quantity: parseInt(item.quantity),
+        })),
+        shipping_address: {
+          city: shippingAddress.city,
+          country_code: shippingAddress.country_code,
+          postcode: shippingAddress.postcode,
+          state_code: shippingAddress.state_code,
+          street1: shippingAddress.street1,
+          ...(shippingAddress.name && { name: shippingAddress.name }),
+          ...(shippingAddress.street2 && { street2: shippingAddress.street2 }),
+          ...(shippingAddress.phone_number && {
+            phone_number: shippingAddress.phone_number,
+          }),
+        },
+        shipping_option: shippingOption,
+      };
+
+      logger.debug("Sending print job cost calculation request", {
+        lineItemsCount: payload.line_items.length,
+        shippingOption: payload.shipping_option,
+        shippingAddress: {
+          city: payload.shipping_address.city,
+          country: payload.shipping_address.country_code,
+        },
+      });
+
+      const result = await this.makeRequest(
+        "POST",
+        "/print-job-cost-calculations/",
+        payload,
+      );
+
+      logger.info("Print job cost calculation successful", {
+        totalCost: result.total_cost_incl_tax,
+        currency: result.currency,
+        lineItemsCount: lineItems.length,
+      });
+      console.log(result);
+      return result;
+    } catch (error) {
+      console.log(error);
+      logger.error("Print job cost calculation failed", {
+        error: error.message,
+        shippingOption,
+        lineItemsCount: lineItems?.length,
+      });
+      throw error;
+    }
+  }
   async getShippingOptions(lineItems, shippingAddress, currency = "USD") {
-    return await this.makeRequest("POST", "/shipping-options/", {
-      line_items: lineItems,
-      shipping_address: shippingAddress,
-      currency,
-    });
+    try {
+      const payload = {
+        line_items: lineItems.map((item) => ({
+          page_count: parseInt(item.page_count),
+          pod_package_id: item.pod_package_id,
+          quantity: parseInt(item.quantity),
+        })),
+        shipping_address: {
+          city: shippingAddress.city,
+          country_code: shippingAddress.country_code,
+          postcode: shippingAddress.postcode,
+          state_code: shippingAddress.state_code,
+          street1: shippingAddress.street1,
+          ...(shippingAddress.name && { name: shippingAddress.name }),
+          ...(shippingAddress.street2 && { street2: shippingAddress.street2 }),
+          ...(shippingAddress.phone_number && {
+            phone_number: shippingAddress.phone_number,
+          }),
+        },
+        currency,
+      };
+
+      return await this.makeRequest("POST", "/shipping-options/", payload);
+    } catch (error) {
+      logger.error("Failed to get shipping options", {
+        error: error.message,
+        currency,
+      });
+      throw error;
+    }
   }
   async createPrintJob(printJobData) {
     return await this.makeRequest("POST", "/print-jobs/", printJobData);
