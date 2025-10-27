@@ -22,6 +22,12 @@ BookPersonalizer.post(
   personalizeBook,
 );
 
+BookPersonalizer.patch(
+  "/:bookId/dedication",
+  authorize(["User", "Admin"]),
+  updateDedicationMessage,
+);
+
 //=========for admin
 BookPersonalizer.get(
   "/admin/getallforuser/:userId",
@@ -68,10 +74,4 @@ BookPersonalizer.get(
   "/searchbygenre",
   authorize(["User"]),
   getPersonalizedBooksByGenre,
-);
-
-BookPersonalizer.patch(
-  "/:bookId/dedication",
-  authorize(["User", "Admin"]),
-  updateDedicationMessage,
 );

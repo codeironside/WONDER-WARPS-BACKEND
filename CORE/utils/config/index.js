@@ -51,4 +51,10 @@ export const config = {
   google: {
     api_key: process.env.GOOGLE_API_KEY,
   },
+  lulu: {
+    client_key: process.env.LULU_CLIENT_KEY,
+    client_secret: process.env.LULU_CLIENT_SECRET,
+    successUrl: `${process.env.FRONTEND_DEV}/print/orders/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${process.env.FRONTEND_DEV}/print-order/cancel?session_id={CHECKOUT_SESSION_ID}`,
+  },
 };
