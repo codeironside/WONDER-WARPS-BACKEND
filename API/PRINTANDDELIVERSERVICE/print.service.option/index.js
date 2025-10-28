@@ -1,56 +1,28 @@
-import mongoose from "mongoose";
 import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
+import LuluAPIService from "../../../CORE/services/luluapiservice/index.js";
+import mongoose from "mongoose";
 
 const printServiceOptionsSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 255,
-    },
-    description: {
-      type: String,
-      required: true,
-    },
-    pod_package_id: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 27,
-    },
+    name: { type: String, required: true, trim: true, maxlength: 255 },
+    description: { type: String, required: true },
+    pod_package_id: { type: String, required: true, trim: true, maxlength: 27 },
     category: {
       type: String,
       enum: ["paperback", "hardcover", "premium", "coil_bound"],
       required: true,
     },
-    trim_size: {
-      type: String,
-      required: true,
-    },
-    color: {
-      type: String,
-      enum: ["bw", "fc"],
-      required: true,
-    },
+    trim_size: { type: String, required: true },
+    color: { type: String, enum: ["bw", "fc"], required: true },
     print_quality: {
       type: String,
       enum: ["standard", "premium"],
       required: true,
     },
-    binding: {
-      type: String,
-      required: true,
-    },
-    paper_type: {
-      type: String,
-      required: true,
-    },
-    paper_ppi: {
-      type: String,
-      required: true,
-    },
+    binding: { type: String, required: true },
+    paper_type: { type: String, required: true },
+    paper_ppi: { type: String, required: true },
     cover_finish: {
       type: String,
       enum: ["matte", "gloss", "unlaminated", "none"],
@@ -75,27 +47,12 @@ const printServiceOptionsSchema = new mongoose.Schema(
       enum: ["gold", "black", "white", "none"],
       default: "none",
     },
-    base_price: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    is_active: {
-      type: Boolean,
-      default: true,
-    },
-    min_pages: {
-      type: Number,
-      default: 2,
-    },
-    max_pages: {
-      type: Number,
-      default: 800,
-    },
-    estimated_production_days: {
-      type: Number,
-      default: 5,
-    },
+    base_price: { type: Number, required: true, min: 0 },
+    platform_fee: { type: Number, required: true, min: 0, default: 0 },
+    is_active: { type: Boolean, default: true },
+    min_pages: { type: Number, default: 2 },
+    max_pages: { type: Number, default: 800 },
+    estimated_production_days: { type: Number, default: 5 },
   },
   { timestamps: true },
 );
@@ -124,6 +81,7 @@ const validationSchema = Joi.object({
     .optional(),
   foil_color: Joi.string().valid("gold", "black", "white", "none").optional(),
   base_price: Joi.number().precision(2).positive().required(),
+  platform_fee: Joi.number().precision(2).min(0).default(0),
   is_active: Joi.boolean().default(true),
   min_pages: Joi.number().integer().min(2).optional(),
   max_pages: Joi.number().integer().min(10).optional(),
@@ -350,6 +308,8 @@ class PrintServiceOptions {
         throw new ErrorHandler(this.formatValidationError(error), 400);
       }
 
+      validatedData.base_price += validatedData.platform_fee;
+
       if (!validatedData.pod_package_id) {
         const mappings = this.getLuluOptionMappings();
 
@@ -402,12 +362,52 @@ class PrintServiceOptions {
           await this.generatePodPackageId(podOptions);
       }
 
+      try {
+        const luluAPIService = new LuluAPIService();
+        const validationLineItems = [
+          {
+            pod_package_id: validatedData.pod_package_id,
+            page_count: validatedData.min_pages || 24,
+            quantity: 1,
+          },
+        ];
+
+        const validationShippingAddress = {
+          street1: "123 Main St",
+          city: "New York",
+          state_code: "NY",
+          postcode: "10001",
+          country_code: "US",
+        };
+
+        const validationShippingOption = "MAIL";
+
+        await luluAPIService.calculatePrintJobCost(
+          validationLineItems,
+          validationShippingAddress,
+          validationShippingOption,
+        );
+      } catch (luluError) {
+        throw new ErrorHandler(
+          `Lulu API Validation Failed: ${luluError.message}. This print service option is likely invalid or cannot be shipped.`,
+          400,
+        );
+      }
+
       const service = new PrintServiceOptionsModel(validatedData);
       await service.save();
 
       return service.toObject();
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
+
+      if (error.code === 11000) {
+        throw new ErrorHandler(
+          "A service option with this pod_package_id already exists.",
+          409,
+        );
+      }
+
       throw new ErrorHandler(
         `Failed to create service option: ${error.message}`,
         500,

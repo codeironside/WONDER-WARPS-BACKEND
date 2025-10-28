@@ -75,7 +75,7 @@ class LuluAPIService {
 
       return response.data;
     } catch (error) {
-      console.log(error.response);
+      console.log(JSON.stringify(error.response.data));
       logger.error("Lulu API request failed", {
         endpoint,
         method,
@@ -158,7 +158,8 @@ class LuluAPIService {
 
       const payload = {
         line_items: lineItems.map((item) => ({
-          page_count: parseInt(item.page_count),
+          page_count: 40,
+          // page_count: parseInt(item.page_count),
           pod_package_id: item.pod_package_id,
           quantity: parseInt(item.quantity),
         })),

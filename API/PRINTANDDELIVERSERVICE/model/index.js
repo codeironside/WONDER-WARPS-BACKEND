@@ -7,7 +7,7 @@ import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
 import { config } from "../../../CORE/utils/config/index.js";
 import S3Service from "../../../CORE/services/s3/index.js";
-
+import stripeService from "../../../CORE/services/stripe/index.js";
 class PrintOrderService {
   constructor() {
     this.luluService = new LuluAPIService();
@@ -201,6 +201,8 @@ class PrintOrderService {
       if (printOrder.payment_status === "paid") {
         throw new ErrorHandler("Print order already paid for", 400);
       }
+
+      console.log(printOrder.personalized_book_id._id.toString());
       const book = await PersonalizedBook.findById(
         printOrder.personalized_book_id,
       );
@@ -215,7 +217,7 @@ class PrintOrderService {
       const metadata = {
         service: "print_on_demand",
         print_order_id: printOrderId.toString(),
-        personalized_book_id: printOrder.personalized_book_id.toString(),
+        personalized_book_id: printOrder.personalized_book_id._id.toString(),
         user_id: userId,
         service_option_id: printOrder.service_option_id.toString(),
         pod_package_id: serviceOption.pod_package_id,
@@ -238,7 +240,7 @@ class PrintOrderService {
       const paymentRecord = await PrintOrderPayment.createPendingPayment({
         user_id: userId,
         print_order_id: printOrderId,
-        personalized_book_id: printOrder.personalized_book_id,
+        personalized_book_id: printOrder.personalized_book_id._id.toString(),
         checkout_session_id: checkoutSession.id,
         amount: totalAmount,
         currency: "usd",
@@ -446,51 +448,74 @@ class PrintOrderService {
         throw new ErrorHandler("Print order not found", 404);
       }
 
+      if (
+        printOrder.status !== "created" &&
+        printOrder.payment_status !== "paid"
+      ) {
+        throw new ErrorHandler(
+          "Print order must be paid before submission",
+          402,
+        );
+      }
+
       const serviceOption = await PrintServiceOptions.findById(
         printOrder.service_option_id,
       );
       const book = await PersonalizedBook.findById(
         printOrder.personalized_book_id,
       );
+      const pageCount = this.calculateBookPageCount(book);
+
       const { interiorFileUrl, coverFileUrl } =
         await this.generatePrintFiles(book);
+
       await this.validateFilesWithLulu(
         interiorFileUrl,
         coverFileUrl,
         serviceOption.pod_package_id,
-        book,
+        pageCount,
       );
-      const printJob = await this.luluService.createPrintJob({
+
+      const luluPrintJobPayload = {
         contact_email: printOrder.contact_email,
-        external_id: printOrder.external_id || `print_order_${printOrderId}`,
+        external_id: printOrder._id.toString(),
+        shipping_level: this.mapToLuluShippingOption(printOrder.shipping_level),
+        shipping_address: {
+          name: printOrder.shipping_address.name,
+          street1: printOrder.shipping_address.street1,
+          street2: printOrder.shipping_address.street2,
+          city: printOrder.shipping_address.city,
+          state_code: printOrder.shipping_address.state_code,
+          country_code: printOrder.shipping_address.country_code,
+          postcode: printOrder.shipping_address.postcode,
+          phone_number: printOrder.shipping_address.phone_number,
+        },
         line_items: [
           {
-            page_count: book.personalized_content?.page_count || 100,
-            pod_package_id: serviceOption.pod_package_id,
+            title: book.personalized_content?.book_title || "Personalized Book",
+            external_id: `item-${printOrder.personalized_book_id}`,
             quantity: printOrder.quantity,
             printable_normalization: {
-              cover: { source_url: coverFileUrl },
+              pod_package_id: serviceOption.pod_package_id,
               interior: { source_url: interiorFileUrl },
+              cover: { source_url: coverFileUrl },
             },
           },
         ],
-        production_delay: printOrder.production_delay,
-        shipping_address: printOrder.shipping_address,
-        shipping_level: printOrder.shipping_level,
-      });
+      };
 
-      await PrintOrder.updateLuluJobId(printOrderId, printJob.id);
-      await PrintOrder.updateStatus(printOrderId, "created");
+      const luluPrintJob =
+        await this.luluService.createPrintJob(luluPrintJobPayload);
+
+      await PrintOrder.updateLuluJobId(printOrderId, luluPrintJob.id);
+      await PrintOrder.updateStatus(printOrderId, "in_production");
 
       logger.info("Print job submitted to Lulu successfully", {
         printOrderId,
-        luluJobId: printJob.id,
+        luluJobId: luluPrintJob.id,
       });
 
-      return {
-        printOrder: await PrintOrder.findById(printOrderId),
-        luluPrintJob: printJob,
-      };
+      return this._formatLuluResponse(luluPrintJob, printOrder);
     } catch (error) {
       logger.error("Failed to submit print job to Lulu", {
         printOrderId,
@@ -498,8 +523,37 @@ class PrintOrderService {
       });
 
       await PrintOrder.updateStatus(printOrderId, "error");
+      if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to submit print job", 500);
     }
+  }
+
+  _formatLuluResponse(luluPrintJob, printOrder) {
+    const serviceFee = printOrder.service_option_id.platform_fee || 0;
+    const totalCost = parseFloat(luluPrintJob.costs?.total_cost_incl_tax || 0);
+
+    return {
+      lulu_order_id: luluPrintJob.id,
+      status: luluPrintJob.status.name,
+      message: luluPrintJob.status.message,
+      created_at: luluPrintJob.date_created,
+      shipping_address: luluPrintJob.shipping_address,
+      shipping_level: luluPrintJob.shipping_level,
+      estimated_shipping_dates: luluPrintJob.estimated_shipping_dates,
+      line_items: luluPrintJob.line_items.map((item) => ({
+        item_id: item.id,
+        title: item.title,
+        quantity: item.quantity,
+        status: item.status.name,
+        message: item.status.messages?.info,
+      })),
+      costs: {
+        ...luluPrintJob.costs,
+        platform_fee: serviceFee.toFixed(2),
+        final_total: (totalCost + serviceFee).toFixed(2),
+      },
+      internal_order_id: printOrder._id,
+    };
   }
 
   async getPrintOrderStatus(printOrderId, userId = null) {
