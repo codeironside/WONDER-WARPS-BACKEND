@@ -47,7 +47,6 @@ const printServiceOptionsSchema = new mongoose.Schema(
       enum: ["gold", "black", "white", "none"],
       default: "none",
     },
-    base_price: { type: Number, required: true, min: 0 },
     platform_fee: { type: Number, required: true, min: 0, default: 0 },
     is_active: { type: Boolean, default: true },
     min_pages: { type: Number, default: 2 },
@@ -80,14 +79,12 @@ const validationSchema = Joi.object({
     .valid("navy", "gray", "red", "black", "tan", "forest", "interior", "none")
     .optional(),
   foil_color: Joi.string().valid("gold", "black", "white", "none").optional(),
-  base_price: Joi.number().precision(2).positive().required(),
   platform_fee: Joi.number().precision(2).min(0).default(0),
   is_active: Joi.boolean().default(true),
   min_pages: Joi.number().integer().min(2).optional(),
   max_pages: Joi.number().integer().min(10).optional(),
   estimated_production_days: Joi.number().integer().min(1).optional(),
 });
-
 class PrintServiceOptions {
   static validationSchema = validationSchema;
 
@@ -308,11 +305,8 @@ class PrintServiceOptions {
         throw new ErrorHandler(this.formatValidationError(error), 400);
       }
 
-      validatedData.base_price += validatedData.platform_fee;
-
       if (!validatedData.pod_package_id) {
         const mappings = this.getLuluOptionMappings();
-
         const trimSize = mappings.trim_sizes.find(
           (t) => t.name === validatedData.trim_size,
         );
@@ -373,23 +367,29 @@ class PrintServiceOptions {
         ];
 
         const validationShippingAddress = {
+          name: "Validation Check",
           street1: "123 Main St",
           city: "New York",
           state_code: "NY",
           postcode: "10001",
           country_code: "US",
+          phone_number: "+1-555-555-5555",
         };
 
-        const validationShippingOption = "MAIL";
-
-        await luluAPIService.calculatePrintJobCost(
+        const availableOptions = await luluAPIService.getShippingOptions(
           validationLineItems,
           validationShippingAddress,
-          validationShippingOption,
         );
+
+        if (!availableOptions || availableOptions.length === 0) {
+          throw new ErrorHandler(
+            "No shipping options are available for this product configuration. The selected combination of size, paper, and binding may not be manufacturable or shippable.",
+            400,
+          );
+        }
       } catch (luluError) {
         throw new ErrorHandler(
-          `Lulu API Validation Failed: ${luluError.message}. This print service option is likely invalid or cannot be shipped.`,
+          `Lulu API Validation Failed: ${luluError.message}. This print service is likely invalid. Please check the product options.`,
           400,
         );
       }
@@ -403,7 +403,7 @@ class PrintServiceOptions {
 
       if (error.code === 11000) {
         throw new ErrorHandler(
-          "A service option with this pod_package_id already exists.",
+          "A service option with this exact product ID already exists.",
           409,
         );
       }

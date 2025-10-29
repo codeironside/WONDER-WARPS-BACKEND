@@ -15,14 +15,23 @@ class PrintOrderService {
 
   async createPrintOrderWithCost(userId, orderData) {
     try {
+      const { error, value: validatedData } =
+        PrintOrder.validationSchema.validate(orderData, {
+          abortEarly: false,
+          stripUnknown: true,
+        });
+
+      if (error) {
+        throw new ErrorHandler(PrintOrder.formatValidationError(error), 400);
+      }
+
       const {
         personalized_book_id,
         service_option_id,
         quantity,
         shipping_address,
         shipping_level,
-        contact_email,
-      } = orderData;
+      } = validatedData;
 
       const book = await PersonalizedBook.findById(personalized_book_id);
       if (!book || book.user_id.toString() !== userId.toString()) {
@@ -31,7 +40,7 @@ class PrintOrderService {
 
       if (!book.is_paid) {
         throw new ErrorHandler(
-          "Book must be paid for before ordering physical copy",
+          "Book must be paid for before ordering a physical copy",
           403,
         );
       }
@@ -62,35 +71,36 @@ class PrintOrderService {
         shipping_level,
       );
 
-      const printOrder = await PrintOrder.createOrder(userId, {
-        personalized_book_id,
-        service_option_id,
-        quantity,
-        shipping_address,
-        shipping_level,
-        contact_email,
-        external_id: orderData.external_id,
-        production_delay: orderData.production_delay,
-      });
+      const platformFee = serviceOption.platform_fee || 0;
+      const luluTotalCost = parseFloat(costCalculation.total_cost_incl_tax);
 
-      await PrintOrder.updateCostBreakdown(printOrder._id, costCalculation);
+      const finalCostBreakdown = {
+        ...costCalculation,
+        platform_fee: platformFee.toFixed(2),
+        total_cost_incl_tax: (luluTotalCost + platformFee).toFixed(2),
+      };
+
+      const printOrder = await PrintOrder.createOrder(userId, validatedData);
+
+      const updatedOrder = await PrintOrder.updateCostBreakdown(
+        printOrder._id,
+        finalCostBreakdown,
+      );
 
       logger.info("Print order created with cost calculation", {
-        printOrderId: printOrder._id,
-        totalCost: costCalculation.total_cost_incl_tax,
+        printOrderId: updatedOrder._id,
+        totalCost: updatedOrder.cost_breakdown.total_cost_incl_tax,
         userId,
-        calculatedPageCount: pageCount,
       });
 
       return {
-        print_order: printOrder,
-        cost_breakdown: costCalculation,
+        print_order: updatedOrder,
+        cost_breakdown: updatedOrder.cost_breakdown,
         service_option: serviceOption,
         book: {
           title: book.personalized_content?.book_title,
           child_name: book.child_name,
           page_count: pageCount,
-          calculated_structure: this.getPageBreakdown(book),
         },
       };
     } catch (error) {

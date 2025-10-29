@@ -158,34 +158,22 @@ class LuluAPIService {
 
       const payload = {
         line_items: lineItems.map((item) => ({
-          page_count: 40,
-          // page_count: parseInt(item.page_count),
+          page_count: parseInt(item.page_count),
           pod_package_id: item.pod_package_id,
           quantity: parseInt(item.quantity),
         })),
         shipping_address: {
-          city: shippingAddress.city,
-          country_code: shippingAddress.country_code,
-          postcode: shippingAddress.postcode,
-          state_code: shippingAddress.state_code,
+          name: shippingAddress.name,
           street1: shippingAddress.street1,
-          ...(shippingAddress.name && { name: shippingAddress.name }),
-          ...(shippingAddress.street2 && { street2: shippingAddress.street2 }),
-          ...(shippingAddress.phone_number && {
-            phone_number: shippingAddress.phone_number,
-          }),
+          street2: shippingAddress.street2,
+          city: shippingAddress.city,
+          state_code: shippingAddress.state_code,
+          country: shippingAddress.country_code, // FIX: Changed from country_code
+          postcode: shippingAddress.postcode,
+          phone_number: shippingAddress.phone_number,
         },
         shipping_option: shippingOption,
       };
-
-      logger.debug("Sending print job cost calculation request", {
-        lineItemsCount: payload.line_items.length,
-        shippingOption: payload.shipping_option,
-        shippingAddress: {
-          city: payload.shipping_address.city,
-          country: payload.shipping_address.country_code,
-        },
-      });
 
       const result = await this.makeRequest(
         "POST",
@@ -193,19 +181,10 @@ class LuluAPIService {
         payload,
       );
 
-      logger.info("Print job cost calculation successful", {
-        totalCost: result.total_cost_incl_tax,
-        currency: result.currency,
-        lineItemsCount: lineItems.length,
-      });
-      console.log(result);
       return result;
     } catch (error) {
-      console.log(error);
       logger.error("Print job cost calculation failed", {
         error: error.message,
-        shippingOption,
-        lineItemsCount: lineItems?.length,
       });
       throw error;
     }
@@ -219,26 +198,21 @@ class LuluAPIService {
           quantity: parseInt(item.quantity),
         })),
         shipping_address: {
-          city: shippingAddress.city,
-          country_code: shippingAddress.country_code,
-          postcode: shippingAddress.postcode,
-          state_code: shippingAddress.state_code,
+          name: shippingAddress.name,
           street1: shippingAddress.street1,
-          ...(shippingAddress.name && { name: shippingAddress.name }),
-          ...(shippingAddress.street2 && { street2: shippingAddress.street2 }),
-          ...(shippingAddress.phone_number && {
-            phone_number: shippingAddress.phone_number,
-          }),
+          street2: shippingAddress.street2,
+          city: shippingAddress.city,
+          state_code: shippingAddress.state_code,
+          country: shippingAddress.country_code, // FIX: Changed from country_code
+          postcode: shippingAddress.postcode,
+          phone_number: shippingAddress.phone_number,
         },
         currency,
       };
 
       return await this.makeRequest("POST", "/shipping-options/", payload);
     } catch (error) {
-      logger.error("Failed to get shipping options", {
-        error: error.message,
-        currency,
-      });
+      logger.error("Failed to get shipping options", { error: error.message });
       throw error;
     }
   }
