@@ -168,7 +168,7 @@ class LuluAPIService {
           street2: shippingAddress.street2,
           city: shippingAddress.city,
           state_code: shippingAddress.state_code,
-          country: shippingAddress.country_code, // FIX: Changed from country_code
+          country_code: shippingAddress.country_code,
           postcode: shippingAddress.postcode,
           phone_number: shippingAddress.phone_number,
         },

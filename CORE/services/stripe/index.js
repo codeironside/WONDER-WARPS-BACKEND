@@ -353,6 +353,79 @@ class StripeService {
     }
   }
 
+  // Add this method inside your StripeService class in CORE/services/stripe/index.js
+
+  async createPrintOrderCheckoutSession(
+    amount,
+    currency,
+    metadata,
+    customerData,
+    successUrl,
+    cancelUrl,
+  ) {
+    try {
+      const amountInCents = Math.round(amount * 100);
+
+      if (amountInCents < 50) {
+        throw new ErrorHandler("Amount must be at least $0.50", 400);
+      }
+
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: currency.toLowerCase(),
+              product_data: {
+                name: `Printed Book Order #${metadata.print_order_id.slice(-6)}`,
+                description: `A physical copy of '${metadata.book_title}'`,
+              },
+              unit_amount: amountInCents,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        customer_email: customerData.email,
+        metadata: {
+          service: "print_on_demand",
+          ...metadata,
+        },
+        payment_intent_data: {
+          metadata: {
+            service: "print_on_demand",
+            ...metadata,
+          },
+          description: `Print Order ID: ${metadata.print_order_id}`,
+          receipt_email: customerData.email,
+        },
+      });
+
+      logger.info("Print order checkout session created successfully", {
+        sessionId: session.id,
+        amount,
+        currency,
+      });
+
+      return session;
+    } catch (error) {
+      logger.error("Failed to create print order checkout session", {
+        error: error.message,
+        amount,
+        currency,
+        metadata,
+      });
+
+      if (error.type?.includes("Stripe")) {
+        throw new ErrorHandler(this.formatStripeError(error), 400);
+      }
+
+      throw new ErrorHandler("Payment service temporarily unavailable", 503);
+    }
+  }
+
   async handleWebhook(payload, signature, endpointSecret) {
     try {
       const event = this.stripe.webhooks.constructEvent(

@@ -8,6 +8,7 @@ import logger from "../../../CORE/utils/logger/index.js";
 import { config } from "../../../CORE/utils/config/index.js";
 import S3Service from "../../../CORE/services/s3/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
+
 class PrintOrderService {
   constructor() {
     this.luluService = new LuluAPIService();
@@ -71,14 +72,19 @@ class PrintOrderService {
         shipping_level,
       );
 
-      const platformFee = serviceOption.platform_fee || 0;
+      const basePrice = serviceOption.base_price || 0;
       const luluTotalCost = parseFloat(costCalculation.total_cost_incl_tax);
+      const finalTotal = luluTotalCost + basePrice;
 
       const finalCostBreakdown = {
         ...costCalculation,
-        platform_fee: platformFee.toFixed(2),
-        total_cost_incl_tax: (luluTotalCost + platformFee).toFixed(2),
+        base_price: basePrice.toFixed(2),
+        total_cost_incl_tax: finalTotal.toFixed(2),
       };
+
+      if (parseFloat(finalCostBreakdown.total_discount_amount) === 0) {
+        delete finalCostBreakdown.total_discount_amount;
+      }
 
       const printOrder = await PrintOrder.createOrder(userId, validatedData);
 
@@ -178,7 +184,7 @@ class PrintOrderService {
           : 0,
       chapters: {
         total: chapters.length,
-        base_pages: chapters.length * 2, // Title + content for each chapter
+        base_pages: chapters.length * 2,
         full_scene_pages: fullSceneChapters.length,
         other_image_positions: chapters.length - fullSceneChapters.length,
       },
@@ -212,27 +218,19 @@ class PrintOrderService {
         throw new ErrorHandler("Print order already paid for", 400);
       }
 
-      console.log(printOrder.personalized_book_id._id.toString());
       const book = await PersonalizedBook.findById(
         printOrder.personalized_book_id,
       );
-      const serviceOption = await PrintServiceOptions.findById(
-        printOrder.service_option_id,
-      );
+
       const totalAmount = printOrder.cost_breakdown.total_cost_incl_tax;
-      const bookTitle =
-        book.personalized_content?.book_title || "Personalized Book";
-      const childName = book.child_name;
+      const currency = printOrder.cost_breakdown.currency || "usd";
 
       const metadata = {
-        service: "print_on_demand",
         print_order_id: printOrderId.toString(),
         personalized_book_id: printOrder.personalized_book_id._id.toString(),
         user_id: userId,
-        service_option_id: printOrder.service_option_id.toString(),
-        pod_package_id: serviceOption.pod_package_id,
-        quantity: printOrder.quantity.toString(),
-        shipping_level: printOrder.shipping_level,
+        book_title:
+          book.personalized_content?.book_title || "Personalized Book",
       };
 
       const customerData = {
@@ -240,20 +238,23 @@ class PrintOrderService {
         name: printOrder.shipping_address.name,
       };
 
-      const checkoutSession = await stripeService.createCheckoutSession(
-        totalAmount,
-        metadata,
-        customerData,
-        config.lulu.successUrl,
-        config.lulu.cancelUrl,
-      );
-      const paymentRecord = await PrintOrderPayment.createPendingPayment({
+      const checkoutSession =
+        await stripeService.createPrintOrderCheckoutSession(
+          totalAmount,
+          currency,
+          metadata,
+          customerData,
+          config.lulu.successUrl,
+          config.lulu.cancelUrl,
+        );
+
+      await PrintOrderPayment.createPendingPayment({
         user_id: userId,
         print_order_id: printOrderId,
         personalized_book_id: printOrder.personalized_book_id._id.toString(),
         checkout_session_id: checkoutSession.id,
         amount: totalAmount,
-        currency: "usd",
+        currency: currency.toLowerCase(),
         status: "pending",
       });
 
@@ -261,13 +262,14 @@ class PrintOrderService {
         printOrderId,
         checkoutSessionId: checkoutSession.id,
         amount: totalAmount,
+        currency,
       });
 
       return {
         checkout_url: checkoutSession.url,
         checkout_session_id: checkoutSession.id,
         amount: totalAmount,
-        currency: "usd",
+        currency: currency,
         print_order: printOrder,
       };
     } catch (error) {
@@ -279,6 +281,7 @@ class PrintOrderService {
       throw error;
     }
   }
+
   async handlePaymentSuccessCallback(checkoutSessionId) {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -303,11 +306,6 @@ class PrintOrderService {
         throw new ErrorHandler("Payment record not found", 404);
       }
       if (paymentRecord.callback_processed) {
-        logger.info("Payment already processed via callback", {
-          checkoutSessionId,
-          printOrderId: paymentRecord.print_order_id,
-        });
-
         const printOrder = await PrintOrder.findById(
           paymentRecord.print_order_id,
         );
@@ -385,11 +383,6 @@ class PrintOrderService {
       const printOrder = await PrintOrder.findById(
         paymentRecord.print_order_id,
       );
-
-      logger.info("Payment cancelled by user", {
-        checkoutSessionId,
-        printOrderId: paymentRecord.print_order_id,
-      });
 
       return {
         print_order: printOrder,
@@ -507,8 +500,12 @@ class PrintOrderService {
             quantity: printOrder.quantity,
             printable_normalization: {
               pod_package_id: serviceOption.pod_package_id,
-              interior: { source_url: interiorFileUrl },
-              cover: { source_url: coverFileUrl },
+              interior: {
+                source_url: interiorFileUrl,
+              },
+              cover: {
+                source_url: coverFileUrl,
+              },
             },
           },
         ],
@@ -539,7 +536,7 @@ class PrintOrderService {
   }
 
   _formatLuluResponse(luluPrintJob, printOrder) {
-    const serviceFee = printOrder.service_option_id.platform_fee || 0;
+    const basePrice = printOrder.service_option_id.base_price || 0;
     const totalCost = parseFloat(luluPrintJob.costs?.total_cost_incl_tax || 0);
 
     return {
@@ -559,8 +556,8 @@ class PrintOrderService {
       })),
       costs: {
         ...luluPrintJob.costs,
-        platform_fee: serviceFee.toFixed(2),
-        final_total: (totalCost + serviceFee).toFixed(2),
+        base_price: basePrice.toFixed(2),
+        final_total: (totalCost + basePrice).toFixed(2),
       },
       internal_order_id: printOrder._id,
     };
@@ -657,14 +654,9 @@ class PrintOrderService {
             checkoutSessionId: payment.checkout_session_id,
             error: error.message,
           });
-          logger.error("Failed to process pending payment", {
-            checkoutSessionId: payment.checkout_session_id,
-            error: error.message,
-          });
         }
       }
 
-      logger.info("Pending payments processing completed", results);
       return results;
     } catch (error) {
       logger.error("Failed to process pending payments", {
@@ -697,14 +689,6 @@ class PrintOrderService {
         shippingAddress,
         luluShippingOption,
       );
-
-      logger.info("Print costs calculated successfully", {
-        podPackageId,
-        pageCount,
-        quantity,
-        totalCost: costCalculation.total_cost_incl_tax,
-        currency: costCalculation.currency,
-      });
 
       return costCalculation;
     } catch (error) {
@@ -763,11 +747,9 @@ class PrintOrderService {
     interiorFileUrl,
     coverFileUrl,
     podPackageId,
-    book,
+    pageCount,
   ) {
     try {
-      const pageCount = book.personalized_content?.page_count || 100;
-
       const interiorValidation = await this.luluService.validateInteriorFile(
         interiorFileUrl,
         podPackageId,
@@ -800,21 +782,12 @@ class PrintOrderService {
   async uploadToStorage(fileBuffer, fileName) {
     try {
       const s3Service = new S3Service();
-
       const key = `books/pdfs/${Date.now()}-${fileName}`;
-
       const fileUrl = await s3Service.uploadBuffer(
         fileBuffer,
         key,
         "application/pdf",
       );
-
-      logger.info("PDF uploaded to S3 successfully", {
-        fileName,
-        key,
-        fileSize: fileBuffer.length,
-      });
-
       return fileUrl;
     } catch (error) {
       logger.error("Failed to upload file to S3", {

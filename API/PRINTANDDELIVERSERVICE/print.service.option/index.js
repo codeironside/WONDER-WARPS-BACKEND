@@ -47,7 +47,7 @@ const printServiceOptionsSchema = new mongoose.Schema(
       enum: ["gold", "black", "white", "none"],
       default: "none",
     },
-    platform_fee: { type: Number, required: true, min: 0, default: 0 },
+    base_price: { type: Number, required: true, min: 0, default: 0 }, // REVERTED to base_price
     is_active: { type: Boolean, default: true },
     min_pages: { type: Number, default: 2 },
     max_pages: { type: Number, default: 800 },
@@ -79,7 +79,7 @@ const validationSchema = Joi.object({
     .valid("navy", "gray", "red", "black", "tan", "forest", "interior", "none")
     .optional(),
   foil_color: Joi.string().valid("gold", "black", "white", "none").optional(),
-  platform_fee: Joi.number().precision(2).min(0).default(0),
+  base_price: Joi.number().precision(2).min(0).default(0), // REVERTED to base_price
   is_active: Joi.boolean().default(true),
   min_pages: Joi.number().integer().min(2).optional(),
   max_pages: Joi.number().integer().min(10).optional(),
