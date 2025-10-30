@@ -1011,7 +1011,7 @@ class PersonalizedBook {
       });
 
       if (!book) {
-        throw new ErrorHandler("Personalized book not found", 404);
+        throw new ErrorHandler("Personalized book not found or not yours", 404);
       }
 
       if (!book.is_paid) {
