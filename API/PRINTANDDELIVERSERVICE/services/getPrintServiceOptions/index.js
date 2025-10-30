@@ -11,7 +11,7 @@ export const getPrintServiceOptions = async (req, res, next) => {
     if (color) filters.color = color;
     if (binding) filters.binding = binding;
 
-    const services = await PrintServiceOptions.findAllActive(filters);
+    const services = await PrintServiceOptions.findAllActiveForAdmin(filters);
 
     sendResponse(res, 200, "Print service options retrieved successfully", {
       services,

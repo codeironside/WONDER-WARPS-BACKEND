@@ -1,7 +1,5 @@
 import ErrorHandler from "@/Error";
-import {
-  sendResponse
-} from "../../../../../CORE/utils/response.handler/index.js";
+import { sendResponse } from "../../../../../CORE/utils/response.handler/index.js";
 import logger from "../../../../../CORE/utils/logger/index.js";
 import PersonalizedBook from "../../../model/index.js";
 
@@ -15,12 +13,8 @@ export const updateDedicationMessage = async (req, res, next) => {
       );
     }
 
-    const {
-      bookId
-    } = req.params;
-    const {
-      dedication_message
-    } = req.body;
+    const { bookId } = req.params;
+    const { dedication_message } = req.body;
     const userId = req.user.id;
 
     if (!bookId) {

@@ -85,9 +85,14 @@ const validationSchema = Joi.object({
   max_pages: Joi.number().integer().min(10).optional(),
   estimated_production_days: Joi.number().integer().min(1).optional(),
 });
+
+const updateValidationSchema = Joi.object({
+  base_price: Joi.number().precision(2).min(0).optional(),
+  is_active: Joi.boolean().optional(),
+}).or("base_price", "is_active");
 class PrintServiceOptions {
   static validationSchema = validationSchema;
-
+  static updateValidationSchema = updateValidationSchema;
   static async generatePodPackageId(options) {
     const {
       trim_size_sku,
@@ -432,6 +437,22 @@ class PrintServiceOptions {
       throw new ErrorHandler("Failed to fetch service options", 500);
     }
   }
+  static async findAllActiveForAdmin(filters = {}) {
+    try {
+      const query = {};
+      if (filters.category) query.category = filters.category;
+      if (filters.color) query.color = filters.color;
+      if (filters.binding) query.binding = new RegExp(filters.binding, "i");
+
+      const services = await PrintServiceOptionsModel.find(query)
+        .sort({ base_price: 1, category: 1 })
+        .lean();
+
+      return services;
+    } catch (error) {
+      throw new ErrorHandler("Failed to fetch service options", 500);
+    }
+  }
 
   static async findById(serviceId) {
     try {
@@ -463,6 +484,30 @@ class PrintServiceOptions {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to fetch service option", 500);
     }
+  }
+
+  static async updateService(serviceId, updateData) {
+    const { error, value: validatedData } =
+      this.updateValidationSchema.validate(updateData, {
+        abortEarly: false,
+        stripUnknown: true,
+      });
+
+    if (error) {
+      throw new ErrorHandler(this.formatValidationError(error), 400);
+    }
+
+    const updatedService = await PrintServiceOptionsModel.findByIdAndUpdate(
+      serviceId,
+      validatedData,
+      { new: true },
+    ).lean();
+
+    if (!updatedService) {
+      throw new ErrorHandler("Service option not found", 404);
+    }
+
+    return updatedService;
   }
 
   static formatValidationError(error) {
