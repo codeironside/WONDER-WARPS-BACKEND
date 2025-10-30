@@ -175,10 +175,15 @@ class PrintOrder {
 
   static async findByUser(userId, options = {}) {
     try {
-      const { page = 1, limit = 10, status } = options;
+      const { page = 1, limit = 10, status, payment_status } = options;
 
       const query = { user_id: userId };
-      if (status) query.status = status;
+      if (status) {
+        query.status = status;
+      }
+      if (payment_status) {
+        query.payment_status = payment_status; // Add this line
+      }
 
       const skip = (page - 1) * limit;
 

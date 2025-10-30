@@ -118,6 +118,28 @@ class PrintOrderService {
     }
   }
 
+  async getUserPrintOrders(userId, options = {}) {
+    try {
+      const { page = 1, limit = 10, status, payment_status } = options;
+
+      const queryOptions = {
+        page: parseInt(page) || 1,
+        limit: parseInt(limit) || 10,
+        status,
+        payment_status,
+      };
+
+      const result = await PrintOrder.findByUser(userId, queryOptions);
+      return result;
+    } catch (error) {
+      logger.error("Failed to retrieve user print orders", {
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   calculateBookPageCount(book) {
     try {
       let pageCount = 0;
