@@ -39,7 +39,7 @@ const printOrderSchema = new mongoose.Schema(
         "canceled",
         "error",
       ],
-      default: "draft",
+      default: "in_production",
     },
     quantity: {
       type: Number,
@@ -139,7 +139,7 @@ class PrintOrder {
       const printOrder = new PrintOrderModel({
         user_id: userId,
         ...validatedData,
-        status: "draft",
+        status: "in_production",
       });
 
       await printOrder.save();
