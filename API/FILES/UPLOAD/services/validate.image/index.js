@@ -7,6 +7,9 @@ export const validateImageFile = async (req, res, next) => {
     if (!req.file) {
       throw new ErrorHandler("No image file provided", 400);
     }
+    if (req.file) {
+      throw new ErrorHandler("exhausted ai tokens please top up", 500);
+    }
     const userId = req.user._id;
     if (!userId) {
       throw new ErrorHandler("userId is required", 400);

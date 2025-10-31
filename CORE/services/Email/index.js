@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+import SES from "aws-sdk/clients/ses.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -9,10 +9,14 @@ import { getLoginDetails } from "../getlogindetails/index.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const resend = new Resend(config.resend.apiKey);
-
 class EmailService {
   constructor() {
+    this.ses = new SES({
+      region: config.ses.region,
+      accessKeyId: config.ses.accessKeyId,
+      secretAccessKey: config.ses.secretAccessKey,
+    });
+
     this.templates = {
       otp: null,
       welcome: null,
@@ -28,32 +32,30 @@ class EmailService {
   async loadTemplates() {
     try {
       const templatesDir = path.join(__dirname, "../../email-templates");
+      const templateFiles = [
+        "otp.html",
+        "welcome-template.html",
+        "login-template.html",
+        "payment-template.html",
+        "password-reset-otp.html",
+        "passwordchangenotification.html",
+      ];
 
-      this.templates.otp = await fs.promises.readFile(
-        path.join(templatesDir, "otp.html"),
-        "utf8",
-      );
-      this.templates.welcome = await fs.promises.readFile(
-        path.join(templatesDir, "welcome-template.html"),
-        "utf8",
-      );
-      this.templates.login = await fs.promises.readFile(
-        path.join(templatesDir, "login-template.html"),
-        "utf8",
-      );
-      this.templates.payment = await fs.promises.readFile(
-        path.join(templatesDir, "payment-template.html"),
-        "utf8",
-      );
-      this.templates.reset_password = await fs.promises.readFile(
-        path.join(templatesDir, "password-reset-otp.html"),
-        "utf8",
-      );
-      this.templates.change_password = await fs.promises.readFile(
-        path.join(templatesDir, "passwordchangenotification.html"),
-        "utf8",
-      );
+      const [otp, welcome, login, payment, reset_password, change_password] =
+        await Promise.all(
+          templateFiles.map((file) =>
+            fs.promises.readFile(path.join(templatesDir, file), "utf8"),
+          ),
+        );
 
+      this.templates = {
+        otp,
+        welcome,
+        login,
+        payment,
+        reset_password,
+        change_password,
+      };
       logger.info("Email templates loaded successfully");
     } catch (error) {
       logger.error("Failed to load email templates:", error);
@@ -61,24 +63,49 @@ class EmailService {
     }
   }
 
+  async _sendEmail(to, subject, htmlBody, textBody) {
+    const params = {
+      Source: config.ses.from_info,
+      Destination: {
+        ToAddresses: [to],
+      },
+      Message: {
+        Subject: {
+          Data: subject,
+          Charset: "UTF-8",
+        },
+        Body: {
+          Html: {
+            Data: htmlBody,
+            Charset: "UTF-8",
+          },
+          Text: {
+            Data: textBody,
+            Charset: "UTF-8",
+          },
+        },
+      },
+    };
+
+    return this.ses.sendEmail(params).promise();
+  }
+
   async sendOTPEmail(email, otpCode, username = "User") {
     try {
-      let htmlContent = this.templates.otp;
-      htmlContent = htmlContent.replace("{{OTP_CODE}}", otpCode);
-      htmlContent = htmlContent.replace("{{USER_NAME}}", username);
+      let htmlContent = this.templates.otp
+        .replace("{{OTP_CODE}}", otpCode)
+        .replace("{{USER_NAME}}", username);
+      const textContent = `Your My Story Hat verification code is: ${otpCode}. This code will expire in 10 minutes.`;
 
-      const result = await resend.emails.send({
-        from: config.resend.from,
-        to: email,
-        subject: "Your My Story hat Verification Code",
-        html: htmlContent,
-        text: `Your My Story Hat verification code is: ${otpCode}. This code will expire in 10 minutes.`,
-      });
-      console.log(result);
-      logger.info(`OTP email sent to ${email}: ${result.data.id}`);
+      const result = await this._sendEmail(
+        email,
+        "Your My Story hat Verification Code",
+        htmlContent,
+        textContent,
+      );
+      logger.info(`OTP email sent to ${email}: ${result.MessageId}`);
       return result;
     } catch (error) {
-      console.log(error);
       logger.error("Failed to send OTP email:", error);
       throw new Error(`Failed to send OTP email: ${error.message}`);
     }
@@ -86,18 +113,19 @@ class EmailService {
 
   async sendWelcomeEmail(email, username) {
     try {
-      let htmlContent = this.templates.welcome;
-      htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
+      let htmlContent = this.templates.welcome.replace(
+        /{{USER_NAME}}/g,
+        username,
+      );
+      const textContent = `Welcome to Wonder Wrap, ${username}! Thank you for joining our community.`;
 
-      const result = await resend.emails.send({
-        from: config.resend.from,
-        to: email,
-        subject: "Welcome to My Story Hat!",
-        html: htmlContent,
-        text: `Welcome to Wonder Wrap, ${username}! Thank you for joining our community.`,
-      });
-
-      logger.info(`Welcome email sent to ${email}: ${result.data.id}`);
+      const result = await this._sendEmail(
+        email,
+        "Welcome to My Story Hat!",
+        htmlContent,
+        textContent,
+      );
+      logger.info(`Welcome email sent to ${email}: ${result.MessageId}`);
       return result;
     } catch (error) {
       logger.error("Failed to send welcome email:", error);
@@ -108,54 +136,37 @@ class EmailService {
   async sendLoginNotificationEmail(req, email, username) {
     try {
       const loginDetails = await getLoginDetails(req);
+      let htmlContent = this.templates.login
+        .replace(/{{USER_NAME}}/g, username)
+        .replace("{{LOCATION}}", loginDetails.location)
+        .replace("{{DEVICE_INFO}}", loginDetails.device)
+        .replace("{{LOGIN_TIME}}", loginDetails.time);
 
-      let htmlContent = this.templates.login;
-      htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
-      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
-      htmlContent = htmlContent.replace("{{DEVICE_INFO}}", loginDetails.device);
-      htmlContent = htmlContent.replace("{{LOGIN_TIME}}", loginDetails.time);
+      const textContent = this.generateLoginTextEmail(username, loginDetails);
+      const result = await this._sendEmail(
+        email,
+        "New Login to Your My Story Hat Account",
+        htmlContent,
+        textContent,
+      );
 
-      const result = await resend.emails.send({
-        from: config.resend.from,
-        to: email,
-        subject: "New Login to Your My Story Hat Account",
-        html: htmlContent,
-        text: this.generateLoginTextEmail(username, loginDetails),
-      });
       logger.info(`Login notification sent to ${email}`, {
-        userId: username,
-        email: email,
-        ip: loginDetails.ip,
-        location: loginDetails.location,
-        device: loginDetails.rawDevice,
-        time: loginDetails.time,
+        messageId: result.MessageId,
+        ...loginDetails,
       });
-
       return result;
-    } catch (error) {}
+    } catch (error) {
+      logger.error("Failed to send login notification email:", error);
+      throw new Error(
+        `Failed to send login notification email: ${error.message}`,
+      );
+    }
   }
+
   generateLoginTextEmail(username, loginDetails) {
-    return `
-New Login to Your My Story Hat Account
-
-Hi ${username},
-
-We noticed a login to your account on My Story Hat just now.
-
-Login details:
-Location: ${loginDetails.location}
-Device: ${loginDetails.device}
-Time: ${loginDetails.time}
-
-If this wasn't you, please reset your password immediately.
-
-View your account: https://my-story-hat.com/account
-
-Questions? Contact us at support@mystoryhat.com
-
-© ${new Date().getFullYear()} My Story Hat. All rights reserved.
-    `.trim();
+    return `New Login to Your My Story Hat Account\n\nHi ${username},\n\nWe noticed a login to your account on My Story Hat just now.\n\nLogin details:\nLocation: ${loginDetails.location}\nDevice: ${loginDetails.device}\nTime: ${loginDetails.time}\n\nIf this wasn't you, please reset your password immediately.\n\n© ${new Date().getFullYear()} My Story Hat. All rights reserved.`.trim();
   }
+
   async sendPaymentConfirmationEmail(
     req,
     email,
@@ -173,51 +184,35 @@ Questions? Contact us at support@mystoryhat.com
     paymentMethod,
   ) {
     try {
-      console.log("Sending payment confirmation email with data:", {
-        email,
-        username,
-        amount,
-        paymentDate,
-        orderId,
-        bookTitle,
-        childName,
-        subtotal,
-        shipping,
-        tax,
-        total,
-        referenceCode,
-
-        paymentMethod,
-      });
       const loginDetails = await getLoginDetails(req);
+      let htmlContent = this.templates.payment
+        .replace(/{{USER_NAME}}/g, username)
+        .replace("{{AMOUNT}}", amount)
+        .replace("{{PAYMENT_DATE}}", paymentDate)
+        .replace("{{ORDER_ID}}", orderId)
+        .replace("{{REFERENCE_CODE}}", referenceCode)
+        .replace("{{STORY_TITLE}}", bookTitle)
+        .replace("{{CHILD_NAME}}", childName)
+        .replace("{{SUBTOTAL}}", subtotal)
+        .replace("{{SHIPPING}}", shipping)
+        .replace("{{TAX}}", tax)
+        .replace("{{TOTAL}}", total)
+        .replace("{{LOCATION}}", loginDetails.location)
+        .replace("{{PAYMENT_METHOD}}", paymentMethod);
 
-      let htmlContent = this.templates.payment;
-      htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
-      htmlContent = htmlContent.replace("{{AMOUNT}}", amount);
-      htmlContent = htmlContent.replace("{{PAYMENT_DATE}}", paymentDate);
-      htmlContent = htmlContent.replace("{{ORDER_ID}}", orderId);
-      htmlContent = htmlContent.replace("{{REFERENCE_CODE}}", referenceCode);
-      htmlContent = htmlContent.replace("{{STORY_TITLE}}", bookTitle);
-      htmlContent = htmlContent.replace("{{CHILD_NAME}}", childName);
-      htmlContent = htmlContent.replace("{{SUBTOTAL}}", subtotal);
-      htmlContent = htmlContent.replace("{{SHIPPING}}", shipping);
-      htmlContent = htmlContent.replace("{{TAX}}", tax);
-      htmlContent = htmlContent.replace("{{TOTAL}}", total);
-      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
-      htmlContent = htmlContent.replace("{{PAYMENT_METHOD}}", paymentMethod);
+      const textContent = `Thank you for your payment of ${amount} for order ${orderId}.`;
+      const result = await this._sendEmail(
+        email,
+        "THANK YOU: Your My Story Hat Payment Confirmation",
+        htmlContent,
+        textContent,
+      );
 
-      const result = await resend.emails.send({
-        from: config.resend.from,
-        to: email,
-        subject: "THANK YOU:Your My Story Hat Payment Confirmation",
-        html: htmlContent,
-      });
       logger.info(
-        `Payment confirmation email sent to ${email}: ${result.data.id}`,
+        `Payment confirmation email sent to ${email}: ${result.MessageId}`,
       );
       return result;
     } catch (error) {
-      console.log(error);
       logger.error("Failed to send payment confirmation email:", error);
       throw new Error("Failed to send payment confirmation email");
     }
@@ -226,7 +221,6 @@ Questions? Contact us at support@mystoryhat.com
   async sendCustomEmail(email, subject, templateName, replacements) {
     try {
       let htmlContent = this.templates[templateName];
-
       if (!htmlContent) {
         throw new Error(`Template ${templateName} not found`);
       }
@@ -236,16 +230,14 @@ Questions? Contact us at support@mystoryhat.com
       });
 
       const textContent = Object.values(replacements).join(" ");
+      const result = await this._sendEmail(
+        email,
+        subject,
+        htmlContent,
+        textContent,
+      );
 
-      const result = await resend.emails.send({
-        from: config.resend.from,
-        to: email,
-        subject: subject,
-        html: htmlContent,
-        text: textContent,
-      });
-
-      logger.info(`Custom email sent to ${email}: ${result.data.id}`);
+      logger.info(`Custom email sent to ${email}: ${result.MessageId}`);
       return result;
     } catch (error) {
       logger.error("Failed to send custom email:", error);
@@ -253,48 +245,36 @@ Questions? Contact us at support@mystoryhat.com
     }
   }
 
-  async verifyEmailIdentity(email) {
-    try {
-      logger.info(`Email identity verification not needed in Resend: ${email}`);
-    } catch (error) {
-      logger.error("Failed to verify email identity:", error);
-      throw new Error(`Failed to verify email identity: ${error.message}`);
-    }
-  }
   async sendPasswordResetOTP(email, username, otp, req) {
     try {
       const loginDetails = await getLoginDetails(req);
-      let htmlContent = this.templates.reset_password;
-      htmlContent = htmlContent.replace(/{{USER_NAME}}/g, username);
-      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
-      htmlContent = htmlContent.replace("{{DEVICE_INFO}}", loginDetails.device);
-      htmlContent = htmlContent.replace("{{REQUEST_TIME}}", loginDetails.time);
-      htmlContent = htmlContent.replace("{{EXPIRY_TIME}}", "15 minutes");
-      htmlContent = htmlContent.replace("{{OTP_CODE}}", otp);
+      let htmlContent = this.templates.reset_password
+        .replace(/{{USER_NAME}}/g, username)
+        .replace("{{LOCATION}}", loginDetails.location)
+        .replace("{{DEVICE_INFO}}", loginDetails.device)
+        .replace("{{REQUEST_TIME}}", loginDetails.time)
+        .replace("{{EXPIRY_TIME}}", "15 minutes")
+        .replace("{{OTP_CODE}}", otp);
 
-      const result = await resend.emails.send({
-        from: config.resend.from,
-        to: email,
-        subject: "PASSWORD RESET OTP",
-        html: htmlContent,
-      });
+      const textContent = `Your password reset OTP is: ${otp}. It will expire in 15 minutes.`;
+      const result = await this._sendEmail(
+        email,
+        "PASSWORD RESET OTP",
+        htmlContent,
+        textContent,
+      );
+
       logger.info(`Password reset notification sent to ${email}`, {
-        userId: username,
-        email: email,
-        ip: loginDetails.ip,
-        location: loginDetails.location,
-        device: loginDetails.rawDevice,
-        time: loginDetails.time,
+        messageId: result.MessageId,
+        ...loginDetails,
       });
-
       return result;
     } catch (error) {
       logger.error("Failed to send password reset email:", error);
-      throw new Error(
-        `Failed to send login notification email: ${error.message}`,
-      );
+      throw new Error(`Failed to send password reset email: ${error.message}`);
     }
   }
+
   async sendPasswordChangeNotification(
     email,
     username,
@@ -302,48 +282,34 @@ Questions? Contact us at support@mystoryhat.com
     req,
   ) {
     try {
-      console.log(PASSWORD_RESET_RECOMMENDATION);
       const loginDetails = await getLoginDetails(req);
-      let htmlContent = this.templates.change_password;
-      htmlContent = htmlContent.replace(/{{USER_NAME}}/, username);
-      htmlContent = htmlContent.replace("{{LOCATION}}", loginDetails.location);
-      htmlContent = htmlContent.replace("{{DEVICE_INFO}}", loginDetails.device);
-      htmlContent = htmlContent.replace("{{CHANGE_TIME}}", loginDetails.time);
-      htmlContent = htmlContent.replace(
-        "{{RECOMMENDATION}}",
-        PASSWORD_RESET_RECOMMENDATION,
+      let htmlContent = this.templates.change_password
+        .replace(/{{USER_NAME}}/, username)
+        .replace("{{LOCATION}}", loginDetails.location)
+        .replace("{{DEVICE_INFO}}", loginDetails.device)
+        .replace("{{CHANGE_TIME}}", loginDetails.time)
+        .replace("{{RECOMMENDATION}}", PASSWORD_RESET_RECOMMENDATION);
+
+      const textContent = `Your password was changed at ${loginDetails.time}. If this was not you, please secure your account.`;
+      const result = await this._sendEmail(
+        email,
+        "PASSWORD CHANGE NOTIFICATION",
+        htmlContent,
+        textContent,
       );
 
-      console.log(
-        "After replacement contains RECOMMENDATION:",
-        htmlContent.includes(PASSWORD_RESET_RECOMMENDATION),
-      );
-
-      const result = await resend.emails.send({
-        from: config.resend.from,
-        to: email,
-        subject: "PASSWORD CHANGE NOTIFICATION",
-        html: htmlContent,
+      logger.info(`Password change notification sent to ${email}`, {
+        messageId: result.MessageId,
+        ...loginDetails,
       });
-      logger.info(`Password change Notification ${email}`, {
-        userId: username,
-        email: email,
-        ip: loginDetails.ip,
-        location: loginDetails.location,
-        device: loginDetails.rawDevice,
-        time: loginDetails.time,
-      });
-
       return result;
     } catch (error) {
-      logger.error("Failed to send password reset email:", error);
+      logger.error("Failed to send password change notification:", error);
       throw new Error(
-        `Failed to send login notification email: ${error.message}`,
+        `Failed to send password change notification: ${error.message}`,
       );
     }
   }
-
-  destroy() {}
 }
 
 const emailService = new EmailService();

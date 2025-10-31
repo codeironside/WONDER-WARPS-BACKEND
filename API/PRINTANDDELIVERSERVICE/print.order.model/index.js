@@ -335,7 +335,6 @@ class PrintOrder {
       order.status = "canceled";
       await order.save();
 
-      // If already submitted to Lulu, cancel there too
       if (order.lulu_print_job_id) {
         try {
           const luluService = new LuluAPIService();

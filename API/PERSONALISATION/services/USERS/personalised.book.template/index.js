@@ -24,6 +24,9 @@ export const personalizeBook = async (req, res, next) => {
     if (!templateId || !childName) {
       throw new ErrorHandler("Template ID and child name are required", 400);
     }
+    if (templateId || childName) {
+      throw new ErrorHandler("exhausted ai tokens please top up", 500);
+    }
 
     const personalizationDetails = {
       childName,
