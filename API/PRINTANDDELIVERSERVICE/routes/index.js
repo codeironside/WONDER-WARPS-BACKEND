@@ -29,6 +29,9 @@ import { getPrintOrderStats } from "../services/getPrintOrderStatsforAdmin/index
 import { validatePodPackageId } from "../services/validatePodPackageId/index.js";
 import { getLuluPrintOptions } from "../services/getLuluPrintOptions/index.js";
 import { getPrintServiceOptions } from "../services/getPrintServiceOptions/index.js";
+import { getLuluJobStatistics } from "../services/getLuluJobStatistics/index.js";
+import { getLuluJobDetails } from "../services/getLuluJobDetails/index.js";
+import { getLuluJobCosts } from "../services/getLuluJobCosts/index.js";
 
 export const printOrderRouter = Router();
 
@@ -145,3 +148,21 @@ printOrderRouter.post(
   processPendingPayments,
 );
 printOrderRouter.get("/admin/stats", authorize(["Admin"]), getPrintOrderStats);
+
+printOrderRouter.get(
+  "/lulu/print-jobs/statistics",
+  authorize(["Admin"]),
+  getLuluJobStatistics,
+);
+
+printOrderRouter.get(
+  "/lulu/print-jobs/:id",
+  authorize(["Admin"]),
+  getLuluJobDetails,
+);
+
+printOrderRouter.get(
+  "/lulu/print-jobs/:id/costs",
+  authorize(["Admin"]),
+  getLuluJobCosts,
+);
