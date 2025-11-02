@@ -8,6 +8,7 @@ import emailService from "../../../CORE/services/Email/index123.js";
 import logger from "../../../CORE/utils/logger/index.js";
 import crypto from "crypto";
 import { PASSWORD_RESET_RECOMMENDATION } from "../../../CORE/utils/constants/index.js";
+import { config } from "../../../CORE/utils/config/index.js";
 
 const SALT_ROUNDS = 10;
 
@@ -38,6 +39,120 @@ userSchema.pre("save", async function (next) {
   }
   next();
 });
+
+userSchema.statics.createAdmin = async function (userData) {
+  try {
+    const existingTempUser = await TempUser.findOne({
+      $or: [
+        { email: userData.email },
+        { username: userData.userName },
+        { phonenumber: userData.phoneNumber },
+      ],
+    });
+
+    const existingUser = await this.findOne({
+      $or: [
+        { email: userData.email },
+        { username: userData.userName },
+        { phonenumber: userData.phoneNumber },
+      ],
+    });
+
+    if (existingUser || existingTempUser) {
+      if (
+        existingUser?.email === userData.email ||
+        existingTempUser?.email === userData.email
+      ) {
+        throw new ErrorHandler("Email is already in use.", 406);
+      }
+      if (
+        existingUser?.username === userData.userName ||
+        existingTempUser?.username === userData.userName
+      ) {
+        throw new ErrorHandler("Username is already in use.", 406);
+      }
+      if (
+        existingUser?.phonenumber === userData.phoneNumber ||
+        existingTempUser?.phonenumber === userData.phoneNumber
+      ) {
+        throw new ErrorHandler("Phone number is already in use.", 406);
+      }
+    }
+
+    const newUser = new User({
+      username: userData.userName,
+      firstname: userData.firstName,
+      lastname: userData.lastName,
+      phonenumber: userData.phoneNumber,
+      email: userData.email,
+      password: userData.password,
+      role: await RoleModel.getRoleName(userData.role),
+    });
+
+    await newUser.save();
+    const newUserWithoutPassword = newUser.toObject();
+    delete newUserWithoutPassword.password;
+
+    return {
+      message: "Admin created",
+      newUser: newUserWithoutPassword,
+    };
+  } catch (error) {
+    if (error instanceof ErrorHandler) throw error;
+    throw new ErrorHandler("Failed to create User", 500);
+  }
+};
+
+userSchema.statics.getAllAdmins = async function (currentUserId, filters = {}) {
+  try {
+    const { page = 1, limit = 20, search } = filters;
+    const skip = (page - 1) * limit;
+
+    const adminRole = await RoleModel.findOne({ role_name: "Admin" });
+    if (!adminRole) {
+      throw new ErrorHandler("Admin role not found", 500);
+    }
+    const adminRoleId = adminRole.role_id;
+
+    const query = { role: adminRoleId };
+
+    const SUPER_ADMIN_ID = config.SUPER_ADMIN_ID;
+
+    if (currentUserId !== SUPER_ADMIN_ID) {
+      query._id = { $ne: SUPER_ADMIN_ID };
+    }
+
+    if (search) {
+      query.$or = [
+        { username: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { firstname: { $regex: search, $options: "i" } },
+        { lastname: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const admins = await this.find(query)
+      .select("-password")
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const totalAdmins = await this.countDocuments(query);
+
+    return {
+      admins,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalAdmins,
+        pages: Math.ceil(totalAdmins / limit),
+      },
+    };
+  } catch (error) {
+    throw new ErrorHandler("Failed to fetch admins list", 500);
+  }
+};
 
 userSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
@@ -682,13 +797,22 @@ userSchema.statics.getRecentActivities = async function () {
   }
 };
 
-userSchema.statics.getUsersList = async function (filters = {}) {
+userSchema.statics.getUsersList = async function (currentUserId, filters = {}) {
   try {
     const { page = 1, limit = 20, role, search } = filters;
     const skip = (page - 1) * limit;
 
     const query = {};
-    if (role) query.role = parseInt(role);
+
+    const SUPER_ADMIN_ID = config.superadmin.id;
+    if (currentUserId !== SUPER_ADMIN_ID) {
+      query._id = { $ne: SUPER_ADMIN_ID };
+    }
+
+    if (role) {
+      query.role = parseInt(role);
+    }
+
     if (search) {
       query.$or = [
         { username: { $regex: search, $options: "i" } },

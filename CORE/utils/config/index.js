@@ -29,7 +29,7 @@ export const config = {
     region: process.env.SES_REGION,
   },
   url: {
-    frontendurl: [process.env.FRONTEND_URL, process.env.FRONTEND_DEV],
+    frontendurl: [process.env.FRONTEND_URL, process.env.FRONTEND_DEV, "https://www.mystoryhat.com", "https://mystoryhat.com"],
     frontendev: process.env.FRONTEND_DEV,
   },
   resend: {
@@ -56,5 +56,8 @@ export const config = {
     client_secret: process.env.LULU_CLIENT_SECRET,
     successUrl: `${process.env.FRONTEND_DEV}/print/orders/payment/success?session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${process.env.FRONTEND_DEV}/print-order/cancel?session_id={CHECKOUT_SESSION_ID}`,
+  },
+  superadmin: {
+    id: process.env.SUPERADMIN_ID,
   },
 };

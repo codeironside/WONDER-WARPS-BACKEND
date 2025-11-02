@@ -7,7 +7,6 @@ import logger from "../../../../CORE/utils/logger/index.js";
 export async function createUser(req, res, next) {
   const { email, password, userName, firstName, lastName, phoneNumber, role } =
     req.body;
-  console.log(req.body);
   try {
     if (!email || !password || !firstName || !lastName || !phoneNumber || !role)
       throw new ErrorHandler("body can not be empty", 402);

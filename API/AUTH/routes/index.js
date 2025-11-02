@@ -14,6 +14,7 @@ import { resendPasswordResetOTP } from "../services/resend.password.otp/index.js
 import { resetPassword } from "../services/reset.password/index.js";
 import { changePassword } from "../services/change.password/index.js";
 import { getAdminUsersList } from "../services/ADMIN/get.users.list/index.js";
+import { createAdminUser } from "../services/ADMIN/createadmin/index.js";
 export const UserRouter = Router();
 
 //=======public routes
@@ -29,7 +30,7 @@ UserRouter.post("/public/verifyregisterotp", verifyRegisterOTP);
 
 //=============ADMIN routes
 UserRouter.get("/admin/dashboard", authorize(["Admin"]), getAdminDashboard);
-UserRouter.post("/admin/signup", createUser);
+UserRouter.post("/admin/signup", authorize(["Admin"]), createAdminUser);
 UserRouter.get("/admin/userslist", authorize(["Admin"]), getAdminUsersList);
 
 //===============USER routes
