@@ -94,8 +94,6 @@ const printOrderSchema = new mongoose.Schema(
 );
 
 printOrderSchema.index({ user_id: 1, status: 1 });
-printOrderSchema.index({ personalized_book_id: 1 });
-printOrderSchema.index({ lulu_print_job_id: 1 });
 printOrderSchema.index({ created_at: -1 });
 const validationSchema = Joi.object({
   personalized_book_id: Joi.string().required(),

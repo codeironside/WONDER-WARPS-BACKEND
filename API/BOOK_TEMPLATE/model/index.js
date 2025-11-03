@@ -35,12 +35,10 @@ const chapterSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "BookTemplate",
       required: true,
-      index: true,
     },
     order: {
       type: Number,
       default: 0,
-      index: true,
     },
   },
   {

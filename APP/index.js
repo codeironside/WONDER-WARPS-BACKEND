@@ -14,7 +14,7 @@ import {
 } from "../CORE/middleware/rateLimiter/index.js";
 import { API_SUFFIX } from "../CORE/utils/constants/index.js";
 import { handleShutdown } from "../CORE/services/handleShutdown/index.js";
-import { config } from "@/config";
+import { config } from "../CORE/utils/config/index.js";
 import { requestLogger } from "../CORE/middleware/requestlogger/index.js";
 import { connectDB } from "../CORE/services/db/index.js";
 import ErrorHandler from "../CORE/middleware/errorhandler/index.js";
@@ -98,7 +98,7 @@ async function startApplication() {
 
     app.listen(port, () => {
       logger.info(
-        `\u001b[32mServer is running on port: \u001b[34m${config.app.base_url}\u001b[0m`,
+        `\u001b[32mServer is running on port: \u001b[34m${config.app.base_url}\u001b[0m${port}`,
       );
       logger.info(
         `\u001b[32mGo to \u001b[34m${config.app.base_url}${API_SUFFIX}/health\u001b[0m to check server health`,

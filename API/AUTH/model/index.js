@@ -4,7 +4,7 @@ import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import RoleModel from "../../ROLES/model/index.js";
 import TempUser from "../OTP/new.user/index.js";
 import PasswordReset from "../OTP/forgot.password/index.js";
-import emailService from "../../../CORE/services/Email/index123.js";
+import emailService from "../../../CORE/services/Email/index.js";
 import logger from "../../../CORE/utils/logger/index.js";
 import crypto from "crypto";
 import { PASSWORD_RESET_RECOMMENDATION } from "../../../CORE/utils/constants/index.js";

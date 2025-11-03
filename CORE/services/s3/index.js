@@ -1,11 +1,15 @@
-import AWS from "aws-sdk";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import fetch from "node-fetch";
-import stream from "stream";
-import { promisify } from "util";
-
-const pipeline = promisify(stream.pipeline);
 
 class S3Service {
   constructor() {
@@ -19,10 +23,13 @@ class S3Service {
       throw new ErrorHandler("AWS S3 configuration is incomplete", 500);
     }
 
-    this.s3 = new AWS.S3({
-      accessKeyId: config.aws.accessKeyId,
-      secretAccessKey: config.aws.secretAccessKey,
+    this.s3 = new S3Client({
       region: config.aws.region,
+      credentials: {
+        accessKeyId: config.aws.accessKeyId,
+        secretAccessKey: config.aws.secretAccessKey,
+      },
+      maxAttempts: 3,
     });
 
     this.bucketName = config.aws.s3Bucket;
@@ -47,17 +54,7 @@ class S3Service {
       if (imageUrl.includes(".gif")) contentType = "image/gif";
       if (imageUrl.includes(".webp")) contentType = "image/webp";
 
-      const uploadParams = {
-        Bucket: this.bucketName,
-        Key: key,
-        Body: buffer,
-        ContentType: contentType,
-        ACL: "public-read",
-      };
-
-      const uploadResult = await this.s3.upload(uploadParams).promise();
-
-      return uploadResult.Location;
+      return await this.uploadBuffer(buffer, key, contentType);
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(
@@ -70,7 +67,6 @@ class S3Service {
   async uploadVideoFromUrl(videoUrl, key) {
     try {
       console.log(`Uploading video from URL: ${videoUrl}`);
-
       const response = await fetch(videoUrl);
 
       if (!response.ok) {
@@ -80,12 +76,10 @@ class S3Service {
         );
       }
 
-      // Get content type from response headers or determine from URL
       const contentType =
         response.headers.get("content-type") ||
         this.getVideoContentType(videoUrl);
 
-      // For large videos, we might want to stream directly to S3
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
@@ -97,14 +91,18 @@ class S3Service {
         Body: buffer,
         ContentType: contentType,
         ACL: "public-read",
-        // Add video-specific metadata
         Metadata: {
           "source-url": videoUrl,
           "upload-timestamp": Date.now().toString(),
         },
       };
 
-      const uploadResult = await this.s3.upload(uploadParams).promise();
+      const upload = new Upload({
+        client: this.s3,
+        params: uploadParams,
+      });
+
+      const uploadResult = await upload.done();
       console.log(`Video uploaded successfully to: ${uploadResult.Location}`);
 
       return uploadResult.Location;
@@ -133,7 +131,12 @@ class S3Service {
         },
       };
 
-      const uploadResult = await this.s3.upload(uploadParams).promise();
+      const upload = new Upload({
+        client: this.s3,
+        params: uploadParams,
+      });
+
+      const uploadResult = await upload.done();
       console.log(
         `Video stream uploaded successfully to: ${uploadResult.Location}`,
       );
@@ -153,7 +156,7 @@ class S3Service {
     if (videoUrl.includes(".avi")) return "video/x-msvideo";
     if (videoUrl.includes(".webm")) return "video/webm";
     if (videoUrl.includes(".mkv")) return "video/x-matroska";
-    return "video/mp4"; // default
+    return "video/mp4";
   }
 
   async uploadBuffer(buffer, key, contentType = "image/jpeg") {
@@ -166,7 +169,12 @@ class S3Service {
         ACL: "public-read",
       };
 
-      const uploadResult = await this.s3.upload(uploadParams).promise();
+      const upload = new Upload({
+        client: this.s3,
+        params: uploadParams,
+      });
+
+      const uploadResult = await upload.done();
       return uploadResult.Location;
     } catch (error) {
       throw new ErrorHandler(
@@ -183,7 +191,8 @@ class S3Service {
         Key: key,
       };
 
-      await this.s3.deleteObject(deleteParams).promise();
+      const command = new DeleteObjectCommand(deleteParams);
+      await this.s3.send(command);
       return true;
     } catch (error) {
       throw new ErrorHandler(
@@ -216,7 +225,7 @@ class S3Service {
           ? "avi"
           : originalUrl.includes(".webm")
             ? "webm"
-            : "mp4"; // default to mp4
+            : "mp4";
 
     return `${prefix}/videos/${timestamp}-${Math.random().toString(36).substring(2, 9)}.${extension}`;
   }
@@ -228,7 +237,8 @@ class S3Service {
         Key: key,
       };
 
-      const metadata = await this.s3.headObject(params).promise();
+      const command = new HeadObjectCommand(params);
+      const metadata = await this.s3.send(command);
       return metadata;
     } catch (error) {
       throw new ErrorHandler(
@@ -240,13 +250,12 @@ class S3Service {
 
   async generatePresignedUrl(key, expiresIn = 3600) {
     try {
-      const params = {
+      const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-        Expires: expiresIn,
-      };
+      });
 
-      const url = await this.s3.getSignedUrlPromise("getObject", params);
+      const url = await getSignedUrl(this.s3, command, { expiresIn });
       return url;
     } catch (error) {
       throw new ErrorHandler(
@@ -258,15 +267,14 @@ class S3Service {
 
   async checkObjectExists(key) {
     try {
-      await this.s3
-        .headObject({
-          Bucket: this.bucketName,
-          Key: key,
-        })
-        .promise();
+      const command = new HeadObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      await this.s3.send(command);
       return true;
     } catch (error) {
-      if (error.code === "NotFound") {
+      if (error.name === "NotFound") {
         return false;
       }
       throw error;

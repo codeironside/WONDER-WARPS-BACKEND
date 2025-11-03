@@ -1,4 +1,4 @@
-import SES from "aws-sdk/clients/ses.js";
+import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -11,10 +11,12 @@ const __dirname = path.dirname(__filename);
 
 class EmailService {
   constructor() {
-    this.ses = new SES({
+    this.ses = new SESClient({
       region: config.ses.region,
-      accessKeyId: config.ses.accessKeyId,
-      secretAccessKey: config.ses.secretAccessKey,
+      credentials: {
+        accessKeyId: config.ses.accessKeyId,
+        secretAccessKey: config.ses.secretAccessKey,
+      },
     });
 
     this.templates = {
@@ -64,30 +66,27 @@ class EmailService {
   }
 
   async _sendEmail(to, subject, htmlBody, textBody) {
-    const params = {
+    const command = new SendEmailCommand({
       Source: config.ses.from_info,
       Destination: {
         ToAddresses: [to],
       },
       Message: {
-        Subject: {
-          Data: subject,
-          Charset: "UTF-8",
-        },
+        Subject: { Data: subject, Charset: "UTF-8" },
         Body: {
-          Html: {
-            Data: htmlBody,
-            Charset: "UTF-8",
-          },
-          Text: {
-            Data: textBody,
-            Charset: "UTF-8",
-          },
+          Html: { Data: htmlBody, Charset: "UTF-8" },
+          Text: { Data: textBody, Charset: "UTF-8" },
         },
       },
-    };
+    });
 
-    return this.ses.sendEmail(params).promise();
+    try {
+      const result = await this.ses.send(command);
+      return result;
+    } catch (error) {
+      logger.error("Failed to send email via SES:", error);
+      throw new Error(`Failed to send email: ${error.message}`);
+    }
   }
 
   async sendOTPEmail(email, otpCode, username = "User") {

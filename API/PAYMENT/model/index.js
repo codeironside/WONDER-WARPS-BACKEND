@@ -18,27 +18,20 @@ const receiptSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "PersonalizedBook",
       required: true,
-      index: true,
     },
     reference_code: {
       type: String,
       required: true,
-      unique: true,
-      index: true,
     },
     stripe_payment_intent_id: {
       type: String,
       required: true,
-      unique: true,
-      index: true,
     },
     stripe_customer_id: {
       type: String,
-      index: true,
     },
     stripe_charge_id: {
       type: String,
-      index: true,
     },
     amount: {
       type: Number,
@@ -63,7 +56,6 @@ const receiptSchema = new mongoose.Schema(
         "failed",
       ],
       default: "pending",
-      index: true,
     },
     payment_method: {
       type: String,
@@ -120,8 +112,8 @@ const receiptSchema = new mongoose.Schema(
 );
 
 receiptSchema.index({ user_id: 1, created_at: -1 });
-receiptSchema.index({ personalized_book_id: 1 });
 receiptSchema.index({ reference_code: 1 }, { unique: true });
+receiptSchema.index({ stripe_payment_intent_id: 1 }, { unique: true });
 receiptSchema.index({ status: 1, created_at: -1 });
 receiptSchema.index({ "book_details.genre": 1 });
 receiptSchema.index({ paid_at: -1 });

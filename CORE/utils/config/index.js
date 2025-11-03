@@ -29,7 +29,12 @@ export const config = {
     region: process.env.SES_REGION,
   },
   url: {
-    frontendurl: [process.env.FRONTEND_URL, process.env.FRONTEND_DEV, "https://www.mystoryhat.com", "https://mystoryhat.com"],
+    frontendurl: [
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_DEV,
+      "https://www.mystoryhat.com",
+      "https://mystoryhat.com",
+    ],
     frontendev: process.env.FRONTEND_DEV,
   },
   resend: {

@@ -22,11 +22,9 @@ const printOrderPaymentSchema = new mongoose.Schema(
     checkout_session_id: {
       type: String,
       required: true,
-      unique: true,
     },
     payment_intent_id: {
       type: String,
-      sparse: true,
     },
     amount: {
       type: Number,
@@ -62,8 +60,7 @@ const printOrderPaymentSchema = new mongoose.Schema(
 
 printOrderPaymentSchema.index({ user_id: 1 });
 printOrderPaymentSchema.index({ print_order_id: 1 });
-printOrderPaymentSchema.index({ personalized_book_id: 1 });
-printOrderPaymentSchema.index({ checkout_session_id: 1 });
+printOrderPaymentSchema.index({ checkout_session_id: 1 }, { unique: true });
 printOrderPaymentSchema.index({ payment_intent_id: 1 });
 printOrderPaymentSchema.index({ status: 1 });
 printOrderPaymentSchema.index({ callback_processed: 1 });

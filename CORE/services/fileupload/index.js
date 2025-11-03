@@ -1,4 +1,16 @@
-import AWS from "aws-sdk";
+import {
+  S3Client,
+  HeadBucketCommand,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  CopyObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+} from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { config } from "../../utils/config/index.js";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
@@ -15,21 +27,14 @@ class ComprehensiveFileUpload {
       throw new Error("AWS S3 configuration is incomplete");
     }
 
-    AWS.config.update({
-      accessKeyId: config.aws.accessKeyId,
-      secretAccessKey: config.aws.secretAccessKey,
+    this.s3 = new S3Client({
       region: config.aws.region,
-      maxRetries: 3,
-      retryDelayOptions: { base: 300 },
-    });
-
-    this.s3 = new AWS.S3({
-      apiVersion: "2006-03-01",
-      signatureVersion: "v4",
-      httpOptions: {
-        timeout: 30000,
-        connectTimeout: 5000,
+      credentials: {
+        accessKeyId: config.aws.accessKeyId,
+        secretAccessKey: config.aws.secretAccessKey,
       },
+      maxAttempts: 3,
+      requestTimeout: 30000,
     });
 
     this.bucketName = config.aws.s3Bucket;
@@ -55,10 +60,10 @@ class ComprehensiveFileUpload {
 
   async testConnection() {
     try {
-      await this.s3.headBucket({ Bucket: this.bucketName }).promise();
+      const command = new HeadBucketCommand({ Bucket: this.bucketName });
+      await this.s3.send(command);
       return true;
     } catch (error) {
-      console.log(error);
       logger.error("S3 connection test failed:", error);
       throw new Error(`S3 connection failed: ${error.message}`);
     }
@@ -67,8 +72,6 @@ class ComprehensiveFileUpload {
   generateFileKey(folder, originalName, prefix = "", useDateStructure = true) {
     const extension = path.extname(originalName).toLowerCase();
     const baseName = path.basename(originalName, extension);
-
-    // Clean filename
     const cleanName = baseName.replace(/[^a-zA-Z0-9]/g, "-").substring(0, 100);
     const uniqueId = uuidv4().substring(0, 8);
 
@@ -87,7 +90,6 @@ class ComprehensiveFileUpload {
     } else {
       keyPath += `/${cleanName}-${uniqueId}${extension}`;
     }
-
     return keyPath;
   }
 
@@ -104,67 +106,50 @@ class ComprehensiveFileUpload {
         },
         ACL: "public-read",
         CacheControl: options.cacheControl || "public, max-age=31536000",
-        ContentDisposition: options.contentDisposition,
-        ContentEncoding: options.contentEncoding,
-        ServerSideEncryption: options.encryption ? "AES256" : undefined,
-        StorageClass: options.storageClass || "STANDARD",
       };
 
-      if (options.onProgress && buffer.length > 1024 * 1024) {
-        return await this.uploadWithProgress(uploadParams, options.onProgress);
+      const upload = new Upload({
+        client: this.s3,
+        params: uploadParams,
+        queueSize: 4,
+        partSize: 1024 * 1024 * 5,
+      });
+
+      if (options.onProgress) {
+        upload.on("httpUploadProgress", (progress) => {
+          if (progress.total) {
+            const percentage = Math.round(
+              (progress.loaded / progress.total) * 100,
+            );
+            options.onProgress(percentage, progress);
+          }
+        });
       }
 
-      const uploadResult = await this.s3.upload(uploadParams).promise();
+      const uploadResult = await upload.done();
 
       logger.info(`File uploaded successfully: ${uploadResult.Location}`, {
         key,
         size: buffer.length,
         contentType,
-        bucket: this.bucketName,
       });
 
       return uploadResult.Location;
     } catch (error) {
-      logger.error("S3 buffer upload failed:", {
-        error: error.message,
-        key,
-        bucket: this.bucketName,
-        stack: error.stack,
-      });
+      logger.error("S3 buffer upload failed:", { error: error.message, key });
       throw new Error(`S3 upload failed: ${error.message}`);
     }
-  }
-
-  async uploadWithProgress(uploadParams, onProgress) {
-    return new Promise((resolve, reject) => {
-      const upload = this.s3.upload(uploadParams);
-
-      upload.on("httpUploadProgress", (progress) => {
-        const percentage = Math.round((progress.loaded / progress.total) * 100);
-        onProgress(percentage, progress);
-      });
-
-      upload.send((error, data) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(data.Location);
-        }
-      });
-    });
   }
 
   async uploadFile(filePath, key, contentType = null, options = {}) {
     try {
       const fileStats = await fs.stat(filePath);
-
       if (!contentType) {
-        const mime = await import("mime-types");
+        const mime = (await import("mime-types")).default;
         contentType = mime.lookup(filePath) || "application/octet-stream";
       }
 
       const fileBuffer = await fs.readFile(filePath);
-
       return await this.uploadBuffer(
         fileBuffer,
         key,
@@ -172,7 +157,6 @@ class ComprehensiveFileUpload {
         {
           originalPath: filePath,
           fileSize: fileStats.size.toString(),
-          lastModified: fileStats.mtime.toISOString(),
         },
         options,
       );
@@ -191,13 +175,13 @@ class ComprehensiveFileUpload {
         throw new Error(`Failed to fetch URL: ${response.statusText}`);
       }
 
-      const buffer = await response.buffer();
+      const buffer = await response.arrayBuffer();
       const contentType =
         response.headers.get("content-type") ||
         this.detectContentTypeFromUrl(url);
 
       return await this.uploadBuffer(
-        buffer,
+        Buffer.from(buffer),
         key,
         contentType,
         {
@@ -212,46 +196,35 @@ class ComprehensiveFileUpload {
     }
   }
 
-  async uploadStream(
-    readStream,
-    key,
-    contentType,
-    contentLength,
-    options = {},
-  ) {
-    return new Promise((resolve, reject) => {
+  async uploadStream(readStream, key, contentType, options = {}) {
+    try {
       const uploadParams = {
         Bucket: this.bucketName,
         Key: key,
         Body: readStream,
         ContentType: contentType,
-        ContentLength: contentLength,
         ACL: "public-read",
         CacheControl: options.cacheControl || "public, max-age=31536000",
       };
 
-      const upload = this.s3.upload(uploadParams);
-
-      upload.on("error", (error) => {
-        logger.error("Stream upload failed:", error);
-        reject(new Error(`Stream upload failed: ${error.message}`));
+      const upload = new Upload({
+        client: this.s3,
+        params: uploadParams,
       });
 
-      upload.on("httpUploadProgress", (progress) => {
-        if (options.onProgress) {
+      if (options.onProgress) {
+        upload.on("httpUploadProgress", (progress) => {
           options.onProgress(progress);
-        }
-      });
+        });
+      }
 
-      upload.send((error, data) => {
-        if (error) {
-          reject(error);
-        } else {
-          logger.info(`Stream uploaded successfully: ${data.Location}`);
-          resolve(data.Location);
-        }
-      });
-    });
+      const data = await upload.done();
+      logger.info(`Stream uploaded successfully: ${data.Location}`);
+      return data.Location;
+    } catch (error) {
+      logger.error("Stream upload failed:", error);
+      throw new Error(`Stream upload failed: ${error.message}`);
+    }
   }
 
   async uploadMultipleFiles(files, options = {}) {
@@ -298,11 +271,10 @@ class ComprehensiveFileUpload {
 
     const uploadResults = results.map((result, index) => ({
       originalName: files[index].originalName,
-      key: files[index].key || results[index].value?.split("/").pop(),
+      key: files[index].key,
       status: result.status,
       url: result.status === "fulfilled" ? result.value : null,
       error: result.status === "rejected" ? result.reason.message : null,
-      size: files[index].buffer?.length || files[index].fileStats?.size,
     }));
 
     const successfulUploads = uploadResults.filter(
@@ -322,16 +294,15 @@ class ComprehensiveFileUpload {
     options = {},
   ) {
     try {
-      const params = {
+      const command = new PutObjectCommand({
         Bucket: this.bucketName,
         Key: key,
         ContentType: contentType,
         ACL: "public-read",
-        Expires: expiresIn,
         CacheControl: options.cacheControl || "public, max-age=31536000",
-      };
+      });
 
-      const signedUrl = this.s3.getSignedUrl("putObject", params);
+      const signedUrl = await getSignedUrl(this.s3, command, { expiresIn });
       logger.info(`Pre-signed upload URL generated for key: ${key}`);
       return signedUrl;
     } catch (error) {
@@ -342,13 +313,12 @@ class ComprehensiveFileUpload {
 
   async generatePresignedDownloadUrl(key, expiresIn = 3600) {
     try {
-      const params = {
+      const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-        Expires: expiresIn,
-      };
+      });
 
-      const signedUrl = this.s3.getSignedUrl("getObject", params);
+      const signedUrl = await getSignedUrl(this.s3, command, { expiresIn });
       logger.info(`Pre-signed download URL generated for key: ${key}`);
       return signedUrl;
     } catch (error) {
@@ -361,13 +331,11 @@ class ComprehensiveFileUpload {
 
   async deleteFile(key) {
     try {
-      await this.s3
-        .deleteObject({
-          Bucket: this.bucketName,
-          Key: key,
-        })
-        .promise();
-
+      const command = new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      await this.s3.send(command);
       logger.info(`File deleted successfully: ${key}`);
       return true;
     } catch (error) {
@@ -378,23 +346,31 @@ class ComprehensiveFileUpload {
 
   async deleteMultipleFiles(keys) {
     try {
-      const deletePromises = keys.map((key) => this.deleteFile(key));
-      const results = await Promise.allSettled(deletePromises);
+      const deleteParams = {
+        Bucket: this.bucketName,
+        Delete: {
+          Objects: keys.map((key) => ({ Key: key })),
+          Quiet: false,
+        },
+      };
+      const command = new DeleteObjectsCommand(deleteParams);
+      const data = await this.s3.send(command);
 
-      const deleteResults = results.map((result, index) => ({
-        key: keys[index],
-        status: result.status,
-        error: result.status === "rejected" ? result.reason.message : null,
-      }));
+      const successfulDeletes = data.Deleted || [];
+      const errors = data.Errors || [];
 
-      const successfulDeletes = deleteResults.filter(
-        (r) => r.status === "fulfilled",
-      );
       logger.info(
         `Batch delete completed: ${successfulDeletes.length}/${keys.length} successful`,
       );
 
-      return deleteResults;
+      if (errors.length > 0) {
+        logger.error("Errors encountered during batch delete:", errors);
+      }
+
+      return {
+        deleted: successfulDeletes.map((d) => d.Key),
+        errors: errors.map((e) => ({ key: e.Key, message: e.Message })),
+      };
     } catch (error) {
       logger.error("Failed to delete multiple files from S3:", error);
       throw new Error(`Multiple files delete failed: ${error.message}`);
@@ -415,7 +391,8 @@ class ComprehensiveFileUpload {
         copyParams.Metadata = options.newMetadata;
       }
 
-      await this.s3.copyObject(copyParams).promise();
+      const command = new CopyObjectCommand(copyParams);
+      await this.s3.send(command);
       const newUrl = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${destinationKey}`;
 
       logger.info(
@@ -430,13 +407,11 @@ class ComprehensiveFileUpload {
 
   async getFileMetadata(key) {
     try {
-      const metadata = await this.s3
-        .headObject({
-          Bucket: this.bucketName,
-          Key: key,
-        })
-        .promise();
-
+      const command = new HeadObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      const metadata = await this.s3.send(command);
       logger.info(`File metadata retrieved for key: ${key}`);
       return metadata;
     } catch (error) {
@@ -453,8 +428,8 @@ class ComprehensiveFileUpload {
         MaxKeys: maxKeys,
         ContinuationToken: continuationToken,
       };
-
-      const response = await this.s3.listObjectsV2(params).promise();
+      const command = new ListObjectsV2Command(params);
+      const response = await this.s3.send(command);
       const files = response.Contents || [];
 
       const result = {
@@ -465,7 +440,7 @@ class ComprehensiveFileUpload {
           etag: file.ETag,
           url: `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${file.Key}`,
         })),
-        isTruncated: response.IsTruncated,
+        isTruncated: !!response.IsTruncated,
         nextContinuationToken: response.NextContinuationToken,
         totalCount: response.KeyCount,
       };
@@ -480,15 +455,15 @@ class ComprehensiveFileUpload {
 
   async downloadFile(key, localPath) {
     try {
-      const fileStream = this.s3
-        .getObject({
-          Bucket: this.bucketName,
-          Key: key,
-        })
-        .createReadStream();
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      const response = await this.s3.send(command);
+      // response.Body is a ReadableStream
 
       const writeStream = fs.createWriteStream(localPath);
-      await pipeline(fileStream, writeStream);
+      await pipeline(response.Body, writeStream);
 
       logger.info(`File downloaded successfully to: ${localPath}`);
       return localPath;
@@ -503,7 +478,7 @@ class ComprehensiveFileUpload {
       await this.getFileMetadata(key);
       return true;
     } catch (error) {
-      if (error.code === "NotFound") {
+      if (error.name === "NotFound") {
         return false;
       }
       throw error;
@@ -543,7 +518,6 @@ class ComprehensiveFileUpload {
       let files = [];
       let continuationToken = null;
 
-      // List all files with pagination
       do {
         const result = await this.listFiles(prefix, 1000, continuationToken);
         files = files.concat(result.files);
