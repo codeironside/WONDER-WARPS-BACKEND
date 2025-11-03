@@ -98,7 +98,7 @@ async function startApplication() {
 
     app.listen(port, () => {
       logger.info(
-        `\u001b[32mServer is running on port: \u001b[34m${config.app.base_url}\u001b[0m${port}`,
+        `\u001b[32mServer is running on port: \u001b[34m${config.app.port}\u001b[0m`,
       );
       logger.info(
         `\u001b[32mGo to \u001b[34m${config.app.base_url}${API_SUFFIX}/health\u001b[0m to check server health`,
