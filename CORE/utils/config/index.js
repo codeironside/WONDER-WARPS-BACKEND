@@ -1,6 +1,5 @@
 import dotenv from "dotenv";
 dotenv.config();
-
 export const config = {
   app: {
     env: process.env.NODE_ENV,
@@ -36,6 +35,7 @@ export const config = {
       "https://mystoryhat.com",
     ],
     frontendev: process.env.FRONTEND_DEV,
+    mainurl: process.env.FRONTEND_MAIN,
   },
   resend: {
     apiKey: process.env.RESEND_API_KEY,
@@ -48,10 +48,10 @@ export const config = {
   stripe: {
     secret_key: process.env.STRIPE_API_KEY,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-    success_url: `${process.env.FRONTEND_DEV}/payment-pending`,
+    success_url: `${process.env.BASE_URL}/payment-pending`,
     // success_url: `http://localhost:5173/payment-pending`,
     // cancel_url: `http://localhost:5173/payment-cancelled`,
-    cancel_url: `${process.env.FRONTEND_DEV}/payment-cancelled`,
+    cancel_url: `${process.env.BASE_URL}/payment-cancelled`,
   },
   google: {
     api_key: process.env.GOOGLE_API_KEY,
