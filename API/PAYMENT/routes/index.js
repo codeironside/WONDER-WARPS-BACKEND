@@ -13,8 +13,14 @@ import { getOneUserReceipt } from "../services/USERS.RECEIPT.CONTROLLER/get.one.
 import { getALLUserReceipts } from "../services/USERS.RECEIPT.CONTROLLER/get.all.user.receipts/index.js";
 import { getUserStats } from "../services/USERS.RECEIPT.CONTROLLER/get.user.payment.stats/index.js";
 import { getUserReceiptByReference } from "../services/USERS.RECEIPT.CONTROLLER/get.user.receipt.by.reference/index.js";
+import { createBookForPayment } from "../services/createbookforpayment/index.js";
 export const PaymentRouter = Router();
 
+PaymentRouter.post(
+  "/createbookforpayemnt",
+  authorize(["Admin", "User"]),
+  createBookForPayment,
+);
 PaymentRouter.post(
   "/initiatePayment/:bookId",
   authorize(["Admin", "User"]),

@@ -29,9 +29,6 @@ export const createBookTemplate = async (req, res, next) => {
     if (!theme || !age_min || !age_max || !prompt_message || !gender) {
       throw new ErrorHandler("Required fields cannot be empty", 400);
     }
-    if (theme || age_min || age_max || prompt_message || gender) {
-      throw new ErrorHandler("exhausted tokens please top up", 500);
-    }
 
     const input = {
       theme: theme,

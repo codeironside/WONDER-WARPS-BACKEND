@@ -120,6 +120,89 @@ class StoryPersonalizer {
     }
   }
 
+  async addPersonalizationToBook(bookId, userId, personalizationData) {
+    try {
+      // Check if book exists and is paid
+      const book = await PersonalizedBook.findByIdForUser(bookId, userId);
+
+      if (!book) {
+        throw new ErrorHandler("Book not found", 404);
+      }
+
+      if (!book.is_paid) {
+        throw new ErrorHandler("Payment required before personalization", 402);
+      }
+
+      if (book.is_personalized) {
+        throw new ErrorHandler("Book is already personalized", 400);
+      }
+
+      // Perform personalization
+      const personalizedContent = await this.personalizeStory(
+        book.original_template_id,
+        personalizationData,
+      );
+
+      // Update book with personalization
+      const updatedBook = await PersonalizedBook.addPersonalization(
+        bookId,
+        userId,
+        {
+          personalized_content: personalizedContent,
+          dedication_message: personalizationData.dedication_message,
+        },
+      );
+
+      return updatedBook;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to add personalization to book: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  async createBookForPayment(templateId, userId, basicDetails) {
+    try {
+      const { childName, childAge, gender } = basicDetails;
+
+      if (!templateId || !childName) {
+        throw new ErrorHandler("Template ID and child name are required", 400);
+      }
+
+      const template = await BookTemplate.findById(templateId);
+      console.log(template);
+      if (!template) {
+        throw new ErrorHandler("Book template not found", 404);
+      }
+
+      const bookData = {
+        original_template_id: templateId,
+        user_id: userId,
+        child_name: childName,
+        child_age: childAge,
+        gender_preference: gender,
+        price: template.price,
+        book_title: template.book_title,
+        genre: template.genre,
+        cover_image: template.cover_image,
+        video_url: template.video_url,
+      };
+
+      const book = await PersonalizedBook.createBookForPayment(bookData);
+
+      return book;
+    } catch (error) {
+      console.log(error);
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to create book for payment: ${error.message}`,
+        500,
+      );
+    }
+  }
+
   async generateStorySummary(personalizedStory) {
     try {
       const response = await this.openai.chat.completions.create({
@@ -471,36 +554,7 @@ class StoryPersonalizer {
         messages: [
           {
             role: "system",
-            content: `You are a expert children's story editor. Your task is to personalize an existing story by replacing the main character with a new child while preserving the EXACT same plot, story structure, and chapter flow.
-
-**CRITICAL RULES:**
-1. PRESERVE THE ORIGINAL PLOT: Do not change the storyline, events, or narrative flow
-2. MAINTAIN CHAPTER STRUCTURE: Keep the same number of chapters and same chapter titles
-3. KEEP IMAGE POSITIONS: Maintain the exact same image_position values from the original
-4. ONLY CHANGE CHARACTER DETAILS: Replace the main character's name, age, and gender references
-5. CONSISTENT CHARACTER: Ensure ${childName} appears as the main character in every chapter
-6. RETURN FORMAT: You MUST return a valid JSON object with the exact structure below
-
-**JSON Structure:**
-{
-  "book_title": "Personalized title",
-  "chapters": [
-    {
-      "chapter_title": "Chapter title",
-      "chapter_content": "Chapter content",
-      "image_description": "Image description"
-    }
-  ]
-}
-
-**Personalization Guidelines:**
-- Replace the original main character's name with "${childName}" everywhere
-- Update age references to match: ${childAge} years old
-- Update pronouns to match gender: ${gender}
-- Keep all other characters, settings, and events exactly the same
-- Maintain original image descriptions but ensure they reference ${childName}
-
-Return ONLY the JSON object, no other text. NO MARKDOWN CODE BLOCKS.`,
+            content: `You are a expert children's story editor. Your task is to personalize an existing story by replacing the main character with a new child while preserving the EXACT same plot, story structure, and chapter flow.`,
           },
           {
             role: "user",
@@ -667,30 +721,7 @@ ${characteristicsText}
 
 SCENE DESCRIPTION: ${imageDescription}
 IMAGE POSITION: ${imagePosition}
-CHARACTER: ${childName}, ${childAge} years old, ${gender}
-
-ABSOLUTELY MANDATORY - NO EXCEPTIONS:
-- CHARACTER MUST MATCH REFERENCE PHOTO EXACTLY - NO DEVIATIONS
-- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
-- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
-- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
-- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE CONSISTENT IN EVERY IMAGE
-- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
-- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
-- NO SPEECH BUBBLES: No dialogue containers or thought bubbles
-- NO LABELS: No captions, titles, or text elements
-- NO BOOK COVERS: No book-like elements that might contain text
-- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
-- SINGLE IMAGE ONLY: One unified illustration, no multiple panels or split scenes
-- NO BORDERS: No decorative borders that might frame text
-- NO BACKGROUND TEXT: No text in the background, on objects, or anywhere
-- EXACT CHARACTER MATCH: The character must look IDENTICAL to the reference photo
-- CONSISTENT FEATURES: Maintain exact skin tone, hair, eyes, and facial features from photo
-
-Style: Whimsical Studio Ghibli animation with soft lighting, vibrant colors, NO TEXT ELEMENTS.
-Composition: Single ${imagePosition} scene, no multiple images.
-
-FINAL WARNING: The character must be an exact visual match to the reference photo with "${mergedChars.eyeColor}" eyes and "${mergedChars.hairStyle}" hairstyle. NO TEXT ANYWHERE.`;
+CHARACTER: ${childName}, ${childAge} years old, ${gender}`;
 
       return await this.generateStrictDalleImage(prompt);
     } catch (error) {
@@ -703,10 +734,10 @@ FINAL WARNING: The character must be an exact visual match to the reference phot
     let characteristicsText =
       "CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:\n";
 
-    characteristicsText += `- Skin tone: "${mergedChars.skinTone}" (EXACT MATCH REQUIRED)\n`;
-    characteristicsText += `- Hair color: "${mergedChars.hairColor}" (EXACT MATCH REQUIRED)\n`;
-    characteristicsText += `- Hairstyle: "${mergedChars.hairStyle}" (EXACT MATCH REQUIRED)\n`;
-    characteristicsText += `- Eye color: "${mergedChars.eyeColor}" (MUST BE EXACT IN EVERY IMAGE)\n`;
+    characteristicsText += `- Skin tone: "${mergedChars.skinTone}"\n`;
+    characteristicsText += `- Hair color: "${mergedChars.hairColor}"\n`;
+    characteristicsText += `- Hairstyle: "${mergedChars.hairStyle}"\n`;
+    characteristicsText += `- Eye color: "${mergedChars.eyeColor}"\n`;
     characteristicsText += `- Clothing style: "${mergedChars.clothing}"\n`;
 
     if (mergedChars.faceShape)
@@ -726,9 +757,6 @@ FINAL WARNING: The character must be an exact visual match to the reference phot
       characteristicsText += `- Distinctive features: ${mergedChars.facialFeatures.slice(0, 3).join(", ")}\n`;
     }
 
-    characteristicsText +=
-      "ALL CHARACTERISTICS MUST BE VISUALLY EXACT IN THE FINAL IMAGE. NO DEVIATIONS ALLOWED.";
-
     return characteristicsText;
   }
 
@@ -744,37 +772,15 @@ FINAL WARNING: The character must be an exact visual match to the reference phot
     const prompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
 
 CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:
-- Skin tone: "${mergedChars.skinTone}" (EXACT MATCH REQUIRED)
-- Hair color: "${mergedChars.hairColor}" (EXACT MATCH REQUIRED)
-- Hairstyle: "${mergedChars.hairStyle}" (EXACT MATCH REQUIRED)
-- Eye color: "${mergedChars.eyeColor}" (MUST BE EXACT IN EVERY IMAGE)
-- Clothing style: "${mergedChars.clothing}" (MAINTAIN CONSISTENCY)
+- Skin tone: "${mergedChars.skinTone}"
+- Hair color: "${mergedChars.hairColor}"
+- Hairstyle: "${mergedChars.hairStyle}"
+- Eye color: "${mergedChars.eyeColor}"
+- Clothing style: "${mergedChars.clothing}"
 
 SCENE DESCRIPTION: ${imageDescription}
 IMAGE POSITION: ${imagePosition}
-CHARACTER: ${childName}, ${childAge} years old, ${gender}
-
-ABSOLUTELY MANDATORY - NO EXCEPTIONS:
-- CHARACTER MUST MATCH THE SPECIFIED APPEARANCE EXACTLY - NO DEVIATIONS
-- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
-- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
-- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
-- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE CONSISTENT IN EVERY IMAGE
-- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
-- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
-- NO SPEECH BUBBLES: No dialogue containers or thought bubbles
-- NO LABELS: No captions, titles, or text elements
-- NO BOOK COVERS: No book-like elements that might contain text
-- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
-- SINGLE IMAGE ONLY: One unified illustration, no multiple panels or split scenes
-- NO BORDERS: No decorative borders that might frame text
-- NO BACKGROUND TEXT: No text in the background, on objects, or anywhere
-- NO PHOTO REFERENCES: Do not include any photographic elements or real-life references
-
-Style: Whimsical Studio Ghibli animation with soft lighting, vibrant colors, NO TEXT ELEMENTS.
-Composition: Single ${imagePosition} scene, no multiple images.
-
-FINAL WARNING: The character must have exactly "${mergedChars.eyeColor}" eyes, "${mergedChars.hairStyle}" hairstyle, and "${mergedChars.skinTone}" skin tone. NO TEXT ANYWHERE.`;
+CHARACTER: ${childName}, ${childAge} years old, ${gender}`;
 
     return await this.generateStrictDalleImage(prompt);
   }
@@ -815,40 +821,17 @@ CHARACTER: ${childName}
 COVER REQUIREMENTS:
 - Capture the essence of the entire story journey
 - Show ${childName} in a moment that represents the story's adventure
-- Include visual references to main settings and magical elements
-
-ABSOLUTELY MANDATORY - NO EXCEPTIONS:
-- CHARACTER MUST MATCH REFERENCE PHOTO EXACTLY - NO DEVIATIONS
-- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
-- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
-- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
-- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE EXACT
-- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
-- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
-- NO TITLES: No book titles, author names, or any text
-- NO SPEECH BUBBLES: No dialogue containers
-- NO LABELS: No captions or text elements
-- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
-- SINGLE IMAGE ONLY: One unified illustration, no multiple panels
-- NO BOOK COVER DESIGN: Avoid traditional cover layout that suggests text areas
-- NO BORDERS: No frames or borders
-- EXACT CHARACTER MATCH: The character must look IDENTICAL to the reference photo
-- EYE COLOR CONSISTENCY: Eye color must be exactly "${mergedChars.eyeColor}"
-- MAGICAL ATMOSPHERE: Create a sense of wonder and adventure without text
-
-Style: Magical Studio Ghibli artwork, vibrant colors, engaging composition, COMPLETELY TEXT-FREE.
-
-FINAL WARNING: ${childName} must look exactly like the reference photo with "${mergedChars.eyeColor}" eyes and "${mergedChars.hairStyle}" hairstyle. NO TEXT ELEMENTS WHATSOEVER.`;
+- Include visual references to main settings and magical elements`;
       } else {
         const { childAge, gender } = personalizationDetails;
         coverPrompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
 
 CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:
-- Skin tone: "${mergedChars.skinTone}" (EXACT MATCH REQUIRED)
-- Hair color: "${mergedChars.hairColor}" (EXACT MATCH REQUIRED)
-- Hairstyle: "${mergedChars.hairStyle}" (EXACT MATCH REQUIRED)
-- Eye color: "${mergedChars.eyeColor}" (MUST BE EXACT IN EVERY IMAGE)
-- Clothing style: "${mergedChars.clothing}" (MAINTAIN CONSISTENCY)
+- Skin tone: "${mergedChars.skinTone}"
+- Hair color: "${mergedChars.hairColor}"
+- Hairstyle: "${mergedChars.hairStyle}"
+- Eye color: "${mergedChars.eyeColor}"
+- Clothing style: "${mergedChars.clothing}"
 
 STORY CONTEXT:
 - Title: ${personalizedStory.book_title}
@@ -861,29 +844,7 @@ CHARACTER: ${childName}, ${childAge} years old, ${gender}
 COVER REQUIREMENTS:
 - Capture the essence of the entire story journey
 - Show ${childName} in a moment that represents the story's adventure
-- Include visual references to main settings and magical elements
-
-ABSOLUTELY MANDATORY - NO EXCEPTIONS:
-- CHARACTER MUST MATCH THE SPECIFIED APPEARANCE EXACTLY - NO DEVIATIONS
-- SKIN TONE: Exactly "${mergedChars.skinTone}" - NO VARIATIONS
-- HAIR COLOR: Exactly "${mergedChars.hairColor}" - NO CHANGES
-- HAIRSTYLE: Exactly "${mergedChars.hairStyle}" - NO ALTERATIONS
-- EYE COLOR: Exactly "${mergedChars.eyeColor}" - MUST BE EXACT
-- CLOTHING STYLE: "${mergedChars.clothing}" - MAINTAIN CONSISTENCY
-- ZERO TEXT: No text, words, letters, numbers, symbols, or writing of ANY kind
-- NO TITLES: No book titles, author names, or any text
-- NO SPEECH BUBBLES: No dialogue containers
-- NO LABELS: No captions or text elements
-- PURE VISUAL ILLUSTRATION: Only visual elements, completely text-free
-- SINGLE IMAGE ONLY: One unified illustration, no multiple panels
-- NO BOOK COVER DESIGN: Avoid traditional cover layout that suggests text areas
-- NO BORDERS: No frames or borders
-- MAGICAL ATMOSPHERE: Create a sense of wonder and adventure without text
-- NO PHOTO REFERENCES: Do not include any photographic elements or real-life references
-
-Style: Magical Studio Ghibli artwork, vibrant colors, engaging composition, COMPLETELY TEXT-FREE.
-
-FINAL WARNING: ${childName} must have exactly "${mergedChars.eyeColor}" eyes, "${mergedChars.hairStyle}" hairstyle, and "${mergedChars.skinTone}" skin tone. NO TEXT ELEMENTS WHATSOEVER.`;
+- Include visual references to main settings and magical elements`;
       }
 
       if (coverPrompt.length > 3900) {
@@ -907,20 +868,7 @@ FINAL WARNING: ${childName} must have exactly "${mergedChars.eyeColor}" eyes, "$
   }
 
   async generateStrictDalleImage(prompt) {
-    const enhancedPrompt =
-      prompt +
-      `
-
-ULTIMATE REQUIREMENTS - ABSOLUTELY NO EXCEPTIONS:
-1. CHARACTER APPEARANCE MUST BE EXACT AS SPECIFIED - NO DEVIATIONS
-2. ABSOLUTELY ZERO TEXT: No text, words, letters, numbers, or symbols anywhere
-3. SINGLE IMAGE: One unified illustration only
-4. NO SUGGESTIONS OF TEXT: Avoid any elements that might look like text
-5. PURE ILLUSTRATION: Visual-only artwork with zero textual elements
-6. NO EXCEPTIONS: No text in the final image under any circumstances
-7. CONSISTENT CHARACTER FEATURES: Maintain exact specified appearance
-8. NO PHOTOGRAPHIC ELEMENTS: Pure illustration only
-9. VISUAL STORYTELLING ONLY: Tell the story through visuals alone`;
+    const enhancedPrompt = prompt;
 
     if (enhancedPrompt.length > 4000) {
       console.warn(
@@ -962,86 +910,6 @@ ULTIMATE REQUIREMENTS - ABSOLUTELY NO EXCEPTIONS:
       chapters: updatedChapters,
       cover_image: coverImage ? [coverImage] : personalizedStory.cover_image,
     };
-  }
-
-  async createPersonalizedBook(templateId, userId, personalizationDetails) {
-    try {
-      if (!templateId || !userId || !personalizationDetails.childName) {
-        throw new ErrorHandler(
-          "Template ID, user ID and child name are required",
-          400,
-        );
-      }
-
-      let validationResult = null;
-      if (personalizationDetails.photoUrl) {
-        try {
-          validationResult =
-            await this.imageValidator.validateImageForPersonalization(
-              personalizationDetails.photoUrl,
-            );
-          personalizationDetails.validationResult = validationResult;
-        } catch (validationError) {
-          console.warn(
-            "Image validation failed, proceeding with manual characteristics:",
-            validationError.message,
-          );
-        }
-      }
-
-      const personalizedContent = await this.personalizeStory(
-        templateId,
-        personalizationDetails,
-      );
-
-      const originalTemplate = await BookTemplate.findById(templateId);
-      const price = this.calculatePersonalizationPrice(originalTemplate.price);
-
-      const personalizedBookData = {
-        original_template_id: templateId,
-        user_id: userId,
-        child_name: personalizationDetails.childName,
-        child_age: personalizationDetails.childAge,
-        gender_preference: personalizationDetails.gender,
-        price: price,
-        personalized_content: personalizedContent,
-        is_paid: false,
-      };
-
-      const personalizedBook =
-        await PersonalizedBook.createPersonaliseBook(personalizedBookData);
-
-      try {
-        await BookTemplate.incrementPopularity(templateId);
-      } catch (error) {
-        console.error(
-          `Failed to increment popularity for template ${templateId}:`,
-          error,
-        );
-      }
-
-      return {
-        personalizedBook,
-        price,
-        validation: validationResult,
-        dataQuality: validationResult?.dataQuality || {
-          overallConfidence: "manual_input",
-        },
-      };
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler(
-        `Failed to create personalized book: ${error.message}`,
-        500,
-      );
-    }
-  }
-
-  calculatePersonalizationPrice(basePrice) {
-    const personalizationFee = basePrice ? Math.max(basePrice * 0.2, 5) : 10;
-    return basePrice
-      ? parseFloat(basePrice) + personalizationFee
-      : personalizationFee;
   }
 
   getIdealPhotoGuidelines() {

@@ -24,9 +24,6 @@ export const personalizeBook = async (req, res, next) => {
     if (!templateId || !childName) {
       throw new ErrorHandler("Template ID and child name are required", 400);
     }
-    if (templateId || childName) {
-      throw new ErrorHandler("exhausted tokens please top up", 500);
-    }
 
     const personalizationDetails = {
       childName,
@@ -41,7 +38,7 @@ export const personalizeBook = async (req, res, next) => {
       photoUrl,
     };
 
-    const result = await storyPersonalizer.createPersonalizedBook(
+    const result = await storyPersonalizer.addPersonalizationToBook(
       templateId,
       userId,
       personalizationDetails,

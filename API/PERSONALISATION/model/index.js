@@ -6,6 +6,7 @@ import logger from "../../../CORE/utils/logger/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
 import emailService from "../../../CORE/services/Email/index.js";
 import Receipt from "../../PAYMENT/model/index.js";
+
 const personalizedBookSchema = new mongoose.Schema(
   {
     original_template_id: {
@@ -27,7 +28,17 @@ const personalizedBookSchema = new mongoose.Schema(
     dedication_message: { type: String, default: " Dedication message" },
     payment_id: { type: String, trim: true, maxlength: 255, default: null },
     payment_date: { type: Date, default: null },
-    personalized_content: { type: Object, required: true },
+    personalized_content: {
+      type: Object,
+      default: null,
+      required: false,
+    },
+    is_personalized: { type: Boolean, default: false },
+    personalization_date: { type: Date, default: null },
+    cover_image: [{ type: String, required: true }],
+    video_url: { type: String, required: true },
+    book_title: { type: String, trim: true, maxlength: 255 },
+    genre: { type: String, trim: true, maxlength: 100 },
   },
   { timestamps: true },
 );
@@ -36,6 +47,7 @@ personalizedBookSchema.index({ user_id: 1 });
 personalizedBookSchema.index({ original_template_id: 1 });
 personalizedBookSchema.index({ created_at: -1 });
 personalizedBookSchema.index({ is_paid: 1 });
+personalizedBookSchema.index({ is_personalized: 1 });
 
 const PersonalizedBookModel = mongoose.model(
   "PersonalizedBook",
@@ -43,9 +55,11 @@ const PersonalizedBookModel = mongoose.model(
 );
 
 class PersonalizedBook {
-  static validationSchema = Joi.object({
+  static creationValidationSchema = Joi.object({
     original_template_id: Joi.string().trim().min(1).max(255).required(),
     user_id: Joi.string().trim().min(1).max(255).required(),
+    video_url: Joi.string().trim().min(1).max(255).required(),
+    cover_image: Joi.array().items(Joi.string()).min(1).required(),
     child_name: Joi.string().trim().min(1).max(255).required(),
     child_age: Joi.number().integer().min(0).max(18).allow(null).optional(),
     gender_preference: Joi.string()
@@ -53,34 +67,110 @@ class PersonalizedBook {
       .allow(null)
       .optional(),
     price: Joi.number().precision(2).positive().required(),
-    is_paid: Joi.boolean().default(false),
-    payment_id: Joi.string().trim().max(255).allow(null).optional(),
-    payment_date: Joi.date().allow(null).optional(),
-    personalized_content: Joi.object().required(),
+    book_title: Joi.string().trim().max(255).optional(),
+    genre: Joi.string().trim().max(100).optional(),
   }).unknown(false);
 
-  static async createPersonaliseBook(data) {
+  static personalizationValidationSchema = Joi.object({
+    personalized_content: Joi.object().required(),
+    dedication_message: Joi.string().max(1000).optional(),
+  }).unknown(false);
+
+  static updateValidationSchema = Joi.object({
+    dedication_message: Joi.string().max(1000).optional(),
+  }).unknown(false);
+
+  static async createBookForPayment(data) {
     try {
-      const { error, value: validatedData } = this.validationSchema.validate(
-        data,
-        {
+      const { error, value: validatedData } =
+        this.creationValidationSchema.validate(data, {
           abortEarly: false,
           stripUnknown: true,
-        },
-      );
+        });
 
       if (error) {
         throw new ErrorHandler(this.formatValidationError(error), 400);
       }
 
-      const newBook = new PersonalizedBookModel(validatedData);
+      const bookData = {
+        ...validatedData,
+        personalized_content: null,
+        is_personalized: false,
+      };
+
+      const newBook = new PersonalizedBookModel(bookData);
       await newBook.save();
 
       return newBook.toObject();
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(
-        `Failed to create personalized book: ${error.message}`,
+        `Failed to create book for payment: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  static async addPersonalization(bookId, userId, personalizationData) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const { error, value: validatedData } =
+        this.personalizationValidationSchema.validate(personalizationData, {
+          abortEarly: false,
+          stripUnknown: true,
+        });
+
+      if (error) {
+        throw new ErrorHandler(this.formatValidationError(error), 400);
+      }
+
+      const book = await PersonalizedBookModel.findOne({
+        _id: bookId,
+        user_id: userId,
+      }).session(session);
+
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      if (!book.is_paid) {
+        throw new ErrorHandler("Payment required before personalization", 402);
+      }
+
+      if (book.is_personalized) {
+        throw new ErrorHandler("Book already personalized", 400);
+      }
+
+      const updatedBook = await PersonalizedBookModel.findByIdAndUpdate(
+        bookId,
+        {
+          personalized_content: validatedData.personalized_content,
+          dedication_message:
+            validatedData.dedication_message || book.dedication_message,
+          is_personalized: true,
+          personalization_date: new Date(),
+        },
+        { new: true, session },
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info("Personalization added successfully", {
+        bookId,
+        userId,
+      });
+
+      return updatedBook.toObject();
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to add personalization: ${error.message}`,
         500,
       );
     }
@@ -135,6 +225,7 @@ class PersonalizedBook {
       throw new ErrorHandler("Failed to update payment status", 500);
     }
   }
+
   static async findByUserPaginated(userId, options = {}) {
     try {
       const {
@@ -170,6 +261,7 @@ class PersonalizedBook {
       throw new ErrorHandler("Failed to find personalized books by user", 500);
     }
   }
+
   static async findByIdForUser(bookId, userId) {
     try {
       const book = await PersonalizedBookModel.findOne({
@@ -180,7 +272,6 @@ class PersonalizedBook {
       if (!book) {
         throw new ErrorHandler("Personalized book not found", 404);
       }
-      logger.info(`fetch one book for one user`);
 
       return book;
     } catch (error) {
@@ -188,68 +279,8 @@ class PersonalizedBook {
       throw new ErrorHandler("Failed to find personalized book", 500);
     }
   }
-  static async findAllForAdmin(options = {}) {
-    try {
-      const {
-        page = 1,
-        limit = 20,
-        sortBy = "createdAt",
-        sortOrder = "desc",
-        filters = {},
-      } = options;
 
-      const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
-
-      // Build query based on filters
-      const query = {};
-      if (filters.is_paid !== undefined) query.is_paid = filters.is_paid;
-      if (filters.user_id) query.user_id = filters.user_id;
-
-      const books = await PersonalizedBookModel.find(query)
-        .select("-personalized_content.chapters")
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      const userIds = [...new Set(books.map((book) => book.user_id))];
-      const users = await User.find({ _id: { $in: userIds } })
-        .select("name email")
-        .lean();
-
-      // Create a user map for easy lookup
-      const userMap = {};
-      users.forEach((user) => {
-        userMap[user._id] = user;
-      });
-
-      // Add user information to each book
-      const booksWithUserInfo = books.map((book) => ({
-        ...book,
-        user: userMap[book.user_id] || null,
-      }));
-
-      const total = await PersonalizedBookModel.countDocuments(query);
-
-      return {
-        books: booksWithUserInfo,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
-      };
-    } catch (error) {
-      throw new ErrorHandler(
-        "Failed to find personalized books for admin",
-        500,
-      );
-    }
-  }
-
-  static async findByUserWithUserInfo(userId, options = {}) {
+  static async findPaidBooksByUser(userId, options = {}) {
     try {
       const {
         page = 1,
@@ -261,102 +292,19 @@ class PersonalizedBook {
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-      const user = await User.findById(userId).select("name email").lean();
-
-      if (!user) {
-        throw new ErrorHandler("User not found", 404);
-      }
-
-      const books = await PersonalizedBookModel.find({ user_id: userId })
-        .select("-personalized_content.chapters")
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      const total = await PersonalizedBookModel.countDocuments({
-        user_id: userId,
-      });
-
-      const booksWithUserInfo = books.map((book) => ({
-        ...book,
-        user,
-      }));
-
-      return {
-        books: booksWithUserInfo,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
-      };
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler(
-        "Failed to find personalized books with user info",
-        500,
-      );
-    }
-  }
-
-  static async findByIdWithUserInfo(bookId, userId) {
-    try {
-      const user = await User.findById(userId).select("name email").lean();
-
-      if (!user) {
-        throw new ErrorHandler("User not found", 404);
-      }
-
-      const book = await PersonalizedBookModel.findOne({
-        _id: bookId,
-        user_id: userId,
-      }).exec();
-
-      if (!book) {
-        throw new ErrorHandler("Personalized book not found", 404);
-      }
-
-      // Combine book and user information
-      const bookWithUserInfo = {
-        ...book.toObject(),
-        user,
-      };
-
-      return bookWithUserInfo;
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler(
-        "Failed to find personalized book with user info",
-        500,
-      );
-    }
-  }
-  static async findByGenre(genre, options = {}) {
-    try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = "createdAt",
-        sortOrder = "desc",
-      } = options;
-
-      const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
-
-      // Query for books with the specified genre
       const books = await PersonalizedBookModel.find({
-        "personalized_content.genre": genre,
+        user_id: userId,
+        is_paid: true,
       })
-        .select("-personalized_content.chapters") // Exclude chapters
+        .select("-personalized_content.chapters")
         .sort(sort)
         .skip(skip)
         .limit(limit)
         .lean();
 
       const total = await PersonalizedBookModel.countDocuments({
-        "personalized_content.genre": genre,
+        user_id: userId,
+        is_paid: true,
       });
 
       return {
@@ -369,243 +317,73 @@ class PersonalizedBook {
         },
       };
     } catch (error) {
-      throw new ErrorHandler("Failed to find personalized books by genre", 500);
-    }
-  }
-  static async findAllByUserForAdmin(userId, options = {}) {
-    try {
-      const {
-        page = 1,
-        limit = 20,
-        sortBy = "createdAt",
-        sortOrder = "desc",
-        filters = {},
-      } = options;
-
-      const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
-
-      // Build query with user_id and additional filters
-      const query = { user_id: userId };
-
-      // Add optional filters
-      if (filters.is_paid !== undefined) query.is_paid = filters.is_paid;
-      if (filters.min_price !== undefined)
-        query.price = { $gte: parseFloat(filters.min_price) };
-      if (filters.max_price !== undefined) {
-        query.price = query.price || {};
-        query.price.$lte = parseFloat(filters.max_price);
-      }
-
-      // Get user information
-      const user = await User.findById(userId)
-        .select("name email createdAt") // Select necessary user fields
-        .lean();
-
-      if (!user) {
-        throw new ErrorHandler("User not found", 404);
-      }
-
-      // Get books without chapters
-      const books = await PersonalizedBookModel.find(query)
-        .select("-personalized_content.chapters") // Exclude chapters
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      const total = await PersonalizedBookModel.countDocuments(query);
-
-      // Add user information to each book
-      const booksWithUserInfo = books.map((book) => ({
-        ...book,
-        user,
-      }));
-
-      return {
-        books: booksWithUserInfo,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
-      };
-    } catch (error) {
-      throw new ErrorHandler("Failed to find personalized books for user", 500);
+      throw new ErrorHandler("Failed to find paid books by user", 500);
     }
   }
 
-  static async findOneForAdmin(bookId, options = {}) {
+  static async updateDedicationMessage(bookId, userId, dedicationMessage) {
     try {
-      const { includeChapters = true } = options;
+      if (!dedicationMessage || dedicationMessage.trim().length === 0) {
+        throw new ErrorHandler("Dedication message is required", 400);
+      }
 
-      // Build projection
-      const projection = includeChapters
-        ? {}
-        : { "-personalized_content.chapters": 1 };
+      if (dedicationMessage.length > 1000) {
+        throw new ErrorHandler(
+          "Dedication message must be less than 1000 characters",
+          400,
+        );
+      }
 
-      // Get the book
-      const book = await PersonalizedBookModel.findById(bookId)
-        .select(projection)
-        .lean();
+      const book = await PersonalizedBookModel.findOne({
+        _id: bookId,
+        user_id: userId,
+      });
 
       if (!book) {
         throw new ErrorHandler("Personalized book not found", 404);
       }
 
-      // Get user information
-      const user = await User.findById(book.user_id)
-        .select("name email createdAt") // Select necessary user fields
-        .lean();
-
-      if (!user) {
-        throw new ErrorHandler("User not found", 404);
+      if (!book.is_paid) {
+        throw new ErrorHandler(
+          "Dedication message can only be updated after payment",
+          402,
+        );
       }
 
-      // Combine book and user information
-      const bookWithUserInfo = {
-        ...book,
-        user,
-      };
+      const updatedBook = await PersonalizedBookModel.findByIdAndUpdate(
+        bookId,
+        {
+          dedication_message: dedicationMessage.trim(),
+          updatedAt: new Date(),
+        },
+        { new: true, runValidators: true },
+      ).exec();
 
-      return bookWithUserInfo;
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler("Failed to find personalized book for admin", 500);
-    }
-  }
-
-  static async findAllForAdminAdvanced(options = {}) {
-    try {
-      const {
-        page = 1,
-        limit = 20,
-        sortBy = "createdAt",
-        sortOrder = "desc",
-        filters = {},
-      } = options;
-
-      const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
-
-      // Build query based on filters
-      const query = {};
-
-      // Add filters
-      if (filters.is_paid !== undefined) query.is_paid = filters.is_paid;
-      if (filters.user_id) query.user_id = filters.user_id;
-      if (filters.min_price !== undefined)
-        query.price = { $gte: parseFloat(filters.min_price) };
-      if (filters.max_price !== undefined) {
-        query.price = query.price || {};
-        query.price.$lte = parseFloat(filters.max_price);
+      if (!updatedBook) {
+        throw new ErrorHandler("Failed to update dedication message", 500);
       }
-      if (filters.start_date)
-        query.createdAt = { $gte: new Date(filters.start_date) };
-      if (filters.end_date) {
-        query.createdAt = query.createdAt || {};
-        query.createdAt.$lte = new Date(filters.end_date);
-      }
-      if (filters.genre) query["personalized_content.genre"] = filters.genre;
 
-      // Get books without chapters
-      const books = await PersonalizedBookModel.find(query)
-        .select("-personalized_content.chapters") // Exclude chapters
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      // Get user information for all books
-      const userIds = [...new Set(books.map((book) => book.user_id))];
-      const users = await User.find({ _id: { $in: userIds } })
-        .select("name email createdAt") // Select necessary user fields
-        .lean();
-
-      // Create a user map for easy lookup
-      const userMap = {};
-      users.forEach((user) => {
-        userMap[user._id] = user;
+      logger.info("Dedication message updated successfully", {
+        bookId,
+        userId,
+        messageLength: dedicationMessage.length,
       });
 
-      // Add user information to each book
-      const booksWithUserInfo = books.map((book) => ({
-        ...book,
-        user: userMap[book.user_id] || null,
-      }));
-
-      const total = await PersonalizedBookModel.countDocuments(query);
-
-      return {
-        books: booksWithUserInfo,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
-      };
+      return updatedBook.toObject();
     } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(
-        "Failed to find personalized books for admin",
+        `Failed to update dedication message: ${error.message}`,
         500,
       );
     }
-  }
-
-  static async getPaymentStats() {
-    try {
-      const paidCount = await PersonalizedBookModel.countDocuments({
-        is_paid: true,
-      });
-      const unpaidCount = await PersonalizedBookModel.countDocuments({
-        is_paid: false,
-      });
-      const totalRevenue = await PersonalizedBookModel.aggregate([
-        { $match: { is_paid: true } },
-        { $group: { _id: null, total: { $sum: "$price" } } },
-      ]);
-
-      return {
-        paid: paidCount,
-        unpaid: unpaidCount,
-        total_revenue: totalRevenue.length > 0 ? totalRevenue[0].total : 0,
-      };
-    } catch (error) {
-      throw new ErrorHandler("Failed to get payment statistics", 500);
-    }
-  }
-  static async getGenreStats() {
-    try {
-      const genreStats = await PersonalizedBookModel.aggregate([
-        {
-          $group: {
-            _id: "$personalized_content.genre",
-            count: { $sum: 1 },
-            total_revenue: {
-              $sum: { $cond: [{ $eq: ["$is_paid", true] }, "$price", 0] },
-            },
-          },
-        },
-        { $sort: { count: -1 } },
-      ]);
-
-      return genreStats;
-    } catch (error) {
-      throw new ErrorHandler("Failed to get genre statistics", 500);
-    }
-  }
-
-  static formatValidationError(error) {
-    return error.details.map((detail) => detail.message).join(", ");
   }
 
   static async initiatePayment(bookId, userData) {
     try {
       const book = await this.findById(bookId);
       if (!book) {
-        throw new ErrorHandler("Personalized book not found", 404);
+        throw new ErrorHandler("Book not found", 404);
       }
 
       if (book.is_paid) {
@@ -617,8 +395,7 @@ class PersonalizedBook {
         {
           personalized_book_id: bookId.toString(),
           user_id: book.user_id.toString(),
-          book_title:
-            book.personalized_content?.book_title || "Personalized Book",
+          book_title: book.book_title || "Personalized Book",
           child_name: book.child_name,
         },
         userData,
@@ -626,7 +403,7 @@ class PersonalizedBook {
         `${process.env.CLIENT_URL}/payment/cancel`,
       );
 
-      logger.info("Checkout session created for personalized book", {
+      logger.info("Checkout session created for book payment", {
         bookId,
         sessionId: session.id,
         amount: book.price,
@@ -643,97 +420,6 @@ class PersonalizedBook {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(
         `Failed to initiate payment: ${error.message}`,
-        500,
-      );
-    }
-  }
-
-  static async confirmPayment(bookId, paymentIntentId) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const paymentResult = await stripeService.confirmPayment(paymentIntentId);
-
-      if (paymentResult.status !== "succeeded") {
-        throw new ErrorHandler(
-          `Payment not completed: ${paymentResult.status}`,
-          400,
-        );
-      }
-
-      // Get complete payment details
-      const paymentDetails =
-        await stripeService.getPaymentIntent(paymentIntentId);
-
-      const book = await this.findById(bookId);
-      stripeService.validatePaymentAmount(paymentDetails.amount, book.price);
-
-      const updatedBook = await this.updatePaymentStatus(
-        bookId,
-        paymentIntentId,
-        true,
-      );
-
-      const user = await User.findById(book.user_id);
-      if (!user) {
-        throw new ErrorHandler("User not found", 404);
-      }
-
-      const receipt = await Receipt.createForSuccessfulPayment(
-        {
-          user_id: book.user_id,
-          personalized_book_id: bookId,
-          payment_intent_id: paymentIntentId,
-          amount: paymentDetails.amount,
-          currency: paymentDetails.currency,
-          customer_id: paymentDetails.customer,
-          charge_id: paymentDetails.latest_charge,
-          payment_method: paymentDetails.payment_method,
-          status: paymentDetails.status,
-        },
-        {
-          book_title: book.personalized_content?.book_title,
-          child_name: book.child_name,
-          child_age: book.child_age,
-          genre: book.personalized_content?.genre,
-          author: book.personalized_content?.author,
-          cover_image: book.personalized_content?.cover_image?.[0],
-        },
-        {
-          email: user.email,
-          name: `${user.firstname} ${user.lastname}`,
-          username: user.username,
-        },
-      );
-
-      await session.commitTransaction();
-      session.endSession();
-
-      logger.info("Payment completed and receipt created", {
-        bookId,
-        paymentIntentId,
-        receiptId: receipt._id,
-      });
-
-      return {
-        book: updatedBook,
-        receipt: receipt,
-        payment: paymentDetails,
-      };
-    } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
-
-      logger.error("Payment confirmation failed", {
-        error: error.message,
-        bookId,
-        paymentIntentId,
-      });
-
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler(
-        `Payment confirmation failed: ${error.message}`,
         500,
       );
     }
@@ -758,7 +444,6 @@ class PersonalizedBook {
       }
 
       const bookId = checkoutSession.metadata.personalized_book_id;
-      console.log("book id", bookId);
       if (!bookId) {
         throw new ErrorHandler("Book ID not found in session metadata", 400);
       }
@@ -792,6 +477,7 @@ class PersonalizedBook {
       if (!user) {
         throw new ErrorHandler("User not found", 404);
       }
+
       let paymentMethod;
       if (
         checkoutSession.payment_method_types &&
@@ -815,10 +501,10 @@ class PersonalizedBook {
           metadata: checkoutSession.metadata || {},
         },
         {
-          book_title: book.personalized_content?.book_title,
+          book_title: book.book_title,
           child_name: book.child_name,
           child_age: book.child_age,
-          genre: book.personalized_content?.genre,
+          genre: book.genre,
           author: book.personalized_content?.author,
           cover_image: book.personalized_content?.cover_image?.[0],
         },
@@ -828,6 +514,7 @@ class PersonalizedBook {
           username: user.username,
         },
       );
+
       await emailService.sendPaymentConfirmationEmail(
         req,
         user.email,
@@ -835,7 +522,7 @@ class PersonalizedBook {
         (checkoutSession.amount_total / 100).toFixed(2),
         new Date(checkoutSession.created * 1000).toLocaleDateString(),
         bookId,
-        book.personalized_content.book_title || "Personalized Story Book",
+        book.book_title || "Personalized Story Book",
         book.child_name,
         (checkoutSession.amount_subtotal / 100).toFixed(2),
         "0.00",
@@ -907,6 +594,10 @@ class PersonalizedBook {
     return paymentMethodMap[paymentMethodType] || "Credit Card";
   }
 
+  static formatValidationError(error) {
+    return error.details.map((detail) => detail.message).join(", ");
+  }
+
   static async handleCheckoutSessionCompleted(session) {
     const sessionMongo = await mongoose.startSession();
     sessionMongo.startTransaction();
@@ -924,6 +615,7 @@ class PersonalizedBook {
         sessionMongo.endSession();
         return;
       }
+
       const paymentIntentId = session.payment_intent;
       const existingReceipt =
         await Receipt.findByPaymentIntentId(paymentIntentId);
@@ -940,6 +632,7 @@ class PersonalizedBook {
       if (!book) {
         throw new ErrorHandler("Book not found for successful payment", 404);
       }
+
       if (!book.is_paid) {
         await this.updatePaymentStatus(bookId, paymentIntentId, true);
       }
@@ -962,10 +655,10 @@ class PersonalizedBook {
           status: "succeeded",
         },
         {
-          book_title: book.personalized_content?.book_title,
+          book_title: book.book_title,
           child_name: book.child_name,
           child_age: book.child_age,
-          genre: book.personalized_content?.genre,
+          genre: book.genre,
           author: book.personalized_content?.author,
           cover_image: book.personalized_content?.cover_image?.[0],
         },
@@ -993,273 +686,47 @@ class PersonalizedBook {
       });
     }
   }
-  static async updateDedicationMessage(bookId, userId, dedicationMessage) {
+
+  static async getPaymentStats() {
     try {
-      if (!dedicationMessage || dedicationMessage.trim().length === 0) {
-        throw new ErrorHandler("Dedication message is required", 400);
-      }
-
-      if (dedicationMessage.length > 1000) {
-        throw new ErrorHandler(
-          "Dedication message must be less than 1000 characters",
-          400,
-        );
-      }
-      const book = await PersonalizedBookModel.findOne({
-        _id: bookId,
-        user_id: userId,
-      });
-
-      if (!book) {
-        throw new ErrorHandler("Personalized book not found or not yours", 404);
-      }
-
-      if (!book.is_paid) {
-        throw new ErrorHandler(
-          "Dedication message can only be updated after payment",
-          403,
-        );
-      }
-
-      const updatedBook = await PersonalizedBookModel.findByIdAndUpdate(
-        bookId,
-        {
-          dedication_message: dedicationMessage.trim(),
-          updatedAt: new Date(),
-        },
-        { new: true, runValidators: true },
-      ).exec();
-
-      if (!updatedBook) {
-        throw new ErrorHandler("Failed to update dedication message", 500);
-      }
-
-      logger.info("Dedication message updated successfully", {
-        bookId,
-        userId,
-        messageLength: dedicationMessage.length,
-      });
-
-      return updatedBook.toObject();
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler(
-        `Failed to update dedication message: ${error.message}`,
-        500,
-      );
-    }
-  }
-  static async handlePaymentSuccess(paymentIntent) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const { id: paymentIntentId, metadata, amount } = paymentIntent;
-      const bookId = metadata.personalized_book_id;
-
-      if (!bookId) {
-        logger.warn(
-          "No book ID in payment metadata, skipping receipt creation",
-          {
-            paymentIntentId,
-            metadata,
-          },
-        );
-        await session.commitTransaction();
-        session.endSession();
-        return;
-      }
-
-      // Check if receipt already exists (idempotency)
-      const existingReceipt =
-        await Receipt.findByPaymentIntentId(paymentIntentId);
-      if (existingReceipt) {
-        logger.info("Receipt already exists for this payment", {
-          paymentIntentId,
-        });
-        await session.commitTransaction();
-        session.endSession();
-        return;
-      }
-      const book = await this.findById(bookId);
-      if (!book) {
-        throw new ErrorHandler("Book not found for successful payment", 404);
-      }
-      if (!book.is_paid) {
-        await this.updatePaymentStatus(bookId, paymentIntentId, true);
-      }
-      const user = await User.findById(book.user_id);
-      if (!user) {
-        throw new ErrorHandler("User not found for payment", 404);
-      }
-      await Receipt.createForSuccessfulPayment(
-        {
-          user_id: book.user_id,
-          personalized_book_id: bookId,
-          payment_intent_id: paymentIntentId,
-          amount: amount / 100,
-          currency: paymentIntent.currency,
-          customer_id: paymentIntent.customer,
-          charge_id: paymentIntent.latest_charge,
-          payment_method: paymentIntent.payment_method,
-          status: paymentIntent.status,
-        },
-        {
-          book_title: book.personalized_content?.book_title,
-          child_name: book.child_name,
-          child_age: book.child_age,
-          genre: book.personalized_content?.genre,
-          author: book.personalized_content?.author,
-          cover_image: book.personalized_content?.cover_image?.[0],
-        },
-        {
-          email: user.email,
-          name: `${user.firstname} ${user.lastname}`,
-          username: user.username,
-        },
-      );
-
-      await session.commitTransaction();
-      session.endSession();
-      await logger.info("Receipt created via webhook for successful payment", {
-        bookId,
-        paymentIntentId,
-        amount: amount / 100,
-      });
-    } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
-      logger.error("Failed to process payment success webhook", {
-        error: error.message,
-        paymentIntentId: paymentIntent.id,
-      });
-      // Don't throw error to prevent webhook retries for non-critical issues
-    }
-  }
-
-  static async handleRefund(charge) {
-    try {
-      const { payment_intent: paymentIntentId, amount_refunded } = charge;
-
-      const receipt = await Receipt.findByPaymentIntentId(paymentIntentId);
-      if (!receipt) {
-        logger.warn("No receipt found for refund webhook", { paymentIntentId });
-        return;
-      }
-
-      await Receipt.markAsRefunded(
-        receipt._id,
-        amount_refunded / 100,
-        "processed_via_webhook",
-      );
-
-      logger.info("Receipt updated for refund via webhook", {
-        receiptId: receipt._id,
-        refundAmount: amount_refunded / 100,
-      });
-    } catch (error) {
-      logger.error("Failed to process refund webhook", {
-        error: error.message,
-        chargeId: charge.id,
-      });
-    }
-  }
-
-  static async getReceipt(bookId, userId) {
-    try {
-      const book = await this.findById(bookId);
-      if (!book) {
-        throw new ErrorHandler("Personalized book not found", 404);
-      }
-
-      if (book.user_id.toString() !== userId.toString()) {
-        throw new ErrorHandler("Access denied", 403);
-      }
-
-      if (!book.is_paid) {
-        throw new ErrorHandler("No payment found for this book", 404);
-      }
-
-      const receipt = await Receipt.findByReferenceCode(
-        book.payment_id,
-        userId,
-      );
-
-      return receipt;
-    } catch (error) {
-      if (error instanceof ErrorHandler) throw error;
-      throw new ErrorHandler("Failed to retrieve receipt", 500);
-    }
-  }
-
-  static async getPaymentHistory(userId, options = {}) {
-    try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = "createdAt",
-        sortOrder = "desc",
-      } = options;
-
-      // Get user's paid books
-      const paidBooks = await PersonalizedBookModel.find({
-        user_id: userId,
-        is_paid: true,
-      })
-        .select("child_name personalized_content price payment_id payment_date")
-        .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean();
-
-      const total = await PersonalizedBookModel.countDocuments({
-        user_id: userId,
+      const paidCount = await PersonalizedBookModel.countDocuments({
         is_paid: true,
       });
-
-      const paymentHistory = await Promise.all(
-        paidBooks.map(async (book) => {
-          try {
-            const receipt = await Receipt.findByReferenceCode(
-              book.payment_id,
-              userId,
-            );
-            return {
-              book: {
-                child_name: book.child_name,
-                book_title: book.personalized_content?.book_title,
-                genre: book.personalized_content?.genre,
-                price: book.price,
-                payment_date: book.payment_date,
-              },
-              receipt: receipt,
-            };
-          } catch (error) {
-            return {
-              book: {
-                child_name: book.child_name,
-                book_title: book.personalized_content?.book_title,
-                genre: book.personalized_content?.genre,
-                price: book.price,
-                payment_date: book.payment_date,
-              },
-              receipt: null,
-            };
-          }
-        }),
-      );
+      const unpaidCount = await PersonalizedBookModel.countDocuments({
+        is_paid: false,
+      });
+      const totalRevenue = await PersonalizedBookModel.aggregate([
+        { $match: { is_paid: true } },
+        { $group: { _id: null, total: { $sum: "$price" } } },
+      ]);
 
       return {
-        payments: paymentHistory,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
+        paid: paidCount,
+        unpaid: unpaidCount,
+        total_revenue: totalRevenue.length > 0 ? totalRevenue[0].total : 0,
       };
     } catch (error) {
-      throw new ErrorHandler("Failed to retrieve payment history", 500);
+      throw new ErrorHandler("Failed to get payment statistics", 500);
+    }
+  }
+
+  static async getPersonalizationStats() {
+    try {
+      const personalizedCount = await PersonalizedBookModel.countDocuments({
+        is_personalized: true,
+      });
+      const paidButNotPersonalizedCount =
+        await PersonalizedBookModel.countDocuments({
+          is_paid: true,
+          is_personalized: false,
+        });
+
+      return {
+        personalized: personalizedCount,
+        paid_but_not_personalized: paidButNotPersonalizedCount,
+      };
+    } catch (error) {
+      throw new ErrorHandler("Failed to get personalization statistics", 500);
     }
   }
 }

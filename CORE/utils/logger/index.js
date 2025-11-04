@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 
 const { combine, timestamp, printf, colorize, errors } = format;
 
-// Helper function to get the current directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
