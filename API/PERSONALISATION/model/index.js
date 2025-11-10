@@ -125,7 +125,7 @@ class PersonalizedBook {
       if (error) {
         throw new ErrorHandler(this.formatValidationError(error), 400);
       }
-
+      
       const book = await PersonalizedBookModel.findOne({
         _id: bookId,
         user_id: userId,
@@ -264,6 +264,7 @@ class PersonalizedBook {
 
   static async findByIdForUser(bookId, userId) {
     try {
+      console.log(` book id${bookId},user id ${userId}`)
       const book = await PersonalizedBookModel.findOne({
         _id: bookId,
         user_id: userId,
@@ -275,6 +276,7 @@ class PersonalizedBook {
 
       return book;
     } catch (error) {
+      console.log(error)
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to find personalized book", 500);
     }

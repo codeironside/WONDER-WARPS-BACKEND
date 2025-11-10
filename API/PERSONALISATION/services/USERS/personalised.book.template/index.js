@@ -6,7 +6,7 @@ const storyPersonalizer = new StoryPersonalizer();
 
 export const personalizeBook = async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const {
       templateId,
       childName,
@@ -37,21 +37,21 @@ export const personalizeBook = async (req, res, next) => {
       gender,
       photoUrl,
     };
+    
 
     const result = await storyPersonalizer.addPersonalizationToBook(
       templateId,
       userId,
       personalizationDetails,
     );
-
+   
     logger.info(
       `Book personalized for ${childName} by user ${userId} using AI`,
     );
 
     sendResponse(res, 201, "Book personalized successfully using AI", {
       personalizedBook: result.personalizedBook,
-      price: result.price,
-      paymentRequired: !result.personalizedBook.is_paid,
+    
     });
   } catch (error) {
     logger.error(`Failed to personalize book with AI: ${error.message}`);
