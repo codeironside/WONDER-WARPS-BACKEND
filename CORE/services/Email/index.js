@@ -207,12 +207,14 @@ class EmailService {
         htmlContent,
         textContent
       );
+      console.log(result)
 
       logger.info(
         `Payment confirmation email sent to ${email}: ${result.MessageId}`
       );
       return result;
     } catch (error) {
+      console.log(error)
       logger.error("Failed to send payment confirmation email:", error);
       throw new Error("Failed to send payment confirmation email");
     }
