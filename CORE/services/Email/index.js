@@ -84,6 +84,7 @@ class EmailService {
       const result = await this.ses.send(command);
       return result;
     } catch (error) {
+      console.log(error)
       logger.error("Failed to send email via SES:", error);
       throw new Error(`Failed to send email: ${error.message}`);
     }
