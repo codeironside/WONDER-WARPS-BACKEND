@@ -140,6 +140,36 @@ class PrintOrderService {
     }
   }
 
+  async getAllPrintOrders(options = {}) {
+    try {
+      const { page = 1, limit = 20, status, payment_status, user_id } = options;
+
+      const queryOptions = {
+        page: parseInt(page) || 1,
+        limit: parseInt(limit) || 20,
+        status,
+        payment_status,
+        user_id,
+        sort: { createdAt: -1 },
+      };
+
+      const result = await PrintOrder.findAll(queryOptions);
+
+      logger.info("Admin retrieval of all print orders successful", {
+        filters: { status, payment_status, user_id },
+        pagination: { page: queryOptions.page, limit: queryOptions.limit },
+        totalDocs: result.totalDocs,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error("Failed to retrieve all print orders", {
+        options,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
   calculateBookPageCount(book) {
     try {
       let pageCount = 0;

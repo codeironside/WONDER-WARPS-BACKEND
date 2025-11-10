@@ -398,12 +398,14 @@ class PrintServiceOptions {
           400,
         );
       }
+      console.log(validatedData);
 
       const service = new PrintServiceOptionsModel(validatedData);
       await service.save();
 
       return service.toObject();
     } catch (error) {
+      console.log(error);
       if (error instanceof ErrorHandler) throw error;
 
       if (error.code === 11000) {

@@ -32,6 +32,7 @@ import { getPrintServiceOptions } from "../services/getPrintServiceOptions/index
 import { getLuluJobStatistics } from "../services/getLuluJobStatistics/index.js";
 import { getLuluJobDetails } from "../services/getLuluJobDetails/index.js";
 import { getLuluJobCosts } from "../services/getLuluJobCosts/index.js";
+import { listAllPrintJobs } from "../services/getluluprintjobs/index.js";
 
 export const printOrderRouter = Router();
 
@@ -127,6 +128,12 @@ printOrderRouter.get(
 
 // Admin Routes
 printOrderRouter.get("/admin/orders", authorize(["Admin"]), getAllPrintOrders);
+printOrderRouter.get(
+  "/admin/listordersonlulu",
+  authorize(["Admin"]),
+  listAllPrintJobs,
+);
+
 printOrderRouter.get(
   "/admin/orders/:orderId",
   authorize(["Admin"]),

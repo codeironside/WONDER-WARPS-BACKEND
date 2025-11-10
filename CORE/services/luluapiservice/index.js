@@ -92,6 +92,48 @@ class LuluAPIService {
       );
     }
   }
+  async getAllPrintJobs(filters = {}, maxPages = 10) {
+    let allResults = [];
+    let currentPage = 1;
+    let hasNextPage = true;
+
+    while (hasNextPage && currentPage <= maxPages) {
+      try {
+        const response = await this.listPrintJobs({
+          ...filters,
+          page: currentPage,
+          page_size: 100, // Use maximum page size for efficiency
+        });
+
+        if (response.results && response.results.length > 0) {
+          allResults = allResults.concat(response.results);
+        }
+
+        // Check if there's a next page
+        hasNextPage = !!response.next;
+        currentPage++;
+
+        logger.debug(`Fetched page ${currentPage - 1}`, {
+          resultsCount: response.results?.length,
+          totalCount: response.count,
+          hasNextPage,
+        });
+      } catch (error) {
+        logger.error("Error fetching print jobs page", {
+          page: currentPage,
+          error: error.message,
+        });
+        throw error;
+      }
+    }
+
+    logger.info("Successfully fetched all print jobs", {
+      totalJobs: allResults.length,
+      pagesFetched: currentPage - 1,
+    });
+
+    return allResults;
+  }
 
   async validateInteriorFile(sourceUrl, podPackageId = null) {
     const payload = { source_url: sourceUrl };

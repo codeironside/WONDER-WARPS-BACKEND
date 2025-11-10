@@ -180,7 +180,7 @@ class PrintOrder {
         query.status = status;
       }
       if (payment_status) {
-        query.payment_status = payment_status; // Add this line
+        query.payment_status = payment_status;
       }
 
       const skip = (page - 1) * limit;
@@ -215,10 +215,65 @@ class PrintOrder {
     }
   }
 
+  static async findAll(options = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        status,
+        payment_status,
+        user_id,
+        sort = { createdAt: -1 },
+      } = options;
+
+      const query = {};
+
+      if (status) {
+        query.status = status;
+      }
+      if (payment_status) {
+        query.payment_status = payment_status;
+      }
+      if (user_id) {
+        query.user_id = user_id;
+      }
+
+      const skip = (page - 1) * limit;
+
+      const orders = await PrintOrderModel.find(query)
+        .populate(
+          "service_option_id",
+          "name category pod_package_id base_price",
+        )
+        .populate(
+          "personalized_book_id",
+          "child_name personalized_content.book_title is_paid",
+        )
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const total = await PrintOrderModel.countDocuments(query);
+
+      return {
+        orders,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      throw new ErrorHandler("Failed to fetch all print orders", 500);
+    }
+  }
+
   static async findByIdForUser(orderId, userId) {
     try {
       const order = await PrintOrderModel.findOne({
-        _id: orderId,
+        __id: orderId,
         user_id: userId,
       })
         .populate("service_option_id")
