@@ -156,6 +156,231 @@ class StoryPersonalizer {
     return STYLE_MAPPINGS.fantasy.modern_disney;
   }
 
+  _getGenderSpecificDetails(gender, childAge) {
+    const age = parseInt(childAge);
+
+    if (gender === "male") {
+      if (age <= 6) {
+        return {
+          clothing_suggestions: [
+            "t-shirts with dinosaurs",
+            "overalls",
+            "superhero costumes",
+            "comfortable shorts",
+          ],
+          accessories: ["baseball cap", "backpack", "toy truck"],
+          typical_poses: [
+            "running with excitement",
+            "curiously exploring",
+            "playing with toys",
+          ],
+          body_type: "young boy build, slightly rounded features",
+          facial_expression: "curious, excited, playful",
+        };
+      } else if (age <= 12) {
+        return {
+          clothing_suggestions: [
+            "hoodies",
+            "jeans",
+            "sports jerseys",
+            "adventure gear",
+          ],
+          accessories: ["baseball cap", "watch", "sports equipment"],
+          typical_poses: [
+            "brave stance",
+            "solving problems",
+            "helping friends",
+          ],
+          body_type: "growing boy build, active and energetic",
+          facial_expression: "determined, adventurous, friendly",
+        };
+      } else {
+        return {
+          clothing_suggestions: [
+            "casual teen fashion",
+            "jackets",
+            "active wear",
+          ],
+          accessories: ["smartwatch", "headphones", "backpack"],
+          typical_poses: [
+            "confident posture",
+            "leading adventures",
+            "protecting others",
+          ],
+          body_type: "teenage boy build, more defined features",
+          facial_expression: "confident, thoughtful, determined",
+        };
+      }
+    } else if (gender === "female") {
+      if (age <= 6) {
+        return {
+          clothing_suggestions: [
+            "dresses with flowers",
+            "colorful leggings",
+            "sparkly tops",
+            "tutu skirts",
+          ],
+          accessories: ["hair bows", "colorful shoes", "small purse"],
+          typical_poses: [
+            "twirling with joy",
+            "gentle interactions",
+            "curious observation",
+          ],
+          body_type: "young girl build, soft rounded features",
+          facial_expression: "joyful, curious, gentle",
+        };
+      } else if (age <= 12) {
+        return {
+          clothing_suggestions: [
+            "colorful dresses",
+            "comfortable skirts",
+            "fashionable tops",
+            "adventure outfits",
+          ],
+          accessories: ["hair ribbons", "necklace", "bracelet"],
+          typical_poses: [
+            "graceful movements",
+            "thoughtful expressions",
+            "caring gestures",
+          ],
+          body_type: "growing girl build, graceful and active",
+          facial_expression: "thoughtful, caring, adventurous",
+        };
+      } else {
+        return {
+          clothing_suggestions: [
+            "teen fashion",
+            "stylish outfits",
+            "comfortable yet trendy clothes",
+          ],
+          accessories: ["hair accessories", "jewelry", "fashionable bag"],
+          typical_poses: [
+            "confident posture",
+            "expressive gestures",
+            "leadership stance",
+          ],
+          body_type: "teenage girl build, more defined features",
+          facial_expression: "confident, expressive, intelligent",
+        };
+      }
+    } else {
+      return {
+        clothing_suggestions: [
+          "comfortable clothes",
+          "colorful outfits",
+          "age-appropriate fashion",
+        ],
+        accessories: ["fun accessories", "comfortable shoes"],
+        typical_poses: [
+          "happy expressions",
+          "curious exploration",
+          "friendly interactions",
+        ],
+        body_type: "child build appropriate for age",
+        facial_expression: "happy, curious, friendly",
+      };
+    }
+  }
+
+  async extractComprehensiveFeatures(photoUrl) {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this child's photo and extract comprehensive physical characteristics for accurate character representation. Return ONLY a JSON object with this structure:
+{
+  "gender": "male" or "female" or "unknown",
+  "age_estimate": "estimated age in years",
+  "skin_tone": "detailed description of skin tone and complexion",
+  "face_shape": "oval, round, heart, square, etc.",
+  "facial_features": {
+    "eye_shape": "almond, round, monolid, etc.",
+    "eye_color": "brown, blue, green, hazel, etc.",
+    "nose_shape": "button, straight, upturned, etc.",
+    "lip_shape": "full, thin, bow-shaped, etc.",
+    "eyebrow_shape": "straight, arched, rounded, etc.",
+    "cheekbones": "high, prominent, soft, etc."
+  },
+  "hair_characteristics": {
+    "color": "detailed hair color description",
+    "type": "straight, wavy, curly, coily",
+    "style": "hairstyle description",
+    "length": "short, medium, long",
+    "texture": "fine, thick, coarse",
+    "parting": "center, side, none"
+  },
+  "distinctive_features": ["list of unique or prominent features"],
+  "complexion_details": "skin texture, freckles, birthmarks, etc.",
+  "expression_characteristics": "typical facial expression features",
+  "body_type": "slim, average, sturdy, etc.",
+  "confidence_level": "high/medium/low for overall accuracy"
+}`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: photoUrl },
+              },
+            ],
+          },
+        ],
+        max_tokens: 1500,
+        response_format: { type: "json_object" },
+      });
+
+      const content = response.choices[0].message.content.trim();
+      return JSON.parse(content);
+    } catch (error) {
+      console.error("Error extracting comprehensive features:", error);
+      return null;
+    }
+  }
+
+  async extractFacialExpressionAndPose(photoUrl) {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this child's facial expression and body language. Return ONLY a JSON object:
+{
+  "primary_expression": "happy, curious, playful, thoughtful, etc.",
+  "expression_intensity": "subtle, moderate, pronounced",
+  "eye_expression": "sparkling, wide-eyed, squinting, etc.",
+  "smile_characteristics": "broad smile, slight smile, no smile, etc.",
+  "posture": "confident, relaxed, energetic, shy, etc.",
+  "gesture_style": "expressive, reserved, animated, calm",
+  "energy_level": "high, medium, low",
+  "notable_habits": "head tilt, specific hand gestures, etc."
+}`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: photoUrl },
+              },
+            ],
+          },
+        ],
+        max_tokens: 800,
+        response_format: { type: "json_object" },
+      });
+
+      const content = response.choices[0].message.content.trim();
+      return JSON.parse(content);
+    } catch (error) {
+      console.error("Error extracting facial expression:", error);
+      return null;
+    }
+  }
+
   async personalizeStory(templateId, personalizationDetails) {
     try {
       const {
@@ -185,14 +410,28 @@ class StoryPersonalizer {
         throw new ErrorHandler("This book template is not personalizable", 400);
       }
 
+      let comprehensiveFeatures = null;
+      let expressionAnalysis = null;
+
+      if (photoUrl) {
+        [comprehensiveFeatures, expressionAnalysis] = await Promise.all([
+          this.extractComprehensiveFeatures(photoUrl),
+          this.extractFacialExpressionAndPose(photoUrl),
+        ]);
+      }
+
       const finalGender = await this.extractGenderFromPhoto(
         gender,
         validationResult,
         photoUrl,
+        comprehensiveFeatures,
       );
       personalizationDetails.gender = finalGender;
 
-      const usePhotoData = this.shouldUsePhotoData(validationResult);
+      const usePhotoData = this.shouldUsePhotoData(
+        validationResult,
+        comprehensiveFeatures,
+      );
 
       const [personalizedStory, storySummary] = await Promise.all([
         this.rewriteStoryWithAI(template, personalizationDetails),
@@ -205,6 +444,8 @@ class StoryPersonalizer {
         personalizationDetails,
         usePhotoData,
         storySummary,
+        comprehensiveFeatures,
+        expressionAnalysis,
       );
 
       const personalizedCover = await this.generateOptimizedPersonalizedCover(
@@ -212,6 +453,8 @@ class StoryPersonalizer {
         personalizationDetails,
         usePhotoData,
         storySummary,
+        comprehensiveFeatures,
+        expressionAnalysis,
       );
 
       const storybookContent = this.assemblePersonalizedBook(
@@ -240,6 +483,8 @@ class StoryPersonalizer {
               ? "photo"
               : "default",
           story_summary: storySummary,
+          comprehensive_features: comprehensiveFeatures,
+          expression_analysis: expressionAnalysis,
         },
       };
     } catch (error) {
@@ -374,23 +619,88 @@ class StoryPersonalizer {
     }
   }
 
-  async extractGenderFromPhoto(manualGender, validationResult, photoUrl) {
+  async extractGenderFromPhoto(
+    manualGender,
+    validationResult,
+    photoUrl,
+    comprehensiveFeatures = null,
+  ) {
     if (
       manualGender &&
       (manualGender === "male" || manualGender === "female")
     ) {
       return manualGender;
     }
+
+    if (
+      comprehensiveFeatures?.gender &&
+      comprehensiveFeatures.gender !== "unknown"
+    ) {
+      return comprehensiveFeatures.gender;
+    }
+
     if (
       validationResult?.analysis?.gender &&
       validationResult.analysis.gender !== "unknown"
     ) {
       return validationResult.analysis.gender;
     }
+
+    if (photoUrl) {
+      try {
+        const extractedGender = await this.extractGenderWithVision(photoUrl);
+        if (extractedGender && extractedGender !== "unknown") {
+          return extractedGender;
+        }
+      } catch (error) {
+        console.warn("Failed to extract gender from photo with vision:", error);
+      }
+    }
+
     return manualGender || "female";
   }
 
-  shouldUsePhotoData(validationResult) {
+  async extractGenderWithVision(photoUrl) {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this image of a child and determine their gender. Look for visual cues like hair length, clothing, facial features, and overall appearance that are typical for boys or girls. Return ONLY one word: "male", "female", or "unknown" if you cannot determine with confidence.`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: photoUrl },
+              },
+            ],
+          },
+        ],
+        max_tokens: 10,
+      });
+
+      const gender = response.choices[0].message.content.trim().toLowerCase();
+      if (gender === "male" || gender === "female") {
+        return gender;
+      }
+      return "unknown";
+    } catch (error) {
+      console.error("Error extracting gender with vision:", error);
+      return "unknown";
+    }
+  }
+
+  shouldUsePhotoData(validationResult, comprehensiveFeatures = null) {
+    if (
+      comprehensiveFeatures &&
+      comprehensiveFeatures.confidence_level === "high"
+    ) {
+      return true;
+    }
+
     if (!validationResult?.analysis?.characteristics) {
       return false;
     }
@@ -414,7 +724,12 @@ class StoryPersonalizer {
     return highConfidenceFields.length >= 3;
   }
 
-  getMergedCharacteristics(personalizationDetails, usePhotoData) {
+  getMergedCharacteristics(
+    personalizationDetails,
+    usePhotoData,
+    comprehensiveFeatures = null,
+    expressionAnalysis = null,
+  ) {
     const {
       skinTone,
       hairType,
@@ -423,29 +738,118 @@ class StoryPersonalizer {
       eyeColor,
       clothing,
       validationResult,
+      gender,
     } = personalizationDetails;
 
-    if (usePhotoData && validationResult?.analysis?.characteristics) {
-      const photoChars = validationResult.analysis.characteristics;
-      return {
-        skinTone: this.getBestCharacteristic(photoChars.skin_tone, skinTone),
-        hairType: this.getBestCharacteristic(photoChars.hair_type, hairType),
-        hairStyle: this.getBestCharacteristic(photoChars.hairstyle, hairStyle),
-        hairColor: this.getBestCharacteristic(photoChars.hair_color, hairColor),
-        eyeColor: this.getBestCharacteristic(photoChars.eye_color, eyeColor),
-        clothing: this.getBestCharacteristic(photoChars.clothing, clothing),
-        source: "photo",
-      };
-    }
-
-    return {
+    let mergedCharacteristics = {
       skinTone: skinTone || "light",
       hairType: hairType || "straight",
       hairStyle: hairStyle || "simple",
       hairColor: hairColor || "brown",
       eyeColor: eyeColor || "brown",
       clothing: clothing || "casual",
+      gender: gender,
       source: "manual",
+    };
+
+    if (usePhotoData) {
+      if (comprehensiveFeatures) {
+        mergedCharacteristics = this.mergeWithComprehensiveFeatures(
+          mergedCharacteristics,
+          comprehensiveFeatures,
+        );
+      }
+
+      if (validationResult?.analysis?.characteristics) {
+        mergedCharacteristics = this.mergeWithValidationResult(
+          mergedCharacteristics,
+          validationResult.analysis.characteristics,
+        );
+      }
+    }
+
+    if (expressionAnalysis) {
+      mergedCharacteristics.expressionAnalysis = expressionAnalysis;
+    }
+
+    return this.enhanceWithGenderSpecifics(
+      mergedCharacteristics,
+      gender,
+      personalizationDetails.childAge,
+    );
+  }
+
+  mergeWithComprehensiveFeatures(characteristics, comprehensiveFeatures) {
+    return {
+      ...characteristics,
+      skinTone: comprehensiveFeatures.skin_tone || characteristics.skinTone,
+      hairType:
+        comprehensiveFeatures.hair_characteristics?.type ||
+        characteristics.hairType,
+      hairStyle:
+        comprehensiveFeatures.hair_characteristics?.style ||
+        characteristics.hairStyle,
+      hairColor:
+        comprehensiveFeatures.hair_characteristics?.color ||
+        characteristics.hairColor,
+      eyeColor:
+        comprehensiveFeatures.facial_features?.eye_color ||
+        characteristics.eyeColor,
+      faceShape: comprehensiveFeatures.face_shape,
+      eyeShape: comprehensiveFeatures.facial_features?.eye_shape,
+      noseShape: comprehensiveFeatures.facial_features?.nose_shape,
+      lipShape: comprehensiveFeatures.facial_features?.lip_shape,
+      eyebrowShape: comprehensiveFeatures.facial_features?.eyebrow_shape,
+      cheekbones: comprehensiveFeatures.facial_features?.cheekbones,
+      hairLength: comprehensiveFeatures.hair_characteristics?.length,
+      hairTexture: comprehensiveFeatures.hair_characteristics?.texture,
+      hairParting: comprehensiveFeatures.hair_characteristics?.parting,
+      distinctiveFeatures: comprehensiveFeatures.distinctive_features || [],
+      complexionDetails: comprehensiveFeatures.complexion_details,
+      bodyType: comprehensiveFeatures.body_type,
+      source: "comprehensive_photo_analysis",
+      confidence: comprehensiveFeatures.confidence_level,
+    };
+  }
+
+  mergeWithValidationResult(characteristics, validationChars) {
+    const merged = { ...characteristics };
+
+    if (validationChars.skin_tone?.confidence === "high") {
+      merged.skinTone = validationChars.skin_tone.value;
+    }
+    if (validationChars.hair_type?.confidence === "high") {
+      merged.hairType = validationChars.hair_type.value;
+    }
+    if (validationChars.hairstyle?.confidence === "high") {
+      merged.hairStyle = validationChars.hairstyle.value;
+    }
+    if (validationChars.hair_color?.confidence === "high") {
+      merged.hairColor = validationChars.hair_color.value;
+    }
+    if (validationChars.eye_color?.confidence === "high") {
+      merged.eyeColor = validationChars.eye_color.value;
+    }
+    if (validationChars.clothing?.confidence === "high") {
+      merged.clothing = validationChars.clothing.value;
+    }
+
+    return merged;
+  }
+
+  enhanceWithGenderSpecifics(characteristics, gender, childAge) {
+    const genderDetails = this._getGenderSpecificDetails(gender, childAge);
+
+    return {
+      ...characteristics,
+      genderSpecificClothing: genderDetails.clothing_suggestions,
+      typicalAccessories: genderDetails.accessories,
+      typicalPoses: genderDetails.typical_poses,
+      bodyType: characteristics.bodyType || genderDetails.body_type,
+      facialExpression:
+        characteristics.expressionAnalysis?.primary_expression ||
+        genderDetails.facial_expression,
+      enhanced: true,
     };
   }
 
@@ -548,6 +952,8 @@ class StoryPersonalizer {
     personalizationDetails,
     usePhotoData,
     storySummary,
+    comprehensiveFeatures = null,
+    expressionAnalysis = null,
   ) {
     const { childName, photoUrl, childAge } = personalizationDetails;
 
@@ -561,6 +967,8 @@ class StoryPersonalizer {
         index,
         storySummary,
         template,
+        comprehensiveFeatures,
+        expressionAnalysis,
       ),
     );
 
@@ -582,11 +990,15 @@ class StoryPersonalizer {
     index,
     storySummary,
     template,
+    comprehensiveFeatures = null,
+    expressionAnalysis = null,
   ) {
     try {
       const mergedChars = this.getMergedCharacteristics(
         personalizationDetails,
         usePhotoData,
+        comprehensiveFeatures,
+        expressionAnalysis,
       );
       const { childAge, gender, photoUrl } = personalizationDetails;
 
@@ -637,16 +1049,50 @@ class StoryPersonalizer {
       .slice(0, 3)
       .join(", ");
 
-    return `STORY THEMES: ${themes}
-KEY SETTINGS: ${settings}
-MAGICAL ELEMENTS: ${magicalElements}
-VISUAL STYLE: ${visualStyle}
+    const genderDetails = this._getGenderSpecificDetails(gender, childAge);
+    const clothingSuggestion = genderDetails.clothing_suggestions[0];
+    const poseSuggestion =
+      mergedChars.expressionAnalysis?.posture || genderDetails.typical_poses[0];
 
-CHARACTER: ${childName}, ${childAge} years old, ${gender}
-APPEARANCE: ${mergedChars.skinTone} skin, ${mergedChars.hairColor} ${mergedChars.hairStyle} hair, ${mergedChars.eyeColor} eyes
+    let prompt = `CRITICAL CHARACTER REQUIREMENT: The main character must be an EXACT representation of ${childName}, a ${childAge}-year-old ${gender} child.
+
+PHYSICAL CHARACTERISTICS - MUST MATCH EXACTLY:
+- Skin tone: ${mergedChars.skinTone}
+- Face shape: ${mergedChars.faceShape || "youthful"}
+- Eye shape: ${mergedChars.eyeShape || "expressive"} with ${mergedChars.eyeColor} color
+- Nose shape: ${mergedChars.noseShape || "childlike"}
+- Lip shape: ${mergedChars.lipShape || "youthful"}
+- Hair: ${mergedChars.hairColor} ${mergedChars.hairStyle} ${mergedChars.hairType} hair, ${mergedChars.hairLength || "age-appropriate"} length
+- Body type: ${mergedChars.bodyType || genderDetails.body_type}
+
+EXPRESSION AND PERSONALITY:
+- Primary expression: ${mergedChars.facialExpression}
+- Posture: ${poseSuggestion}
+- Energy level: ${mergedChars.expressionAnalysis?.energy_level || "balanced"}`;
+
+    if (
+      mergedChars.distinctiveFeatures &&
+      mergedChars.distinctiveFeatures.length > 0
+    ) {
+      prompt += `\n- Distinctive features: ${mergedChars.distinctiveFeatures.slice(0, 3).join(", ")}`;
+    }
+
+    prompt += `
+
+STORY CONTEXT:
+- Themes: ${themes}
+- Settings: ${settings}
+- Magical elements: ${magicalElements}
+- Visual style: ${visualStyle}
+
 SCENE: ${imageDescription}
 IMAGE POSITION: ${imagePosition}
-STYLE: children's book illustration, no text, incorporate story themes and magical elements`;
+
+CLOTHING: ${mergedChars.clothing}, ${clothingSuggestion}
+
+IMPORTANT: Character must maintain consistent appearance across all images. No text in image.`;
+
+    return prompt;
   }
 
   async generateOptimizedPersonalizedCover(
@@ -654,12 +1100,16 @@ STYLE: children's book illustration, no text, incorporate story themes and magic
     personalizationDetails,
     usePhotoData,
     storySummary,
+    comprehensiveFeatures = null,
+    expressionAnalysis = null,
   ) {
     try {
-      const { childName, childAge, photoUrl } = personalizationDetails;
+      const { childName, childAge, gender, photoUrl } = personalizationDetails;
       const mergedChars = this.getMergedCharacteristics(
         personalizationDetails,
         usePhotoData,
+        comprehensiveFeatures,
+        expressionAnalysis,
       );
 
       const visualStyle = this._getVisualStyle(
@@ -667,12 +1117,15 @@ STYLE: children's book illustration, no text, incorporate story themes and magic
         personalizedStory.genre,
       );
 
+      const genderDetails = this._getGenderSpecificDetails(gender, childAge);
+
       const coverPrompt = this.buildCoverPrompt(
         personalizedStory.book_title,
         storySummary,
         childName,
         mergedChars,
         visualStyle,
+        genderDetails,
       );
 
       const imageUrl = await this.generateStrictImagenImage(
@@ -696,6 +1149,7 @@ STYLE: children's book illustration, no text, incorporate story themes and magic
     childName,
     mergedChars,
     visualStyle,
+    genderDetails,
   ) {
     const themes = storySummary.main_themes.slice(0, 3).join(", ");
     const settings = storySummary.key_settings.slice(0, 2).join(", ");
@@ -703,15 +1157,31 @@ STYLE: children's book illustration, no text, incorporate story themes and magic
       .slice(0, 3)
       .join(", ");
 
-    return `BOOK COVER: "${bookTitle}"
-STORY THEMES: ${themes}
-KEY SETTINGS: ${settings}
-MAGICAL ELEMENTS: ${magicalElements}
-VISUAL STYLE: ${visualStyle}
+    const clothingSuggestion = genderDetails.clothing_suggestions[0];
+    const poseSuggestion =
+      mergedChars.expressionAnalysis?.posture || genderDetails.typical_poses[0];
 
-CHARACTER: ${childName} with ${mergedChars.skinTone} skin, ${mergedChars.hairColor} hair
+    return `BOOK COVER: "${bookTitle}"
+
+MAIN CHARACTER - MUST MATCH PHOTO EXACTLY:
+- Name: ${childName}
+- Gender: ${mergedChars.gender}
+- Age: ${mergedChars.childAge} years old
+- Appearance: ${mergedChars.skinTone} skin, ${mergedChars.faceShape || "youthful"} face, ${mergedChars.eyeColor} ${mergedChars.eyeShape || "expressive"} eyes
+- Hair: ${mergedChars.hairColor} ${mergedChars.hairStyle} ${mergedChars.hairType} hair
+- Expression: ${mergedChars.facialExpression}
+- Posture: ${poseSuggestion}
+- Clothing: ${clothingSuggestion}
+
+STORY ELEMENTS:
+- Themes: ${themes}
+- Settings: ${settings}
+- Magical elements: ${magicalElements}
+- Visual style: ${visualStyle}
+
 STORY SUMMARY: ${storySummary.summary.substring(0, 100)}
-STYLE: children's book cover, no text, incorporate story themes and magical elements, vibrant colors, captivating magical atmosphere`;
+
+STYLE: children's book cover, no text, vibrant colors, captivating magical atmosphere. Character must be instantly recognizable as ${childName} with consistent facial features and appearance.`;
   }
 
   async generateStrictImagenImage(prompt, photoUrl = null) {
