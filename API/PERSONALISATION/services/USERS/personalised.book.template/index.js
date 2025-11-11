@@ -9,6 +9,7 @@ export const personalizeBook = async (req, res, next) => {
     const userId = req.user._id;
     const {
       templateId,
+      personsalisedId,
       childName,
       childAge,
       skinTone,
@@ -21,8 +22,11 @@ export const personalizeBook = async (req, res, next) => {
       photoUrl,
     } = req.body;
 
-    if (!templateId || !childName) {
-      throw new ErrorHandler("Template ID and child name are required", 400);
+    if (!templateId || !childName || !personsalisedId) {
+      throw new ErrorHandler(
+        "Template ID, child and personsalised Id name are required ",
+        400,
+      );
     }
 
     const personalizationDetails = {
@@ -37,21 +41,20 @@ export const personalizeBook = async (req, res, next) => {
       gender,
       photoUrl,
     };
-    
 
     const result = await storyPersonalizer.addPersonalizationToBook(
       templateId,
       userId,
+      personsalisedId,
       personalizationDetails,
     );
-   
+
     logger.info(
       `Book personalized for ${childName} by user ${userId} using AI`,
     );
 
     sendResponse(res, 201, "Book personalized successfully using AI", {
-      personalizedBook: result.personalizedBook,
-    
+      personalizedBook: result,
     });
   } catch (error) {
     logger.error(`Failed to personalize book with AI: ${error.message}`);

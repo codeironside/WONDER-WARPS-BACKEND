@@ -5,17 +5,155 @@ import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 import PersonalizedBook from "../../../../API/PERSONALISATION/model/index.js";
 import S3Service from "../../s3/index.js";
 import ImageValidator from "../validatePicture/index.js";
+import ImagenGenerator from "../../imagen/index.js";
+
+const STYLE_MAPPINGS = {
+  sci_fi: {
+    modern:
+      "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots' with realistic textures and atmospheric lighting",
+    cinematic:
+      "in a cinematic sci-fi CGI style with detailed models, complex lighting, and sophisticated rendering suitable for mature audiences",
+  },
+  humor: {
+    simpsons:
+      "in the iconic cartoon style of 'The Simpsons' with yellow skin tones, simple character construction, and prominent overbites",
+    caricature:
+      "in an exaggerated caricature style like 'Mr. Bean: The Animated Series' with bulbous noses, big eyes, and over-the-top expressions",
+    modern_cartoon:
+      "in a quirky, expressive cartoon style like 'Regular Show' or 'Adventure Time' with simple designs and anthropomorphic characters",
+  },
+  fantasy: {
+    disney_renaissance:
+      "in the classic Disney Renaissance 2D style of 'Mulan' with strong character acting, fluid motion, and detailed epic backgrounds",
+    modern_disney:
+      "with the vibrant, detailed CGI animation of Disney's 'Frozen II' or 'Encanto' with realistic textures and emotionally expressive characters",
+    anime_fantasy:
+      "in an anime-influenced style like 'Avatar: The Last Airbender' with dynamic action sequences, expressive eyes, and elemental effects",
+  },
+  adventure: {
+    pixar:
+      "in a modern Pixar CGI style like 'Inside Out' with high-fidelity rendering, realistic textures, and emotionally expressive rounded characters",
+    dreamworks:
+      "in a DreamWorks CGI style like 'The Boss Baby' with polished, streamlined, and cartoonishly stylized characters and vibrant environments",
+    moana:
+      "in the beautiful, dynamic CGI style of Disney's 'Moana' with expressive characters, vibrant colors, and oceanic themes",
+    volumetric:
+      "in a volumetric lighting 2D style like 'Klaus' that looks hand-drawn but incorporates three-dimensional lighting and painterly depth",
+  },
+  classic: {
+    hanna_barbera:
+      "in the classic Hanna-Barbera style of 'Tom and Jerry' with bold thick outlines, flat color palettes, and efficient character-driven animation",
+    golden_age:
+      "in the Disney Golden Age 2D style of 'Bambi' with soft painterly backgrounds, naturalistic rendering, and gentle lifelike animal movement",
+    flintstones:
+      "in the classic cartoon style of 'The Flintstones' with simple geometric shapes, limited animation, and prehistoric aesthetic",
+  },
+  preschool: {
+    peppa_pig:
+      "in a simple vector style like 'Peppa Pig' with extremely simple flat 2D designs, minimal detail, and thin limbs in side-profile view",
+    simple_cartoon:
+      "in a simple friendly 2D cartoon style with bold outlines and bright colors, perfect for very young audiences",
+  },
+  action: {
+    fast_furious:
+      "in an action-oriented CGI style with detailed vehicles, motion blur, and special effects to convey speed and dynamic action",
+    cartoon_network:
+      "in a modern Cartoon Network style with graphic angular designs, exaggerated proportions, and dynamic action sequences",
+  },
+};
 
 class StoryPersonalizer {
   constructor() {
     const apiKey = config.openai.API_KEY;
+    const googleApiKey = config.google.api_key;
+
     if (!apiKey) {
-      throw new ErrorHandler("OpenAI API key is required", 500);
+      throw new ErrorHandler(
+        "OpenAI API key is required for text generation",
+        500,
+      );
+    }
+    if (!googleApiKey) {
+      throw new ErrorHandler(
+        "Google API key is required for image generation",
+        500,
+      );
     }
 
     this.openai = new OpenAI({ apiKey });
     this.s3Service = new S3Service();
     this.imageValidator = new ImageValidator();
+    this.imagenGenerator = new ImagenGenerator();
+  }
+
+  _getVisualStyle(ageMin, theme) {
+    const lowerTheme = theme.toLowerCase();
+
+    if (
+      lowerTheme.includes("sci_fi") ||
+      lowerTheme.includes("robot") ||
+      lowerTheme.includes("space")
+    ) {
+      return ageMin <= 10
+        ? STYLE_MAPPINGS.sci_fi.modern
+        : STYLE_MAPPINGS.sci_fi.cinematic;
+    }
+
+    if (
+      lowerTheme.includes("humor") ||
+      lowerTheme.includes("funny") ||
+      lowerTheme.includes("comedy")
+    ) {
+      if (ageMin <= 6) return STYLE_MAPPINGS.preschool.simple_cartoon;
+      if (ageMin <= 10) return STYLE_MAPPINGS.humor.modern_cartoon;
+      return STYLE_MAPPINGS.humor.simpsons;
+    }
+
+    if (
+      lowerTheme.includes("fantasy") ||
+      lowerTheme.includes("magic") ||
+      lowerTheme.includes("kingdom")
+    ) {
+      if (ageMin <= 6) return STYLE_MAPPINGS.classic.golden_age;
+      if (ageMin <= 10) return STYLE_MAPPINGS.fantasy.anime_fantasy;
+      return STYLE_MAPPINGS.fantasy.disney_renaissance;
+    }
+
+    if (
+      lowerTheme.includes("adventure") ||
+      lowerTheme.includes("explore") ||
+      lowerTheme.includes("journey")
+    ) {
+      if (ageMin <= 6) return STYLE_MAPPINGS.adventure.dreamworks;
+      if (ageMin <= 10) return STYLE_MAPPINGS.adventure.moana;
+      return STYLE_MAPPINGS.adventure.volumetric;
+    }
+
+    if (
+      lowerTheme.includes("action") ||
+      lowerTheme.includes("battle") ||
+      lowerTheme.includes("hero")
+    ) {
+      return ageMin <= 10
+        ? STYLE_MAPPINGS.action.cartoon_network
+        : STYLE_MAPPINGS.action.fast_furious;
+    }
+
+    if (
+      lowerTheme.includes("classic") ||
+      lowerTheme.includes("vintage") ||
+      lowerTheme.includes("retro")
+    ) {
+      return STYLE_MAPPINGS.classic.hanna_barbera;
+    }
+
+    if (ageMin <= 6) {
+      return STYLE_MAPPINGS.preschool.peppa_pig;
+    }
+    if (ageMin <= 10) {
+      return STYLE_MAPPINGS.adventure.pixar;
+    }
+    return STYLE_MAPPINGS.fantasy.modern_disney;
   }
 
   async personalizeStory(templateId, personalizationDetails) {
@@ -56,27 +194,20 @@ class StoryPersonalizer {
 
       const usePhotoData = this.shouldUsePhotoData(validationResult);
 
-      if (photoUrl && validationResult && !usePhotoData) {
-        console.warn(
-          "Photo data insufficient, falling back to manual characteristics",
-        );
-      }
+      const [personalizedStory, storySummary] = await Promise.all([
+        this.rewriteStoryWithAI(template, personalizationDetails),
+        this.generateStorySummaryWithTemplate(template, childName),
+      ]);
 
-      const personalizedStory = await this.rewriteStoryWithAI(
-        template,
-        personalizationDetails,
-      );
-
-      const personalizedImages = await this.generatePersonalizedImagesWithGPT(
+      const personalizedImages = await this.generateAllChapterImages(
         template,
         personalizedStory,
         personalizationDetails,
         usePhotoData,
+        storySummary,
       );
 
-      const storySummary = await this.generateStorySummary(personalizedStory);
-
-      const personalizedCover = await this.generatePersonalizedCoverWithGPT(
+      const personalizedCover = await this.generateOptimizedPersonalizedCover(
         personalizedStory,
         personalizationDetails,
         usePhotoData,
@@ -120,10 +251,18 @@ class StoryPersonalizer {
     }
   }
 
-  async addPersonalizationToBook(bookId, userId, personalizationData) {
+  async addPersonalizationToBook(
+    bookId,
+    userId,
+    personsalisedId,
+    personalizationData,
+  ) {
     try {
-      // Check if book exists and is paid
-      const book = await PersonalizedBook.findByIdForUser(bookId, userId);
+      const book = await PersonalizedBook.findByIdForUser(
+        bookId,
+        personsalisedId,
+        userId,
+      );
 
       if (!book) {
         throw new ErrorHandler("Book not found", 404);
@@ -137,16 +276,15 @@ class StoryPersonalizer {
         throw new ErrorHandler("Book is already personalized", 400);
       }
 
-      // Perform personalization
       const personalizedContent = await this.personalizeStory(
         book.original_template_id,
         personalizationData,
       );
 
-      // Update book with personalization
       const updatedBook = await PersonalizedBook.addPersonalization(
-        bookId,
+        book._id,
         userId,
+        book.original_template_id,
         {
           personalized_content: personalizedContent,
           dedication_message: personalizationData.dedication_message,
@@ -172,7 +310,6 @@ class StoryPersonalizer {
       }
 
       const template = await BookTemplate.findById(templateId);
-      console.log(template);
       if (!template) {
         throw new ErrorHandler("Book template not found", 404);
       }
@@ -194,7 +331,6 @@ class StoryPersonalizer {
 
       return book;
     } catch (error) {
-      console.log(error);
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(
         `Failed to create book for payment: ${error.message}`,
@@ -203,44 +339,34 @@ class StoryPersonalizer {
     }
   }
 
-  async generateStorySummary(personalizedStory) {
+  async generateStorySummaryWithTemplate(template, childName) {
     try {
       const response = await this.openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content: `Create a brief, vivid summary of this children's story that captures its main themes, settings, and magical elements. Focus on the overall adventure and emotional journey. Return ONLY a JSON object:
-            {
-              "summary": "2-3 sentence summary of the entire story",
-              "main_themes": ["array of 3-5 key themes"],
-              "key_settings": ["array of 2-4 main locations"],
-              "magical_elements": ["array of 3-5 magical/fantasy elements"]
+            content: `Create a brief summary of this children's story for ${childName}. Return ONLY JSON: {
+              "summary": "2-3 sentence summary",
+              "main_themes": ["array of 3-7 key themes"],
+              "key_settings": ["array of 2-6 main locations"],
+              "magical_elements": ["array of 3-8 magical elements"]
             }`,
           },
           {
             role: "user",
-            content: `STORY TITLE: ${personalizedStory.book_title}
-            
-            CHAPTERS:
-            ${personalizedStory.chapters
-              .map(
-                (chapter, index) =>
-                  `Chapter ${index + 1}: ${chapter.chapter_title}\n${chapter.chapter_content}`,
-              )
-              .join("\n\n")}`,
+            content: `STORY: ${template.book_title} - ${template.chapters.map((chap) => chap.chapter_title).join(", ")}`,
           },
         ],
-        max_tokens: 800,
+        max_tokens: 500,
         response_format: { type: "json_object" },
       });
 
       const content = response.choices[0].message.content.trim();
       return JSON.parse(content);
     } catch (error) {
-      console.error("Error generating story summary:", error);
       return {
-        summary: "A magical adventure story filled with wonder and excitement",
+        summary: `A magical adventure story featuring ${childName}`,
         main_themes: ["adventure", "friendship", "courage"],
         key_settings: ["magical lands", "enchanted forests"],
         magical_elements: ["magic", "fantasy creatures", "wonder"],
@@ -259,88 +385,13 @@ class StoryPersonalizer {
       validationResult?.analysis?.gender &&
       validationResult.analysis.gender !== "unknown"
     ) {
-      const photoGender = validationResult.analysis.gender;
-      return photoGender;
+      return validationResult.analysis.gender;
     }
-    if (photoUrl && !manualGender) {
-      try {
-        const genderFromPhoto = await this.extractGenderDirectly(photoUrl);
-        if (genderFromPhoto) {
-          return genderFromPhoto;
-        }
-      } catch (error) {
-        console.warn(
-          "Failed to extract gender directly from photo:",
-          error.message,
-        );
-      }
-    }
-
-    if (manualGender) {
-      return manualGender;
-    }
-
-    return "female";
-  }
-
-  async extractGenderDirectly(photoUrl) {
-    try {
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Analyze this image and determine the gender of the child. Return ONLY a JSON object with this structure:
-                {
-                  "gender": "male" or "female" or "unknown",
-                  "confidence": "high" or "medium" or "low",
-                  "reasons": ["short array of reasons"]
-                }`,
-              },
-              {
-                type: "image_url",
-                image_url: { url: photoUrl },
-              },
-            ],
-          },
-        ],
-        max_tokens: 500,
-        response_format: { type: "json_object" },
-      });
-
-      const content = response.choices[0].message.content;
-      if (!content) {
-        console.warn("Empty response from OpenAI for gender extraction");
-        return null;
-      }
-
-      const trimmedContent = content.trim();
-      const result = JSON.parse(trimmedContent);
-
-      if (
-        result.gender &&
-        result.gender !== "unknown" &&
-        result.confidence === "high"
-      ) {
-        return result.gender;
-      }
-
-      return null;
-    } catch (error) {
-      console.error("Error extracting gender directly:", error);
-      return null;
-    }
+    return manualGender || "female";
   }
 
   shouldUsePhotoData(validationResult) {
-    if (
-      !validationResult ||
-      !validationResult.analysis ||
-      !validationResult.analysis.characteristics
-    ) {
+    if (!validationResult?.analysis?.characteristics) {
       return false;
     }
 
@@ -351,18 +402,16 @@ class StoryPersonalizer {
       "hairstyle",
       "hair_color",
       "eye_color",
+      "clothing",
     ];
     const highConfidenceFields = requiredFields.filter(
       (field) =>
         characteristics[field]?.confidence === "high" &&
         characteristics[field]?.value &&
-        characteristics[field]?.value !== "unknown" &&
-        characteristics[field]?.value.trim() !== "",
+        characteristics[field]?.value !== "unknown",
     );
 
-    const hasSufficientData = highConfidenceFields.length >= 3;
-
-    return hasSufficientData;
+    return highConfidenceFields.length >= 3;
   }
 
   getMergedCharacteristics(personalizationDetails, usePhotoData) {
@@ -378,46 +427,18 @@ class StoryPersonalizer {
 
     if (usePhotoData && validationResult?.analysis?.characteristics) {
       const photoChars = validationResult.analysis.characteristics;
-
-      const enhancedCharacteristics = this.extractEnhancedCharacteristics(
-        photoChars,
-        validationResult.analysis,
-      );
-
-      const mergedCharacteristics = {
+      return {
         skinTone: this.getBestCharacteristic(photoChars.skin_tone, skinTone),
         hairType: this.getBestCharacteristic(photoChars.hair_type, hairType),
         hairStyle: this.getBestCharacteristic(photoChars.hairstyle, hairStyle),
         hairColor: this.getBestCharacteristic(photoChars.hair_color, hairColor),
         eyeColor: this.getBestCharacteristic(photoChars.eye_color, eyeColor),
         clothing: this.getBestCharacteristic(photoChars.clothing, clothing),
-
-        faceShape: enhancedCharacteristics.faceShape,
-        facialFeatures: enhancedCharacteristics.facialFeatures,
-        eyebrowShape: enhancedCharacteristics.eyebrowShape,
-        noseShape: enhancedCharacteristics.noseShape,
-        lipShape: enhancedCharacteristics.lipShape,
-        eyeShape: enhancedCharacteristics.eyeShape,
-        cheekShape: enhancedCharacteristics.cheekShape,
-        jawline: enhancedCharacteristics.jawline,
-        forehead: enhancedCharacteristics.forehead,
-        earShape: enhancedCharacteristics.earShape,
-        distinctiveMarks: enhancedCharacteristics.distinctiveMarks,
-        expression: enhancedCharacteristics.expression,
-        hairTexture: enhancedCharacteristics.hairTexture,
-        hairLength: enhancedCharacteristics.hairLength,
-        hairParting: enhancedCharacteristics.hairParting,
-        eyebrowColor: enhancedCharacteristics.eyebrowColor,
-        eyelashType: enhancedCharacteristics.eyelashType,
-        complexion: enhancedCharacteristics.complexion,
-
         source: "photo",
       };
-
-      return mergedCharacteristics;
     }
 
-    const manualCharacteristics = {
+    return {
       skinTone: skinTone || "light",
       hairType: hairType || "straight",
       hairStyle: hairStyle || "simple",
@@ -426,109 +447,13 @@ class StoryPersonalizer {
       clothing: clothing || "casual",
       source: "manual",
     };
-
-    return manualCharacteristics;
-  }
-
-  extractEnhancedCharacteristics(characteristics, analysis) {
-    const enhanced = {
-      faceShape: this.inferFaceShape(characteristics),
-      cheekShape: "rounded",
-      jawline: "soft",
-      forehead: "average",
-      eyeShape: "almond",
-      noseShape: "button",
-      lipShape: "full",
-      earShape: "standard",
-      hairTexture: this.inferHairTexture(characteristics.hair_type?.value),
-      hairLength: this.inferHairLength(characteristics.hairstyle?.value),
-      hairParting: this.inferHairParting(characteristics.hairstyle?.value),
-      eyebrowShape: "natural",
-      eyebrowColor: characteristics.hair_color?.value || "natural",
-      eyelashType: "natural",
-      complexion: this.inferComplexion(characteristics.skin_tone?.value),
-      distinctiveMarks: [],
-      expression: "happy",
-      facialFeatures: [],
-    };
-
-    if (characteristics.facial_features?.values) {
-      enhanced.facialFeatures = characteristics.facial_features.values;
-    }
-
-    this.addInferredFeatures(enhanced, characteristics, analysis);
-
-    return enhanced;
-  }
-
-  inferFaceShape(characteristics) {
-    if (characteristics.facial_features?.values) {
-      const features = characteristics.facial_features.values;
-      if (features.some((f) => f.includes("round") || f.includes("chubby")))
-        return "round";
-      if (features.some((f) => f.includes("oval"))) return "oval";
-      if (features.some((f) => f.includes("heart"))) return "heart";
-    }
-    return "oval";
-  }
-
-  inferHairTexture(hairType) {
-    if (!hairType) return "medium";
-    if (hairType.includes("curly") || hairType.includes("afro")) return "curly";
-    if (hairType.includes("wavy")) return "wavy";
-    if (hairType.includes("straight")) return "straight";
-    return "medium";
-  }
-
-  inferHairLength(hairstyle) {
-    if (!hairstyle) return "medium";
-    if (
-      hairstyle.includes("long") ||
-      hairstyle.includes("braid") ||
-      hairstyle.includes("ponytail")
-    )
-      return "long";
-    if (hairstyle.includes("short") || hairstyle.includes("buzz"))
-      return "short";
-    if (hairstyle.includes("shoulder")) return "medium";
-    return "medium";
-  }
-
-  inferHairParting(hairstyle) {
-    if (!hairstyle) return "center";
-    if (hairstyle.includes("side")) return "side";
-    if (hairstyle.includes("middle")) return "center";
-    return "center";
-  }
-
-  inferComplexion(skinTone) {
-    if (!skinTone) return "clear";
-    if (skinTone.includes("fair") || skinTone.includes("light")) return "fair";
-    if (skinTone.includes("olive")) return "olive";
-    if (skinTone.includes("dark") || skinTone.includes("deep")) return "deep";
-    return "clear";
-  }
-
-  addInferredFeatures(enhanced, characteristics, analysis) {
-    enhanced.facialFeatures.push("youthful", "soft_features");
-    if (analysis.face_confidence === "high") {
-      enhanced.facialFeatures.push("clear_visibility", "well_defined");
-    }
-    if (characteristics.eye_color?.value) {
-      enhanced.facialFeatures.push(`${characteristics.eye_color.value}_eyes`);
-    }
-
-    if (characteristics.hair_color?.value) {
-      enhanced.facialFeatures.push(`${characteristics.hair_color.value}_hair`);
-    }
   }
 
   getBestCharacteristic(photoChar, manualChar) {
     if (
       photoChar?.confidence === "high" &&
       photoChar?.value &&
-      photoChar.value !== "unknown" &&
-      photoChar.value.trim() !== ""
+      photoChar.value !== "unknown"
     ) {
       return photoChar.value;
     }
@@ -539,38 +464,26 @@ class StoryPersonalizer {
     const { childName, childAge, gender } = personalizationDetails;
 
     try {
-      const originalStory = {
-        book_title: template.book_title,
-        chapters: template.chapters.map((chapter) => ({
-          chapter_title: chapter.chapter_title,
-          chapter_content: chapter.chapter_content,
-          image_description: chapter.image_description,
-          image_position: chapter.image_position,
-        })),
-      };
-
       const response = await this.openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content: `You are a expert children's story editor. Your task is to personalize an existing story by replacing the main character with a new child while preserving the EXACT same plot, story structure, and chapter flow.`,
+            content: `Personalize this children's story for ${childName} (${childAge} years old, ${gender}). Keep the same plot and structure. Return valid JSON with book_title and chapters array.`,
           },
           {
             role: "user",
-            content: `ORIGINAL STORY TO PERSONALIZE:
-${JSON.stringify(originalStory, null, 2)}
-
-PERSONALIZE FOR THIS CHILD:
-- Name: ${childName}
-- Age: ${childAge}
-- Gender: ${gender}
-
-Please personalize this story exactly, keeping the same plot and structure but making ${childName} the main character throughout. Return ONLY valid JSON.`,
+            content: JSON.stringify({
+              original_story: template.book_title,
+              chapters: template.chapters.map((chap) => ({
+                chapter_title: chap.chapter_title,
+                chapter_content: chap.chapter_content,
+              })),
+            }),
           },
         ],
-        max_tokens: 4000,
-        temperature: 0.2,
+        max_tokens: 3000,
+        temperature: 0.3,
         response_format: { type: "json_object" },
       });
 
@@ -583,278 +496,189 @@ Please personalize this story exactly, keeping the same plot and structure but m
           jsonContent = jsonContent
             .replace(/```json\s*/, "")
             .replace(/\s*```$/, "");
-        } else if (jsonContent.startsWith("```")) {
-          jsonContent = jsonContent
-            .replace(/```\s*/, "")
-            .replace(/\s*```$/, "");
         }
-
         personalizedStory = JSON.parse(jsonContent);
       } catch (parseError) {
-        console.error("Failed to parse personalized story JSON:", parseError);
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          try {
-            personalizedStory = JSON.parse(jsonMatch[0]);
-          } catch (secondError) {
-            console.error("Failed to parse extracted JSON:", secondError);
-            throw new Error("Invalid JSON response from personalization AI");
-          }
+          personalizedStory = JSON.parse(jsonMatch[0]);
         } else {
-          throw new Error("No JSON found in AI response");
+          return this.createFallbackStory(template, childName);
         }
       }
 
-      if (
-        !personalizedStory.book_title ||
-        !personalizedStory.chapters ||
-        !Array.isArray(personalizedStory.chapters)
-      ) {
-        throw new Error("Invalid story structure in AI response");
+      if (!personalizedStory.book_title || !personalizedStory.chapters) {
+        return this.createFallbackStory(template, childName);
       }
 
       return {
         ...template,
-        book_title:
-          personalizedStory.book_title ||
-          this.generatePersonalizedTitle(template.book_title, childName),
+        book_title: personalizedStory.book_title,
         chapters: personalizedStory.chapters.map((chapter, index) => ({
           ...chapter,
           image_position:
             template.chapters[index]?.image_position || "full scene",
-          image_description:
-            chapter.image_description ||
-            template.chapters[index]?.image_description,
+          image_description: template.chapters[index]?.image_description,
         })),
         author: childName,
       };
     } catch (error) {
-      console.error("Error rewriting story with AI:", error);
-      throw new ErrorHandler("Failed to rewrite story with AI", 500);
+      return this.createFallbackStory(template, childName);
     }
+  }
+
+  createFallbackStory(template, childName) {
+    return {
+      ...template,
+      book_title: this.generatePersonalizedTitle(
+        template.book_title,
+        childName,
+      ),
+      author: childName,
+    };
   }
 
   generatePersonalizedTitle(originalTitle, childName) {
     return originalTitle.replace(/\b\w+\b's/, `${childName}'s`);
   }
 
-  async generatePersonalizedImagesWithGPT(
+  async generateAllChapterImages(
     template,
     personalizedStory,
     personalizationDetails,
     usePhotoData,
+    storySummary,
   ) {
-    const { childName, photoUrl, validationResult } = personalizationDetails;
+    const { childName, photoUrl, childAge } = personalizationDetails;
 
-    const imagePromises = template.chapters.map(
-      async (originalChapter, index) => {
-        try {
-          const personalizedChapter = personalizedStory.chapters[index];
-          const mergedChars = this.getMergedCharacteristics(
-            personalizationDetails,
-            usePhotoData,
-          );
-
-          let imageUrl;
-          if (photoUrl && usePhotoData) {
-            imageUrl = await this.generateImageFromPhotoWithGPT(
-              photoUrl,
-              personalizedChapter.image_description,
-              originalChapter.image_position,
-              childName,
-              personalizationDetails,
-              validationResult,
-              mergedChars,
-            );
-          } else {
-            imageUrl = await this.generateImageFromDescriptionWithGPT(
-              personalizedChapter.image_description,
-              originalChapter.image_position,
-              childName,
-              personalizationDetails,
-              mergedChars,
-            );
-          }
-
-          const s3Key = this.s3Service.generateImageKey(
-            `personalized-books/${childName}/chapters`,
-            `chapter-${index + 1}`,
-          );
-          const s3Url = await this.s3Service.uploadImageFromUrl(
-            imageUrl,
-            s3Key,
-          );
-
-          return s3Url;
-        } catch (error) {
-          console.error(
-            `Error generating image for chapter ${index + 1}:`,
-            error,
-          );
-          return originalChapter.image_url;
-        }
-      },
+    const imageBatch = template.chapters.map((originalChapter, index) =>
+      this.generateSingleChapterImage(
+        originalChapter,
+        personalizedStory.chapters[index],
+        personalizationDetails,
+        usePhotoData,
+        childName,
+        index,
+        storySummary,
+        template,
+      ),
     );
 
-    return Promise.all(imagePromises);
+    const generatedImages = await Promise.allSettled(imageBatch);
+
+    return generatedImages.map((result, index) =>
+      result.status === "fulfilled"
+        ? result.value
+        : template.chapters[index]?.image_url,
+    );
   }
 
-  async generateImageFromPhotoWithGPT(
-    photoUrl,
-    imageDescription,
-    imagePosition,
-    childName,
+  async generateSingleChapterImage(
+    originalChapter,
+    personalizedChapter,
     personalizationDetails,
-    validationResult,
-    mergedChars,
+    usePhotoData,
+    childName,
+    index,
+    storySummary,
+    template,
   ) {
     try {
-      const { childAge, gender } = personalizationDetails;
+      const mergedChars = this.getMergedCharacteristics(
+        personalizationDetails,
+        usePhotoData,
+      );
+      const { childAge, gender, photoUrl } = personalizationDetails;
 
-      let characteristicsText = this.buildComprehensiveCharacteristics(
-        validationResult?.analysis?.characteristics,
+      const visualStyle = this._getVisualStyle(childAge, template.genre);
+
+      const prompt = this.buildImagePrompt(
+        personalizedChapter.image_description ||
+          originalChapter.image_description,
+        originalChapter.image_position,
+        childName,
+        childAge,
+        gender,
         mergedChars,
+        visualStyle,
+        storySummary,
       );
 
-      const prompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
-${characteristicsText}
+      let imageUrl;
+      if (photoUrl && usePhotoData) {
+        imageUrl = await this.generateStrictImagenImage(prompt, photoUrl);
+      } else {
+        imageUrl = await this.generateStrictImagenImage(prompt);
+      }
 
-SCENE DESCRIPTION: ${imageDescription}
-IMAGE POSITION: ${imagePosition}
-CHARACTER: ${childName}, ${childAge} years old, ${gender}`;
-
-      return await this.generateStrictDalleImage(prompt);
+      const s3Key = this.s3Service.generateImageKey(
+        `personalized-books/${childName}/chapters`,
+        `chapter-${index + 1}`,
+      );
+      return await this.s3Service.uploadImageFromUrl(imageUrl, s3Key);
     } catch (error) {
-      console.error("Error generating image from photo with GPT:", error);
-      throw error;
+      return originalChapter.image_url;
     }
   }
 
-  buildComprehensiveCharacteristics(characteristics, mergedChars) {
-    let characteristicsText =
-      "CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:\n";
-
-    characteristicsText += `- Skin tone: "${mergedChars.skinTone}"\n`;
-    characteristicsText += `- Hair color: "${mergedChars.hairColor}"\n`;
-    characteristicsText += `- Hairstyle: "${mergedChars.hairStyle}"\n`;
-    characteristicsText += `- Eye color: "${mergedChars.eyeColor}"\n`;
-    characteristicsText += `- Clothing style: "${mergedChars.clothing}"\n`;
-
-    if (mergedChars.faceShape)
-      characteristicsText += `- Face shape: "${mergedChars.faceShape}"\n`;
-    if (mergedChars.eyeShape)
-      characteristicsText += `- Eye shape: "${mergedChars.eyeShape}"\n`;
-    if (mergedChars.noseShape)
-      characteristicsText += `- Nose shape: "${mergedChars.noseShape}"\n`;
-    if (mergedChars.lipShape)
-      characteristicsText += `- Lip shape: "${mergedChars.lipShape}"\n`;
-    if (mergedChars.hairTexture)
-      characteristicsText += `- Hair texture: "${mergedChars.hairTexture}"\n`;
-    if (mergedChars.complexion)
-      characteristicsText += `- Complexion: "${mergedChars.complexion}"\n`;
-
-    if (mergedChars.facialFeatures && mergedChars.facialFeatures.length > 0) {
-      characteristicsText += `- Distinctive features: ${mergedChars.facialFeatures.slice(0, 3).join(", ")}\n`;
-    }
-
-    return characteristicsText;
-  }
-
-  async generateImageFromDescriptionWithGPT(
+  buildImagePrompt(
     imageDescription,
     imagePosition,
     childName,
-    personalizationDetails,
+    childAge,
+    gender,
     mergedChars,
+    visualStyle,
+    storySummary,
   ) {
-    const { childAge, gender } = personalizationDetails;
+    const themes = storySummary.main_themes.slice(0, 3).join(", ");
+    const settings = storySummary.key_settings.slice(0, 2).join(", ");
+    const magicalElements = storySummary.magical_elements
+      .slice(0, 3)
+      .join(", ");
 
-    const prompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
+    return `STORY THEMES: ${themes}
+KEY SETTINGS: ${settings}
+MAGICAL ELEMENTS: ${magicalElements}
+VISUAL STYLE: ${visualStyle}
 
-CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:
-- Skin tone: "${mergedChars.skinTone}"
-- Hair color: "${mergedChars.hairColor}"
-- Hairstyle: "${mergedChars.hairStyle}"
-- Eye color: "${mergedChars.eyeColor}"
-- Clothing style: "${mergedChars.clothing}"
-
-SCENE DESCRIPTION: ${imageDescription}
+CHARACTER: ${childName}, ${childAge} years old, ${gender}
+APPEARANCE: ${mergedChars.skinTone} skin, ${mergedChars.hairColor} ${mergedChars.hairStyle} hair, ${mergedChars.eyeColor} eyes
+SCENE: ${imageDescription}
 IMAGE POSITION: ${imagePosition}
-CHARACTER: ${childName}, ${childAge} years old, ${gender}`;
-
-    return await this.generateStrictDalleImage(prompt);
+STYLE: children's book illustration, no text, incorporate story themes and magical elements`;
   }
 
-  async generatePersonalizedCoverWithGPT(
+  async generateOptimizedPersonalizedCover(
     personalizedStory,
     personalizationDetails,
     usePhotoData,
     storySummary,
   ) {
     try {
-      const { childName, photoUrl, validationResult } = personalizationDetails;
+      const { childName, childAge, photoUrl } = personalizationDetails;
       const mergedChars = this.getMergedCharacteristics(
         personalizationDetails,
         usePhotoData,
       );
 
-      let coverPrompt;
+      const visualStyle = this._getVisualStyle(
+        childAge,
+        personalizedStory.genre,
+      );
 
-      if (photoUrl && usePhotoData) {
-        const characteristics = validationResult?.analysis?.characteristics;
-        const characteristicsText = this.buildComprehensiveCharacteristics(
-          characteristics,
-          mergedChars,
-        );
+      const coverPrompt = this.buildCoverPrompt(
+        personalizedStory.book_title,
+        storySummary,
+        childName,
+        mergedChars,
+        visualStyle,
+      );
 
-        coverPrompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
-${characteristicsText}
-
-STORY CONTEXT:
-- Title: ${personalizedStory.book_title}
-- Summary: ${storySummary.summary.substring(0, 200)}...
-- Main Themes: ${storySummary.main_themes.slice(0, 3).join(", ")}
-- Key Settings: ${storySummary.key_settings.slice(0, 2).join(", ")}
-- Magical Elements: ${storySummary.magical_elements.slice(0, 3).join(", ")}
-
-CHARACTER: ${childName}
-COVER REQUIREMENTS:
-- Capture the essence of the entire story journey
-- Show ${childName} in a moment that represents the story's adventure
-- Include visual references to main settings and magical elements`;
-      } else {
-        const { childAge, gender } = personalizationDetails;
-        coverPrompt = `CRITICAL CHARACTER REQUIREMENTS - MUST FOLLOW EXACTLY:
-
-CHARACTER APPEARANCE - MUST BE REPRODUCED EXACTLY:
-- Skin tone: "${mergedChars.skinTone}"
-- Hair color: "${mergedChars.hairColor}"
-- Hairstyle: "${mergedChars.hairStyle}"
-- Eye color: "${mergedChars.eyeColor}"
-- Clothing style: "${mergedChars.clothing}"
-
-STORY CONTEXT:
-- Title: ${personalizedStory.book_title}
-- Summary: ${storySummary.summary.substring(0, 200)}...
-- Main Themes: ${storySummary.main_themes.slice(0, 3).join(", ")}
-- Key Settings: ${storySummary.key_settings.slice(0, 2).join(", ")}
-- Magical Elements: ${storySummary.magical_elements.slice(0, 3).join(", ")}
-
-CHARACTER: ${childName}, ${childAge} years old, ${gender}
-COVER REQUIREMENTS:
-- Capture the essence of the entire story journey
-- Show ${childName} in a moment that represents the story's adventure
-- Include visual references to main settings and magical elements`;
-      }
-
-      if (coverPrompt.length > 3900) {
-        console.warn(
-          `Cover prompt too long (${coverPrompt.length} chars), truncating...`,
-        );
-        coverPrompt = coverPrompt.substring(0, 3900) + "... [TRUNCATED]";
-      }
-
-      const imageUrl = await this.generateStrictDalleImage(coverPrompt);
+      const imageUrl = await this.generateStrictImagenImage(
+        coverPrompt,
+        photoUrl && usePhotoData ? photoUrl : null,
+      );
 
       const s3Key = this.s3Service.generateImageKey(
         `personalized-books/${childName}/covers`,
@@ -862,38 +686,41 @@ COVER REQUIREMENTS:
       );
       return await this.s3Service.uploadImageFromUrl(imageUrl, s3Key);
     } catch (error) {
-      console.error("Error generating personalized cover with GPT:", error);
       return null;
     }
   }
 
-  async generateStrictDalleImage(prompt) {
-    const enhancedPrompt = prompt;
+  buildCoverPrompt(
+    bookTitle,
+    storySummary,
+    childName,
+    mergedChars,
+    visualStyle,
+  ) {
+    const themes = storySummary.main_themes.slice(0, 3).join(", ");
+    const settings = storySummary.key_settings.slice(0, 2).join(", ");
+    const magicalElements = storySummary.magical_elements
+      .slice(0, 3)
+      .join(", ");
 
-    if (enhancedPrompt.length > 4000) {
-      console.warn(
-        `Final DALL-E prompt too long (${enhancedPrompt.length} chars), using original prompt`,
-      );
-      return await this.openai.images
-        .generate({
-          model: "dall-e-3",
-          prompt: prompt.substring(0, 4000),
-          size: "1024x1024",
-          quality: "hd",
-          n: 1,
-        })
-        .then((image) => image.data[0].url);
-    }
+    return `BOOK COVER: "${bookTitle}"
+STORY THEMES: ${themes}
+KEY SETTINGS: ${settings}
+MAGICAL ELEMENTS: ${magicalElements}
+VISUAL STYLE: ${visualStyle}
 
-    const image = await this.openai.images.generate({
-      model: "dall-e-3",
-      prompt: enhancedPrompt,
+CHARACTER: ${childName} with ${mergedChars.skinTone} skin, ${mergedChars.hairColor} hair
+STORY SUMMARY: ${storySummary.summary.substring(0, 100)}
+STYLE: children's book cover, no text, incorporate story themes and magical elements, vibrant colors, captivating magical atmosphere`;
+  }
+
+  async generateStrictImagenImage(prompt, photoUrl = null) {
+    return await this.imagenGenerator.generateImage(prompt, {
       size: "1024x1024",
-      quality: "hd",
-      n: 1,
+      aspectRatio: "1:1",
+      baseImage: photoUrl,
+      model: "imagen-4.0-generate-001",
     });
-
-    return image.data[0].url;
   }
 
   assemblePersonalizedBook(personalizedStory, chapterImages, coverImage) {

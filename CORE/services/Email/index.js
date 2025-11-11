@@ -46,8 +46,8 @@ class EmailService {
       const [otp, welcome, login, payment, reset_password, change_password] =
         await Promise.all(
           templateFiles.map((file) =>
-            fs.promises.readFile(path.join(templatesDir, file), "utf8")
-          )
+            fs.promises.readFile(path.join(templatesDir, file), "utf8"),
+          ),
         );
 
       this.templates = {
@@ -101,7 +101,7 @@ class EmailService {
         email,
         "Your My Story hat Verification Code",
         htmlContent,
-        textContent
+        textContent,
       );
       logger.info(`OTP email sent to ${email}: ${result.MessageId}`);
       return result;
@@ -115,7 +115,7 @@ class EmailService {
     try {
       let htmlContent = this.templates.welcome.replace(
         /{{USER_NAME}}/g,
-        username
+        username,
       );
       const textContent = `Welcome to Wonder Wrap, ${username}! Thank you for joining our community.`;
 
@@ -123,7 +123,7 @@ class EmailService {
         email,
         "Welcome to My Story Hat!",
         htmlContent,
-        textContent
+        textContent,
       );
       logger.info(`Welcome email sent to ${email}: ${result.MessageId}`);
       return result;
@@ -147,7 +147,7 @@ class EmailService {
         email,
         "New Login to Your My Story Hat Account",
         htmlContent,
-        textContent
+        textContent,
       );
 
       logger.info(`Login notification sent to ${email}`, {
@@ -158,7 +158,7 @@ class EmailService {
     } catch (error) {
       logger.error("Failed to send login notification email:", error);
       throw new Error(
-        `Failed to send login notification email: ${error.message}`
+        `Failed to send login notification email: ${error.message}`,
       );
     }
   }
@@ -181,7 +181,7 @@ class EmailService {
     tax,
     total,
     referenceCode,
-    paymentMethod
+    paymentMethod,
   ) {
     try {
       const loginDetails = await getLoginDetails(req);
@@ -205,16 +205,16 @@ class EmailService {
         email,
         "THANK YOU: Your My Story Hat Payment Confirmation",
         htmlContent,
-        textContent
+        textContent,
       );
-      console.log(result)
+      console.log(result);
 
       logger.info(
-        `Payment confirmation email sent to ${email}: ${result.MessageId}`
+        `Payment confirmation email sent to ${email}: ${result.MessageId}`,
       );
       return result;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       logger.error("Failed to send payment confirmation email:", error);
       throw new Error("Failed to send payment confirmation email");
     }
@@ -236,7 +236,7 @@ class EmailService {
         email,
         subject,
         htmlContent,
-        textContent
+        textContent,
       );
 
       logger.info(`Custom email sent to ${email}: ${result.MessageId}`);
@@ -263,7 +263,7 @@ class EmailService {
         email,
         "PASSWORD RESET OTP",
         htmlContent,
-        textContent
+        textContent,
       );
 
       logger.info(`Password reset notification sent to ${email}`, {
@@ -281,7 +281,7 @@ class EmailService {
     email,
     username,
     PASSWORD_RESET_RECOMMENDATION,
-    req
+    req,
   ) {
     try {
       const loginDetails = await getLoginDetails(req);
@@ -297,7 +297,7 @@ class EmailService {
         email,
         "PASSWORD CHANGE NOTIFICATION",
         htmlContent,
-        textContent
+        textContent,
       );
 
       logger.info(`Password change notification sent to ${email}`, {
@@ -308,7 +308,7 @@ class EmailService {
     } catch (error) {
       logger.error("Failed to send password change notification:", error);
       throw new Error(
-        `Failed to send password change notification: ${error.message}`
+        `Failed to send password change notification: ${error.message}`,
       );
     }
   }

@@ -11,7 +11,7 @@ export const getUserPersonalizedBook = async (req, res, next) => {
       throw new ErrorHandler("Personalized book ID is required", 400);
     }
 
-    const book = await PersonalizedBook.findByIdForUser(id, userId);
+    const book = await PersonalizedBook.findByIdForUserPaid(id, userId);
 
     sendResponse(res, 200, "Personalized book retrieved successfully", book);
   } catch (error) {

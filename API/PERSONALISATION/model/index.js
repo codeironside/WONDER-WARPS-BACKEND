@@ -6,6 +6,7 @@ import logger from "../../../CORE/utils/logger/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
 import emailService from "../../../CORE/services/Email/index.js";
 import Receipt from "../../PAYMENT/model/index.js";
+import BookTemplate from "../../BOOK_TEMPLATE/model/index.js";
 
 const personalizedBookSchema = new mongoose.Schema(
   {
@@ -111,7 +112,12 @@ class PersonalizedBook {
     }
   }
 
-  static async addPersonalization(bookId, userId, personalizationData) {
+  static async addPersonalization(
+    bookId,
+    userId,
+    templateId,
+    personalizationData,
+  ) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -125,10 +131,13 @@ class PersonalizedBook {
       if (error) {
         throw new ErrorHandler(this.formatValidationError(error), 400);
       }
-      
+      console.log(
+        ` book id ${bookId}, user id ${userId}, template id ${templateId}`,
+      );
       const book = await PersonalizedBookModel.findOne({
         _id: bookId,
         user_id: userId,
+        original_template_id: templateId,
       }).session(session);
 
       if (!book) {
@@ -262,9 +271,31 @@ class PersonalizedBook {
     }
   }
 
-  static async findByIdForUser(bookId, userId) {
+  static async findByIdForUser(bookId, personsalisedId, userId) {
     try {
-      console.log(` book id${bookId},user id ${userId}`)
+      console.log(
+        ` book id ${bookId},user id ${userId}, personalised id ${personsalisedId}`,
+      );
+      // const originaltemplate = await  BookTemplate.findById(bookId)
+      const book = await PersonalizedBookModel.findOne({
+        _id: personsalisedId,
+        user_id: userId,
+        original_template_id: bookId,
+      }).exec();
+
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      return book;
+    } catch (error) {
+      console.log(error);
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to find personalized book", 500);
+    }
+  }
+  static async findByIdForUserPaid(bookId, userId) {
+    try {
       const book = await PersonalizedBookModel.findOne({
         _id: bookId,
         user_id: userId,
@@ -276,7 +307,7 @@ class PersonalizedBook {
 
       return book;
     } catch (error) {
-      console.log(error)
+      console.log(error);
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to find personalized book", 500);
     }

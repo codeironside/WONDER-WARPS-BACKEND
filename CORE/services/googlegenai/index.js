@@ -1,4 +1,3 @@
-// CORE/services/google/veoGenerator/index.js
 import { GoogleGenAI } from "@google/genai";
 import { config } from "@/config";
 
