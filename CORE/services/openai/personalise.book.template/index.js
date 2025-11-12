@@ -1109,7 +1109,7 @@ class StoryPersonalizer {
 
   async createBookForPayment(templateId, userId, basicDetails) {
     try {
-      const { childName, childAge, gender } = basicDetails;
+      const { childName, childAge, gender,video_url } = basicDetails;
 
       if (!templateId || !childName) {
         throw new ErrorHandler("Template ID and child name are required", 400);
@@ -1130,7 +1130,7 @@ class StoryPersonalizer {
         book_title: template.book_title || "",
         genre: template.genre || "",
         cover_image: template.cover_image || [],
-        video_url: template.video_url || "",
+        video_url: template.video_url || video_url,
       };
 
       const book = await PersonalizedBook.createBookForPayment(bookData);

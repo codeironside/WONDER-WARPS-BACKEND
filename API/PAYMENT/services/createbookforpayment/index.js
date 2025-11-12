@@ -18,7 +18,7 @@ export const createBookForPayment = async (req, res, next) => {
     const book = await storyPersonalizer.createBookForPayment(
       templateId,
       user._id.toString(),
-      { childName, childAge, gender },
+      { childName, childAge, gender, video_url },
     );
 
     res.status(201).json({
