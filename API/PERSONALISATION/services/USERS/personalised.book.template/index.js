@@ -9,7 +9,7 @@ export const personalizeBook = async (req, res, next) => {
     const userId = req.user._id;
     const {
       templateId,
-      personsalisedId,
+      personalisedId,
       childName,
       childAge,
       skinTone,
@@ -21,8 +21,9 @@ export const personalizeBook = async (req, res, next) => {
       gender,
       photoUrl,
     } = req.body;
+    console.log(req.body)
 
-    if (!templateId || !childName || !personsalisedId) {
+    if (!templateId || !childName || !personalisedId) {
       throw new ErrorHandler(
         "Template ID, child and personsalised Id name are required ",
         400,
@@ -45,7 +46,7 @@ export const personalizeBook = async (req, res, next) => {
     const result = await storyPersonalizer.addPersonalizationToBook(
       templateId,
       userId,
-      personsalisedId,
+      personalisedId,
       personalizationDetails,
     );
 
