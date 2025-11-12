@@ -21,7 +21,7 @@ export const personalizeBook = async (req, res, next) => {
       gender,
       photoUrl,
     } = req.body;
-    console.log(req.body)
+    console.log(req.body);
 
     if (!templateId || !childName || !personalisedId) {
       throw new ErrorHandler(

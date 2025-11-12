@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import VeoGenerator from "../../googlegenai/index.js";
+import ImagenGenerator from "../../imagen/index.js";
 
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
@@ -80,9 +81,26 @@ const SUGGESTED_FONTS = {
 class StorybookGenerator {
   constructor() {
     const apiKey = config.openai.API_KEY;
+    const googleApiKey = config.google.api_key;
+
+    if (!apiKey) {
+      throw new ErrorHandler(
+        "OpenAI API key is required for text generation",
+        500,
+      );
+    }
+    if (!googleApiKey) {
+      throw new ErrorHandler(
+        "Google API key is required for image generation",
+        500,
+      );
+    }
+
     this.openai = new OpenAI({ apiKey });
     this.veoGenerator = new VeoGenerator();
+    this.imagenGenerator = new ImagenGenerator(); // Initialize Google Imagen generator
   }
+
   getAgeGroup(ageMin) {
     if (ageMin <= 6) return "YOUNGER_CHILD";
     if (ageMin <= 10) return "MIDDLE_CHILD";
@@ -354,6 +372,7 @@ class StorybookGenerator {
       return null;
     }
   }
+
   extractKeyStoryMoments(storyData) {
     const moments = [];
 
@@ -704,18 +723,19 @@ You will return the story as a single JSON object with the following format:
         No book titles, no captions, no speech bubbles, no labels.
         Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
 
-        const image = await this.openai.images.generate({
-          model: "dall-e-3",
-          response_format: "url",
-          prompt: safePrompt,
-          n: 1,
-          quality: "standard",
+        // Use Google Imagen instead of OpenAI DALL-E
+        const imageUrl = await this.imagenGenerator.generateImage(safePrompt, {
           size: "1024x1024",
+          aspectRatio: "1:1",
+          model: "imagen-3.0-generate-001", // Use appropriate Imagen model
         });
 
-        return image.data[0].url;
+        return imageUrl;
       } catch (error) {
-        console.error("Error generating chapter image:", error);
+        console.error(
+          "Error generating chapter image with Google Imagen:",
+          error,
+        );
         return `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`;
       }
     });
@@ -727,26 +747,25 @@ You will return the story as a single JSON object with the following format:
   async generateCoverImage(storyData, gender, name, theme, age_min) {
     const visualStyle = this._getVisualStyle(age_min, theme);
 
-    const safePrompt = `Children's book  illustration ${visualStyle}.
+    const safePrompt = `Children's book cover illustration ${visualStyle}.
     A magical and joyful scene featuring the main character, ${name}, a ${gender} child protagonist.
     The cover should be bright, friendly, and enchanting, suitable for a children's storybook.
     ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
     No book titles, no captions, no speech bubbles, no labels.
-    Pure visual illustration only with captivating magical atmosphere.`;
+    Pure visual illustration only with captivating magical atmosphere. NO TEXT whatsoever`;
 
     try {
-      const coverImage = await this.openai.images.generate({
-        model: "dall-e-3",
-        response_format: "url",
-        prompt: safePrompt,
-        n: 1,
-        quality: "hd",
+      // Use Google Imagen instead of OpenAI DALL-E
+      const coverImage = await this.imagenGenerator.generateImage(safePrompt, {
         size: "1024x1024",
+        aspectRatio: "1:1",
+        model: "imagen-3.0-generate-001", // Use appropriate Imagen model
+        quality: "high",
       });
 
-      return coverImage.data[0].url;
+      return coverImage;
     } catch (error) {
-      console.error("Error generating cover image:", error);
+      console.error("Error generating cover image with Google Imagen:", error);
       return `https://via.placeholder.com/1024x1024/FF6B6B/FFFFFF?text=Cover+Image+Coming+Soon`;
     }
   }

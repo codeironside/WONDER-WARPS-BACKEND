@@ -3,7 +3,6 @@ import Joi from "joi";
 import ErrorHandler from "../../../CORE/middleware/errorhandler/index.js";
 import S3Service from "../../../CORE/services/s3/index.js";
 
-// Define Chapter Schema
 const chapterSchema = new mongoose.Schema(
   {
     chapter_title: {
