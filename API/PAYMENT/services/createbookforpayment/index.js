@@ -5,7 +5,8 @@ import { sendResponse } from "../../../../CORE/utils/response.handler/index.js";
 
 export const createBookForPayment = async (req, res, next) => {
   try {
-    const { templateId, childName, childAge, gender } = req.body;
+    const { templateId, childName, childAge, gender, video_url } = req.body;
+   
     const user = req.user;
 
     if (!templateId || !childName) {

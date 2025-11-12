@@ -727,7 +727,7 @@ You will return the story as a single JSON object with the following format:
         const imageUrl = await this.imagenGenerator.generateImage(safePrompt, {
           size: "1024x1024",
           aspectRatio: "1:1",
-          model: "imagen-3.0-generate-001", // Use appropriate Imagen model
+          model: "imagen-4.0-generate-001", // Use appropriate Imagen model
         });
 
         return imageUrl;
@@ -759,7 +759,7 @@ You will return the story as a single JSON object with the following format:
       const coverImage = await this.imagenGenerator.generateImage(safePrompt, {
         size: "1024x1024",
         aspectRatio: "1:1",
-        model: "imagen-3.0-generate-001", // Use appropriate Imagen model
+        model: "imagen-4.0-generate-001", // Use appropriate Imagen model
         quality: "high",
       });
 

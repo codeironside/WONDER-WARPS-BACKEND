@@ -166,7 +166,7 @@ const bookTemplateSchema = new mongoose.Schema(
   },
 );
 
-// Create indexes for better performance
+
 bookTemplateSchema.index({ user_id: 1, book_title: 1 }, { unique: true });
 bookTemplateSchema.index({ createdAt: -1 });
 bookTemplateSchema.index({ price: 1 });
@@ -205,7 +205,7 @@ class BookTemplate {
           chapter_content: Joi.string().required(),
           image_description: Joi.string().max(1000).allow(null, "").optional(),
           image_position: Joi.string().max(50).allow(null, "").optional(),
-          image_url: Joi.string().uri().max(1000).allow(null, "").optional(),
+          image_url: Joi.string().uri().max(1000000).allow(null, "").optional(),
         }),
       )
       .default([]),
