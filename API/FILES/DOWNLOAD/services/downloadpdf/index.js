@@ -40,11 +40,16 @@ export const downloadBookPDF = async (req, res, next) => {
 
     const printUrl = `http://localhost/print-book/${bookId}?token=${req.token}`;
 
+    const frontendDomain = process.env.BASE_URL.replace(/^https?:\/\//, '');
+
     const browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
+    await page.setExtraHTTPHeaders({
+      'Host': frontendDomain
+    });
 
     await page.goto(printUrl, {
       waitUntil: "networkidle0",
