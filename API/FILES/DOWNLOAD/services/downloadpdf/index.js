@@ -1,22 +1,13 @@
-import BookToPDF from "../../../../../CORE/services/booktopdf/index.js";
+import puppeteer from "puppeteer";
+import jwt from "jsonwebtoken";
 import PersonalizedBook from "../../../../PERSONALISATION/model/index.js";
 import ErrorHandler from "../../../../../CORE/middleware/errorhandler/index.js";
 import logger from "../../../../../CORE/utils/logger/index.js";
 
-const generateFileName = (book) => {
-  const title = book.personalized_content?.book_title || "story-book";
-  const childName = book.child_name || "child";
-
-  return `${title}-${childName}.pdf`
-    .toLowerCase()
-    .replace(/[^a-zA-Z0-9.-]/g, "_")
-    .replace(/\s+/g, "_");
-};
-
 export const downloadBookPDF = async (req, res, next) => {
   try {
     const { bookId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const book = await PersonalizedBook.findById(bookId);
 
@@ -24,9 +15,9 @@ export const downloadBookPDF = async (req, res, next) => {
       throw new ErrorHandler("Book not found", 404);
     }
 
-    // if (book.user_id.toString() !== userId.toString()) {
-    //   throw new ErrorHandler("Access denied", 403);
-    // }
+    if (book.user_id.toString() !== userId.toString()) {
+      throw new ErrorHandler("Access denied", 403);
+    }
 
     if (!book.is_paid) {
       throw new ErrorHandler(
@@ -35,37 +26,73 @@ export const downloadBookPDF = async (req, res, next) => {
       );
     }
 
-    logger.info("Generating PDF for book", {
+    logger.info("Generating PDF via Puppeteer for book", {
       bookId,
       userId,
-      bookTitle: book.personalized_content?.book_title,
-      childName: book.child_name,
     });
 
-    const pdfGenerator = new BookToPDF(book);
-    const pdfBuffer = await pdfGenerator.generatePDF();
+    const printToken = jwt.sign(
+      { bookId: bookId, userId: userId },
+      process.env.JWT_SECRET,
+      { expiresIn: "120s" },
+    );
+    console.log(bookId);
 
-    const fileName = generateFileName(book);
+    const printUrl = `${process.env.FRONTEND_URL}/print-book/${bookId}?token=${req.token}`;
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+    const page = await browser.newPage();
+
+    await page.goto(printUrl, {
+      waitUntil: "networkidle0",
+      timeout: 60000,
+    });
+    console.log(`generating..........`);
+    const pdfBuffer = await page.pdf({
+      format: "A5",
+      printBackground: true,
+      margin: {
+        top: "0px",
+        right: "0px",
+        bottom: "0px",
+        left: "0px",
+      },
+    });
+
+    await browser.close();
+
+    const title = book.personalized_content?.book_title || "My Story Book";
+    const childName = book.child_name || "child";
+    const fileName = `${title} - ${childName}.pdf`
+      .toLowerCase()
+      .replace(/[^a-z0-9\s.-]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\s/g, "_");
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    res.setHeader("Content-Length", pdfBuffer.length);
-
-    // Send PDF
     res.send(pdfBuffer);
 
-    logger.info("PDF downloaded successfully", {
+    logger.info("PDF download stream started successfully via Puppeteer", {
       bookId,
       userId,
-      fileName,
-      fileSize: `${(pdfBuffer.length / 1024 / 1024).toFixed(2)} MB`,
     });
   } catch (error) {
-    logger.error("PDF download failed", {
+    console.error(error);
+    logger.error("Puppeteer PDF download failed", {
       error: error.message,
       bookId: req.params.bookId,
-      userId: req.user.id,
+      userId: req.user?.id,
     });
-    next(error);
+
+    if (res.headersSent) {
+      res.end();
+    } else {
+      next(error);
+    }
   }
 };

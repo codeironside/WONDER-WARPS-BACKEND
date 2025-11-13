@@ -166,7 +166,6 @@ const bookTemplateSchema = new mongoose.Schema(
   },
 );
 
-
 bookTemplateSchema.index({ user_id: 1, book_title: 1 }, { unique: true });
 bookTemplateSchema.index({ createdAt: -1 });
 bookTemplateSchema.index({ price: 1 });

@@ -34,6 +34,7 @@ export const authorize = (allowedRoles) => {
       logger.warn(
         `user with ID ${id} accessed a protected route with role ${user.role}`,
       );
+      req.token = token;
       req.user = user;
       next();
     } catch (error) {

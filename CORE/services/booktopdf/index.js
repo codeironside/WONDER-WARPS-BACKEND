@@ -6,26 +6,41 @@ class BookToPDF {
   constructor(bookData) {
     this.book = bookData;
     this.doc = null;
+
+    // A5 dimensions in points: 419.53 x 595.28 (148mm x 210mm)
+    this.pageWidth = 419.53;
+    this.pageHeight = 595.28;
+
+    // Adjust margins for A5 size
     this.margins = {
-      top: 40,
-      bottom: 40,
-      left: 40,
-      right: 40,
+      top: 30,
+      bottom: 30,
+      left: 25,
+      right: 25,
     };
 
-    this.pageWidth = 595.28;
-    this.pageHeight = 841.89;
     this.contentWidth = this.pageWidth - this.margins.left - this.margins.right;
     this.contentHeight =
       this.pageHeight - this.margins.top - this.margins.bottom;
   }
 
-  async generatePDF() {
+  async generatePDF(res) {
     return new Promise(async (resolve, reject) => {
       try {
+        // Set headers for streaming and automatic download
+        const fileName = this.generateFileName();
+        res.setHeader("Content-Type", "application/pdf");
+
+        // Use 'attachment' to force download without asking
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${fileName}"`,
+        );
+
+        // Create PDF document with A5 size
         this.doc = new PDFDocument({
           margin: 0,
-          size: "A4",
+          size: [this.pageWidth, this.pageHeight], // A5 size
           info: {
             Title:
               this.book.personalized_content?.book_title ||
@@ -38,21 +53,40 @@ class BookToPDF {
           },
         });
 
-        const buffers = [];
-        this.doc.on("data", buffers.push.bind(buffers));
-        this.doc.on("end", () => {
-          const pdfData = Buffer.concat(buffers);
-          resolve(pdfData);
-        });
-        this.doc.on("error", reject);
+        // Pipe PDF directly to response
+        this.doc.pipe(res);
 
         this.expandedChapters = this.expandChapters();
         await this.generateContent();
+
         this.doc.end();
+
+        // Wait for stream to finish
+        this.doc.on("end", () => {
+          resolve();
+        });
+
+        this.doc.on("error", (error) => {
+          reject(error);
+        });
       } catch (error) {
         reject(error);
       }
     });
+  }
+
+  generateFileName() {
+    // Use the actual book title for the filename
+    const title = this.book.personalized_content?.book_title || "My Story Book";
+    const childName = this.book.child_name || "child";
+
+    // Clean the filename to be URL-safe
+    return `${title} - ${childName}.pdf`
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9\s.-]/g, "") // Remove special characters except spaces, dots, and hyphens
+      .replace(/\s+/g, " ") // Replace multiple spaces with single space
+      .trim()
+      .replace(/\s/g, "_"); // Replace spaces with underscores for final filename
   }
 
   expandChapters() {
@@ -108,7 +142,9 @@ class BookToPDF {
     const suggestedFont =
       this.book.personalized_content?.suggested_font || "Comic Sans MS";
 
+    // Corrected font mapping for PDFKit standard fonts
     const fontMap = {
+      // Younger child fonts - more playful and rounded
       "Comic Sans MS": "Helvetica",
       "KG Primary Penmanship": "Helvetica",
       "DK Crayon Crumble": "Helvetica",
@@ -117,6 +153,8 @@ class BookToPDF {
       "Century Gothic": "Helvetica",
       Verdana: "Helvetica",
       "Arial Rounded": "Helvetica",
+
+      // Middle child fonts - balanced and readable
       "Gill Sans": "Helvetica",
       "Trebuchet MS": "Helvetica",
       Palatino: "Times-Roman",
@@ -125,6 +163,8 @@ class BookToPDF {
       Cabin: "Helvetica",
       Quicksand: "Helvetica",
       Nunito: "Helvetica",
+
+      // Older child fonts - more formal and traditional
       "Times New Roman": "Times-Roman",
       Garamond: "Times-Roman",
       Baskerville: "Times-Roman",
@@ -133,22 +173,34 @@ class BookToPDF {
       Merriweather: "Times-Roman",
       Roboto: "Helvetica",
       "Source Sans Pro": "Helvetica",
-      Papyrus: "Times-Roman",
-      "Trajan Pro": "Times-Roman",
-      "Uncial Antiqua": "Times-Roman",
-      Rockwell: "Times-Roman",
-      Copperplate: "Times-Roman",
-      "Franklin Gothic": "Helvetica",
-      Orbitron: "Courier",
-      Eurostile: "Helvetica",
-      "Bank Gothic": "Helvetica",
-      "Courier New": "Courier",
-      "American Typewriter": "Courier",
-      "Marker Felt": "Helvetica",
-      Chalkboard: "Helvetica",
+
+      // Themed fonts
+      Papyrus: "Times-Roman", // Fantasy
+      "Trajan Pro": "Times-Roman", // Fantasy
+      "Uncial Antiqua": "Times-Roman", // Fantasy
+      Rockwell: "Times-Roman", // Adventure
+      Copperplate: "Times-Roman", // Adventure
+      "Franklin Gothic": "Helvetica", // Adventure
+      Orbitron: "Courier", // Sci-fi
+      Eurostile: "Helvetica", // Sci-fi
+      "Bank Gothic": "Helvetica", // Sci-fi
+      "Courier New": "Courier", // Mystery
+      "American Typewriter": "Courier", // Mystery
+      "Marker Felt": "Helvetica", // Humor
+      Chalkboard: "Helvetica", // Humor
     };
 
     return fontMap[suggestedFont] || "Helvetica";
+  }
+
+  // Helper method to get bold font variant
+  getBoldFont(fontFamily) {
+    const boldMap = {
+      Helvetica: "Helvetica-Bold",
+      "Times-Roman": "Times-Bold", // Fixed: Times-Roman-Bold doesn't exist
+      Courier: "Courier-Bold",
+    };
+    return boldMap[fontFamily] || "Helvetica-Bold";
   }
 
   async addCoverPage() {
@@ -163,8 +215,8 @@ class BookToPDF {
           height: this.pageHeight,
         });
 
-        const titleBoxHeight = 120;
-        const titleBoxY = this.pageHeight - titleBoxHeight - 40;
+        const titleBoxHeight = 80; // Reduced for A5
+        const titleBoxY = this.pageHeight - titleBoxHeight - 30;
 
         this.doc
           .rect(0, titleBoxY, this.pageWidth, titleBoxHeight)
@@ -174,20 +226,21 @@ class BookToPDF {
           this.book.personalized_content?.book_title || "My Story Book";
         const author = this.book.child_name;
 
+        // Smaller font sizes for A5
         this.doc
           .font("Helvetica-Bold")
-          .fontSize(32)
+          .fontSize(20) // Reduced from 32
           .fillColor("#000000")
-          .text(title, this.margins.left, titleBoxY + 20, {
+          .text(title, this.margins.left, titleBoxY + 15, {
             width: this.contentWidth,
             align: "center",
           });
 
         this.doc
           .font("Helvetica")
-          .fontSize(18)
+          .fontSize(14) // Reduced from 18
           .fillColor("#666666")
-          .text(`by ${author}`, this.margins.left, titleBoxY + 70, {
+          .text(`by ${author}`, this.margins.left, titleBoxY + 50, {
             width: this.contentWidth,
             align: "center",
           });
@@ -205,11 +258,12 @@ class BookToPDF {
       .rect(0, 0, this.pageWidth, this.pageHeight)
       .fill();
 
-    const centerY = this.pageHeight / 2 - 50;
+    const centerY = this.pageHeight / 2 - 40; // Adjusted for A5
 
+    // Smaller font sizes for A5
     this.doc
       .font("Helvetica-Bold")
-      .fontSize(32)
+      .fontSize(20) // Reduced from 32
       .fillColor("#1f2937")
       .text(
         this.book.personalized_content?.book_title || "My Story Book",
@@ -224,16 +278,16 @@ class BookToPDF {
 
     this.doc
       .font("Helvetica")
-      .fontSize(16)
+      .fontSize(12) // Reduced from 16
       .fillColor("#6b7280")
       .text(`by ${this.book.child_name}`, {
         width: this.contentWidth,
         align: "center",
       })
-      .moveDown(3);
+      .moveDown(2); // Reduced spacing
 
     this.doc
-      .fontSize(18)
+      .fontSize(14) // Reduced from 18
       .fillColor("#f97316")
       .text(`For ${this.book.child_name}`, {
         width: this.contentWidth,
@@ -242,8 +296,8 @@ class BookToPDF {
 
     if (this.book.child_age) {
       this.doc
-        .moveDown(0.5)
-        .fontSize(14)
+        .moveDown(0.3) // Reduced spacing
+        .fontSize(12) // Reduced from 14
         .fillColor("#6b7280")
         .text(`Age ${this.book.child_age}`, {
           width: this.contentWidth,
@@ -256,17 +310,18 @@ class BookToPDF {
     this.doc.addPage();
     this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
 
+    // Smaller font sizes for A5
     this.doc
       .fillColor("#1f2937")
-      .fontSize(28)
+      .fontSize(20) // Reduced from 28
       .font("Helvetica-Bold")
       .text("To My Special Reader", {
         align: "center",
       })
-      .moveDown(2);
+      .moveDown(1.5); // Reduced spacing
 
     this.doc
-      .fontSize(16)
+      .fontSize(12) // Reduced from 16
       .font("Helvetica")
       .fillColor("#4b5563")
       .text(
@@ -276,7 +331,7 @@ class BookToPDF {
           width: this.contentWidth,
         },
       )
-      .moveDown(1);
+      .moveDown(0.8); // Reduced spacing
 
     if (this.book.child_age) {
       this.doc.text(
@@ -289,8 +344,8 @@ class BookToPDF {
     }
 
     this.doc
-      .moveDown(3)
-      .fontSize(14)
+      .moveDown(2) // Reduced spacing
+      .fontSize(11) // Reduced from 14
       .fillColor("#6b7280")
       .text(
         "May your imagination soar as high as the stories we create together.",
@@ -305,16 +360,17 @@ class BookToPDF {
     this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
 
     const fontFamily = this.getFontFamily();
+    const boldFont = this.getBoldFont(fontFamily);
 
     switch (chapter.type) {
       case "image-only":
         await this.renderImageOnlyPage(chapter);
         break;
       case "text-only":
-        await this.renderTextOnlyPage(chapter, fontFamily);
+        await this.renderTextOnlyPage(chapter, fontFamily, boldFont);
         break;
       default:
-        await this.renderChapterWithImage(chapter, fontFamily);
+        await this.renderChapterWithImage(chapter, fontFamily, boldFont);
     }
 
     this.addPageNumber(index + 3);
@@ -331,12 +387,12 @@ class BookToPDF {
       } catch (error) {
         this.doc
           .font("Helvetica")
-          .fontSize(16)
+          .fontSize(12) // Reduced from 16
           .fillColor("#666666")
           .text(
             "Image not available",
             this.margins.left,
-            this.margins.top + 100,
+            this.margins.top + 60, // Adjusted position
             {
               width: this.contentWidth,
               align: "center",
@@ -346,15 +402,16 @@ class BookToPDF {
     }
   }
 
-  async renderTextOnlyPage(chapter, fontFamily) {
+  async renderTextOnlyPage(chapter, fontFamily, boldFont) {
     this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
 
     if (chapter.title) {
       this.doc
-        .font(`${fontFamily}-Bold`)
-        .fontSize(24)
+        .font(boldFont) // Use the correct bold font
+        .fontSize(18) // Reduced from 24
         .fillColor("#000000")
-        .text(chapter.title, this.margins.left, this.margins.top + 40, {
+        .text(chapter.title, this.margins.left, this.margins.top + 25, {
+          // Adjusted position
           width: this.contentWidth,
           align: "center",
         });
@@ -364,17 +421,17 @@ class BookToPDF {
       const personalizedContent = this.personalizeContent(chapter.content);
       this.doc
         .font(fontFamily)
-        .fontSize(14)
+        .fontSize(10) // Reduced from 14
         .fillColor("#1f2937")
         .text(
           personalizedContent,
           this.margins.left,
-          this.margins.top + (chapter.title ? 100 : 60),
+          this.margins.top + (chapter.title ? 70 : 40), // Adjusted positions
           {
             width: this.contentWidth,
-            height: this.contentHeight - (chapter.title ? 120 : 80),
-            lineGap: 8,
-            paragraphGap: 6,
+            height: this.contentHeight - (chapter.title ? 90 : 60), // Adjusted heights
+            lineGap: 6, // Reduced from 8
+            paragraphGap: 4, // Reduced from 6
             align: "justify",
           },
         );
@@ -383,7 +440,7 @@ class BookToPDF {
     this.addDecorativeElements();
   }
 
-  async renderChapterWithImage(chapter, fontFamily) {
+  async renderChapterWithImage(chapter, fontFamily, boldFont) {
     const imagePositionHandler = new ImagePositionHandler(
       this.doc,
       this.margins,
@@ -395,10 +452,11 @@ class BookToPDF {
 
     if (chapter.chapter_title) {
       this.doc
-        .font(`${fontFamily}-Bold`)
-        .fontSize(24)
+        .font(boldFont) // Use the correct bold font
+        .fontSize(18) // Reduced from 24
         .fillColor("#000000")
-        .text(chapter.chapter_title, this.margins.left, this.margins.top + 20, {
+        .text(chapter.chapter_title, this.margins.left, this.margins.top + 15, {
+          // Adjusted position
           width: this.contentWidth,
           align: "center",
         });
@@ -418,12 +476,12 @@ class BookToPDF {
           );
           this.doc
             .font(fontFamily)
-            .fontSize(12)
+            .fontSize(10) // Reduced from 12
             .fillColor(result.textColor || "#1f2937")
             .text(personalizedContent, result.textX, result.textY, {
               width: result.textWidth,
               height: result.textHeight,
-              lineGap: 6,
+              lineGap: 4, // Reduced from 6
               align: "justify",
             });
         }
@@ -434,16 +492,16 @@ class BookToPDF {
           );
           this.doc
             .font(fontFamily)
-            .fontSize(12)
+            .fontSize(10) // Reduced from 12
             .fillColor("#1f2937")
             .text(
               personalizedContent,
               this.margins.left,
-              this.margins.top + 80,
+              this.margins.top + 60, // Adjusted position
               {
                 width: this.contentWidth,
-                height: this.contentHeight - 100,
-                lineGap: 6,
+                height: this.contentHeight - 80, // Adjusted height
+                lineGap: 4, // Reduced from 6
                 align: "justify",
               },
             );
@@ -456,12 +514,13 @@ class BookToPDF {
         );
         this.doc
           .font(fontFamily)
-          .fontSize(12)
+          .fontSize(10) // Reduced from 12
           .fillColor("#1f2937")
-          .text(personalizedContent, this.margins.left, this.margins.top + 80, {
+          .text(personalizedContent, this.margins.left, this.margins.top + 60, {
+            // Adjusted position
             width: this.contentWidth,
-            height: this.contentHeight - 100,
-            lineGap: 6,
+            height: this.contentHeight - 80, // Adjusted height
+            lineGap: 4, // Reduced from 6
             align: "justify",
           });
       }
@@ -472,11 +531,11 @@ class BookToPDF {
     this.doc.addPage();
     this.doc.rect(0, 0, this.pageWidth, this.pageHeight).fill("#ffffff");
 
-    const centerY = this.pageHeight / 2 - 50;
+    const centerY = this.pageHeight / 2 - 30; // Adjusted for A5
 
     this.doc
       .font("Helvetica-Bold")
-      .fontSize(32)
+      .fontSize(24) // Reduced from 32
       .fillColor("#fb923c")
       .text("The End", this.margins.left, centerY, {
         width: this.contentWidth,
@@ -485,9 +544,10 @@ class BookToPDF {
 
     this.doc
       .font("Helvetica")
-      .fontSize(16)
+      .fontSize(12) // Reduced from 16
       .fillColor("#6b7280")
-      .text("Thank you for reading!", this.margins.left, centerY + 60, {
+      .text("Thank you for reading!", this.margins.left, centerY + 40, {
+        // Adjusted position
         width: this.contentWidth,
         align: "center",
       });
@@ -496,9 +556,9 @@ class BookToPDF {
   }
 
   addPageNumber(pageNumber) {
-    const bottom = this.pageHeight - 30;
+    const bottom = this.pageHeight - 20; // Adjusted for A5
     this.doc
-      .fontSize(10)
+      .fontSize(8) // Reduced from 10
       .fillColor("#9ca3af")
       .text(`Page ${pageNumber}`, this.margins.left, bottom, {
         width: this.contentWidth,
@@ -507,16 +567,17 @@ class BookToPDF {
   }
 
   addDecorativeElements() {
+    // Smaller decorative elements for A5
     this.doc
       .fillColor("#fb923c")
       .opacity(0.1)
-      .circle(this.pageWidth - 80, 100, 30)
+      .circle(this.pageWidth - 50, 70, 20) // Reduced sizes
       .fill();
 
     this.doc
       .fillColor("#fbcfe8")
       .opacity(0.1)
-      .circle(60, this.pageHeight - 100, 20)
+      .circle(40, this.pageHeight - 70, 15) // Reduced sizes
       .fill()
       .opacity(1);
   }

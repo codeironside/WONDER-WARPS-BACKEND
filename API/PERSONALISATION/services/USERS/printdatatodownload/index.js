@@ -3,10 +3,10 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 import logger from "../../../../../CORE/utils/logger/index.js";
 import PersonalizedBook from "../../../model/index.js";
 
-export const getUserPersonalizedBook = async (req, res, next) => {
+export const getPrintDataToDownload = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const { id } = req.query;
+    const { id } = req.params;
     if (!id) {
       throw new ErrorHandler("Personalized book ID is required", 400);
     }
@@ -14,7 +14,9 @@ export const getUserPersonalizedBook = async (req, res, next) => {
     const book = await PersonalizedBook.findByIdForUserPaid(id, userId);
 
     sendResponse(res, 200, "Personalized book retrieved successfully", book);
+    logger.info(`"Personalized book retrieved successfully"`, { book });
   } catch (error) {
+    console.log(error);
     logger.error(`Failed to get personalized book: ${error.message}`);
     next(error);
   }
