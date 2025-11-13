@@ -38,7 +38,7 @@ export const downloadBookPDF = async (req, res, next) => {
     );
     console.log(bookId);
 
-    const printUrl = `${process.env.FRONTEND_URL}/print-book/${bookId}?token=${req.token}`;
+    const printUrl = `${process.env.BASE_URL}/print-book/${bookId}?token=${req.token}`;
 
     const browser = await puppeteer.launch({
       headless: true,
