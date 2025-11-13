@@ -22,7 +22,7 @@ export const downloadBookPDF = async (req, res, next) => {
     if (!book.is_paid) {
       throw new ErrorHandler(
         "Please complete payment to download this book",
-        402,
+        402
       );
     }
 
@@ -31,16 +31,17 @@ export const downloadBookPDF = async (req, res, next) => {
       userId,
     });
 
-    const printToken = jwt.sign(
-      { bookId: bookId, userId: userId },
-      process.env.JWT_SECRET,
-      { expiresIn: "120s" },
-    );
     console.log(bookId);
 
-    const printUrl = `http://localhost/print-book/${bookId}?token=${req.token}`;
+    // ==================================================================
+    // THE FIX IS HERE
+    // ==================================================================
+    const safeToken = encodeURIComponent(req.token);
+    const printUrl = `http://localhost/print-book/${bookId}?token=${safeToken}`;
+    // ==================================================================
 
-    const frontendDomain = process.env.BASE_URL.replace(/^https?:\/\//, '');
+
+    const frontendDomain = process.env.BASE_URL.replace(/^https?:\/\//, "");
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -48,7 +49,11 @@ export const downloadBookPDF = async (req, res, next) => {
     });
     const page = await browser.newPage();
     await page.setExtraHTTPHeaders({
-      'Host': frontendDomain
+      Host: frontendDomain,
+    });
+
+    page.on("console", (msg) => {
+      console.log("[PUPPETEER BROWSER]:", msg.text());
     });
 
     await page.goto(printUrl, {
