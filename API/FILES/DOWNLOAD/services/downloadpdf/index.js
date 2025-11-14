@@ -60,7 +60,7 @@ export const downloadBookPDF = async (req, res, next) => {
     });
     console.log(`generating..........`);
     const pdfBuffer = await page.pdf({
-      format: "A4",
+      format: "A5",
       printBackground: true,
       margin: {
         top: "0px",
