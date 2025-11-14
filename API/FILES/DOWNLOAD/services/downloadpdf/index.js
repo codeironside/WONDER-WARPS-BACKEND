@@ -33,7 +33,9 @@ export const downloadBookPDF = async (req, res, next) => {
 
    
     const safeToken = encodeURIComponent(req.token);
-
+    console.log(req.token)
+    console.log("space")
+    console.log(safeToken)
     const printUrl = `http://localhost/print-book/${bookId}?token=${safeToken}`;
 
 
