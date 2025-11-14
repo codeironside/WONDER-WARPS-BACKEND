@@ -31,20 +31,16 @@ export const downloadBookPDF = async (req, res, next) => {
       userId,
     });
 
-    console.log(bookId);
-
-    // ==================================================================
-    // THE FIX IS HERE
-    // ==================================================================
+   
     const safeToken = encodeURIComponent(req.token);
+
     const printUrl = `http://localhost/print-book/${bookId}?token=${safeToken}`;
-    // ==================================================================
 
 
     const frontendDomain = process.env.BASE_URL.replace(/^https?:\/\//, "");
 
     const browser = await puppeteer.launch({
-      headless: true,
+      headless: "new", 
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
@@ -62,7 +58,7 @@ export const downloadBookPDF = async (req, res, next) => {
     });
     console.log(`generating..........`);
     const pdfBuffer = await page.pdf({
-      format: "A5",
+      format: "A4",
       printBackground: true,
       margin: {
         top: "0px",
