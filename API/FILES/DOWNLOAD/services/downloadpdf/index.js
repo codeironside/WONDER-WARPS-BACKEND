@@ -22,7 +22,7 @@ export const downloadBookPDF = async (req, res, next) => {
     if (!book.is_paid) {
       throw new ErrorHandler(
         "Please complete payment to download this book",
-        402
+        402,
       );
     }
 
@@ -31,18 +31,16 @@ export const downloadBookPDF = async (req, res, next) => {
       userId,
     });
 
-   
     const safeToken = encodeURIComponent(req.token);
-    console.log(req.token)
-    console.log("space")
-    console.log(safeToken)
-    const printUrl = `https://www.mystoryhat.com/print-book/${bookId}?token=${safeToken}`;
-
+    console.log(req.token);
+    console.log("space");
+    console.log(safeToken);
+    const printUrl = `http://localhost:5173/print-book/${bookId}?token=${safeToken}`;
 
     const frontendDomain = process.env.BASE_URL.replace(/^https?:\/\//, "");
 
     const browser = await puppeteer.launch({
-      headless: "new", 
+      headless: "new",
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
@@ -60,7 +58,7 @@ export const downloadBookPDF = async (req, res, next) => {
     });
     console.log(`generating..........`);
     const pdfBuffer = await page.pdf({
-      format: "A5",
+      format: "A4",
       printBackground: true,
       margin: {
         top: "0px",

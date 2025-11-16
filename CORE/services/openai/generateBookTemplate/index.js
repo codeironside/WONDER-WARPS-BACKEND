@@ -98,7 +98,7 @@ class StorybookGenerator {
 
     this.openai = new OpenAI({ apiKey });
     this.veoGenerator = new VeoGenerator();
-    this.imagenGenerator = new ImagenGenerator(); // Initialize Google Imagen generator
+    this.imagenGenerator = new ImagenGenerator();
   }
 
   getAgeGroup(ageMin) {
@@ -120,20 +120,39 @@ class StorybookGenerator {
     return [...new Set([...ageFonts, ...themeFonts])];
   }
 
-  calculateChapterCount(ageMin, ageMax, theme) {
-    const baseCount = 3;
-    let additionalChapters = 0;
-    if (ageMin > 8) additionalChapters += 1;
-    if (ageMax > 10) additionalChapters += 1;
-    const complexThemes = ["adventure", "fantasy", "mystery", "quest"];
-    if (complexThemes.some((t) => theme.toLowerCase().includes(t))) {
-      additionalChapters += 1;
+  // Always return exactly 7 chapters
+  calculateChapterCount() {
+    return 7;
+  }
+
+  getTextLengthPerPage(ageMin) {
+    if (ageMin <= 4) {
+      return {
+        sentences: "1-2",
+        words: "10-20",
+        description: "very short and simple",
+      };
+    } else if (ageMin <= 6) {
+      return {
+        sentences: "2-3",
+        words: "20-40",
+        description: "short and simple",
+      };
+    } else if (ageMin <= 8) {
+      return {
+        sentences: "3-4",
+        words: "40-60",
+        description: "moderate length",
+      };
+    } else if (ageMin <= 10) {
+      return { sentences: "4-5", words: "60-80", description: "descriptive" };
+    } else {
+      return {
+        sentences: "5-7",
+        words: "80-120",
+        description: "detailed and engaging",
+      };
     }
-    const randomVariation = Math.floor(Math.random() * 2);
-    return Math.min(
-      10,
-      Math.max(3, baseCount + additionalChapters + randomVariation),
-    );
   }
 
   cleanContent(text) {
@@ -345,34 +364,6 @@ class StorybookGenerator {
     return styleMappings.fantasy.modern_disney;
   }
 
-  async generateVeoAnimation(storyData, theme, ageMin, name, gender) {
-    try {
-      const promptData = await this.generateStorySpecificVeoPrompt(
-        storyData,
-        theme,
-        ageMin,
-        name,
-        gender,
-      );
-
-      const animationResult =
-        await this.veoGenerator.generateStorybookAnimation(
-          storyData.book_title,
-          name,
-          gender,
-          theme,
-          promptData.visualStyle,
-          promptData.storySummary,
-          promptData.keyMoments,
-        );
-
-      return animationResult.video_uri || animationResult.fallback_url || null;
-    } catch (error) {
-      console.error("Error generating Veo animation:", error);
-      return null;
-    }
-  }
-
   extractKeyStoryMoments(storyData) {
     const moments = [];
 
@@ -381,7 +372,6 @@ class StorybookGenerator {
         .split(/[.!?]+/)
         .filter((s) => s.trim().length > 10);
 
-      // Extract key moments from each chapter
       sentences.slice(0, 2).forEach((sentence) => {
         const cleanSentence = sentence.trim();
         if (cleanSentence.length > 20 && cleanSentence.length < 150) {
@@ -408,32 +398,41 @@ class StorybookGenerator {
     );
   }
 
-  async generateStorySpecificVeoPrompt(storyData, theme, ageMin, name, gender) {
+  async generateStorySpecificVeoPrompt(
+    storyData,
+    theme,
+    ageMin,
+    ageMax,
+    name,
+    gender,
+  ) {
     try {
       const visualStyle = this._getVisualStyle(ageMin, theme);
       const storySummary = this.createStorySummary(storyData);
       const keyMoments = this.extractKeyStoryMoments(storyData);
+      const ageRange = `${ageMin}-${ageMax}`;
 
       const response = await this.openai.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
           {
             role: "system",
-            content: `You are a professional animation director. Create highly specific video prompts based on exact story content.`,
+            content: `You are a professional animation director. Create highly specific video prompts based on exact story content for children aged ${ageRange}.`,
           },
           {
             role: "user",
-            content: `Create an EXCLUSIVE animation prompt for "${storyData.book_title}" using these exact story details:
+            content: `Create an EXCLUSIVE animation prompt for "${storyData.book_title}" using these exact story details for children aged ${ageRange}:
 
 EXACT STORY CONTENT:
 ${storyData.chapters.map((chapter) => `Chapter: ${chapter.chapter_title}\nContent: ${chapter.chapter_content.substring(0, 200)}`).join("\n\n")}
 
 CHARACTER: ${name} (${gender})
 THEME: ${theme}
+TARGET AGE: ${ageRange}
 VISUAL STYLE: ${visualStyle}
 KEY STORY MOMENTS: ${keyMoments.join(" | ")}
 
-Create a 5-second animation prompt that captures the ESSENCE of this specific story, not a generic theme. Focus on actual events and character journey from the story above.`,
+Create a 10-second animation prompt that captures the ESSENCE of this specific story for ${ageRange} year old children. Focus on actual events and character journey from the story above, making it age-appropriate.`,
           },
         ],
         max_tokens: 600,
@@ -445,29 +444,32 @@ Create a 5-second animation prompt that captures the ESSENCE of this specific st
         storySummary: storySummary,
         keyMoments: keyMoments,
         visualStyle: visualStyle,
+        ageRange: ageRange,
       };
     } catch (error) {
       console.error("Error generating story-specific Veo prompt:", error);
-      // Fallback to basic prompt
       const visualStyle = this._getVisualStyle(ageMin, theme);
       const storySummary = this.createStorySummary(storyData);
       const keyMoments = this.extractKeyStoryMoments(storyData);
+      const ageRange = `${ageMin}-${ageMax}`;
 
       return {
-        prompt: `5-second cinematic animation for "${storyData.book_title}" featuring ${name}. Story: ${storySummary}. Key moments: ${keyMoments.join(", ")}. Visual style: ${visualStyle}.`,
+        prompt: `10-second cinematic animation for "${storyData.book_title}" featuring ${name}. Story: ${storySummary}. Key moments: ${keyMoments.join(", ")}. Visual style: ${visualStyle}. Created for children aged ${ageRange}.`,
         storySummary: storySummary,
         keyMoments: keyMoments,
         visualStyle: visualStyle,
+        ageRange: ageRange,
       };
     }
   }
 
-  async generateVeoAnimation(storyData, theme, ageMin, name, gender) {
+  async generateVeoAnimation(storyData, theme, ageMin, ageMax, name, gender) {
     try {
       const promptData = await this.generateStorySpecificVeoPrompt(
         storyData,
         theme,
         ageMin,
+        ageMax,
         name,
         gender,
       );
@@ -481,12 +483,15 @@ Create a 5-second animation prompt that captures the ESSENCE of this specific st
           promptData.visualStyle,
           promptData.storySummary,
           promptData.keyMoments,
+          ageMin,
+          ageMax,
         );
 
       const storyboardFrames = await this.veoGenerator.generateAnimationFrames(
         storyData.book_title,
         promptData.keyMoments,
         4,
+        `${ageMin}-${ageMax}`,
       );
 
       return {
@@ -494,8 +499,9 @@ Create a 5-second animation prompt that captures the ESSENCE of this specific st
         storyboard_frames: storyboardFrames,
         story_specific_prompt: promptData.prompt,
         key_story_moments: promptData.keyMoments,
-        duration_seconds: 5,
+        duration_seconds: 10,
         visual_style: promptData.visualStyle,
+        age_range: promptData.ageRange,
       };
     } catch (error) {
       console.error("Error generating Veo animation:", error);
@@ -508,8 +514,28 @@ Create a 5-second animation prompt that captures the ESSENCE of this specific st
           ),
         },
         storyboard_frames: [],
-        duration_seconds: 5,
+        duration_seconds: 10,
         visual_style: this._getVisualStyle(ageMin, theme),
+        age_range: `${ageMin}-${ageMax}`,
+      };
+    }
+  }
+
+  async generateImageWithGoogle(safePrompt, options = {}) {
+    try {
+      console.log("Generating image with Google Imagen...");
+      const imageUrl = await this.imagenGenerator.generateImage(safePrompt, {
+        size: "1024x1024",
+        aspectRatio: "1:1",
+        model: "imagen-4.0-generate-001",
+        ...options,
+      });
+      return { url: imageUrl, provider: "google" };
+    } catch (googleError) {
+      console.error("Google Imagen failed:", googleError);
+      return {
+        url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
+        provider: "fallback",
       };
     }
   }
@@ -547,11 +573,8 @@ Create a 5-second animation prompt that captures the ESSENCE of this specific st
     const ageGroup = this.getAgeGroup(age_min);
     const imagePositions = this.getImagePositions(ageGroup);
     const suggestedFonts = this.getSuggestedFonts(ageGroup, theme);
-    const targetChapterCount = this.calculateChapterCount(
-      age_min,
-      age_max,
-      theme,
-    );
+    const targetChapterCount = this.calculateChapterCount(); // Always 7
+    const textLength = this.getTextLengthPerPage(age_min);
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -561,27 +584,34 @@ Create a 5-second animation prompt that captures the ESSENCE of this specific st
             role: "system",
             content: `You are a professional children's storyteller. You will write a fun, magical, and joyful story for a child aged ${age_min} to ${age_max}, the gender is ${gender}.
 
-**Story Rules:**
-* The story must have a clear beginning, middle, and end.
-* Create a natural story length with ${targetChapterCount} chapters that fits the narrative perfectly.
-* The tone should be similar to a whimsical Studio Ghibli film, full of imagination and wonder.
-* The story must be appropriate for the age range ${age_min}-${age_max}
-* Make sure ${name} is the main character throughout the entire story.
-* Do NOT use markdown formatting, chapter numbers, or special characters in chapter content.
-* Write chapter content as plain text paragraphs without any formatting.
+**STORY STRUCTURE:**
+* Create exactly 7 chapters (pages) for this storybook
+* Each chapter must be exactly one page with age-appropriate text length
+* The story must have a clear beginning, middle, and end across all 7 pages
+* Make sure ${name} is the main character throughout the entire story
 
-**Chapter Structure:**
-- Chapter 1: Introduction and setup
-- Chapter 2-${targetChapterCount - 1}: Development and adventures
-- Chapter ${targetChapterCount}: Resolution and conclusion
+**TEXT LENGTH REQUIREMENTS (for age ${age_min}-${age_max}):**
+* Each chapter must contain ${textLength.sentences} sentences (${textLength.words} words)
+* Keep the text ${textLength.description} and engaging for this age group
+* Use simple vocabulary and sentence structures for younger readers
+* Make each chapter feel complete but leave a gentle hook for the next page
 
-**Image Position Guidance:**
+**CHAPTER BREAKDOWN:**
+- Chapters 1-2: Introduction and character setup
+- Chapters 3-5: Development, adventures, and challenges
+- Chapters 6-7: Resolution and satisfying conclusion
+
+**WRITING STYLE:**
+* Tone: Similar to a whimsical Studio Ghibli film, full of imagination and wonder
+* Age Appropriateness: Perfectly suited for ${age_min}-${age_max} year olds
+* Engagement: Each chapter should make the reader excited to turn the page
+* Do NOT use markdown formatting, chapter numbers, or special characters in chapter content
+* Write chapter content as plain text paragraphs without any formatting
+
+**IMAGE POSITION GUIDANCE:**
 For age ${age_min}-${age_max}, choose image positions that enhance engagement. Available positions: ${imagePositions.join(", ")}
-- Younger children (3-6): Prefer full scene, character focus, action spotlight for visual impact
-- Middle childhood (7-10): Use left/right panels, comic strips, split screens for narrative flow  
-- Older children (11+): Consider text wrap, header banners, interactive elements for sophistication
 
-**Font Selection:**
+**FONT SELECTION:**
 Choose from these age-appropriate fonts: ${suggestedFonts.join(", ")}
 
 You will return the story as a single JSON object with the following format:
@@ -590,24 +620,27 @@ You will return the story as a single JSON object with the following format:
   "author": "${name}",
   "chapters": [
     {
-      "chapter_title": "Engaging chapter title",
-      "chapter_content": "The full content of chapter 1 as plain text without markdown or chapter numbers. Ensure ${name} is prominently featured.",
-      "image_description": "A brief, vivid description for an illustration featuring ${name}.",
+      "chapter_title": "Engaging chapter title (max 4-5 words)",
+      "chapter_content": "The full content of chapter 1 as plain text without markdown. Exactly ${textLength.sentences} sentences that tell part of the story. Ensure ${name} is prominently featured.",
+      "image_description": "A brief, vivid description for an illustration featuring ${name} in this specific scene.",
       "image_position": "Choose from the available positions above"
     }
   ],
-  "suggested_font": "Choose from the available fonts above"
+  "suggested_font": "Choose from the available fonts above",
+  "total_pages": 7,
+  "age_range": "${age_min}-${age_max}",
+  "reading_level": "${textLength.description}"
 }`,
           },
           {
             role: "user",
-            content: `Using the details below, weave a captivating story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across ${targetChapterCount} chapters. Use plain text without markdown or chapter numbers.
-            
+            content: `Using the details below, weave a captivating 7-page story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across all 7 pages. Each chapter must be exactly ${textLength.sentences} sentences to maintain perfect pacing for ${age_min}-${age_max} year old readers.
+
             Details for the story:
             ${prompt}`,
           },
         ],
-        max_tokens: 3500,
+        max_tokens: 4000,
         temperature: 0.85,
       });
 
@@ -628,13 +661,24 @@ You will return the story as a single JSON object with the following format:
         throw new Error("No chapters generated");
       }
 
+      // Validate chapter count
+      if (storyData.chapters.length !== 7) {
+        console.warn(
+          `Generated ${storyData.chapters.length} chapters, expected exactly 7`,
+        );
+      }
+
       storyData.chapters.forEach((chapter) => {
         chapter.chapter_content = this.cleanContent(chapter.chapter_content);
       });
 
-      console.log(`Generated story with ${storyData.chapters.length} chapters`);
+      console.log(
+        `Generated story with ${storyData.chapters.length} chapters for age ${age_min}-${age_max}`,
+      );
 
       const keywords = this.extractKeywords(storyData);
+
+      // Generate images with Google only
       const images = await this.generateImagesForChapters(
         storyData.chapters,
         age_min,
@@ -648,6 +692,7 @@ You will return the story as a single JSON object with the following format:
         eye_color,
         clothing,
       );
+
       const coverImage = await this.generateCoverImage(
         storyData,
         gender,
@@ -655,10 +700,12 @@ You will return the story as a single JSON object with the following format:
         theme,
         age_min,
       );
+
       const veoAnimation = await this.generateVeoAnimation(
         storyData,
         theme,
         age_min,
+        age_max,
         name,
         gender,
       );
@@ -668,7 +715,7 @@ You will return the story as a single JSON object with the following format:
       return {
         story: {
           ...storybookContent,
-          cover_image: [coverImage],
+          cover_image: [coverImage.url],
           author: name,
           genre: theme,
           photo_url: photo_url || null,
@@ -685,6 +732,24 @@ You will return the story as a single JSON object with the following format:
           age_max: age_max.toString(),
           keywords: keywords,
           video_url: veoAnimation.veo_animation.video_uri,
+          story_metadata: {
+            total_pages: storyData.chapters.length,
+            reading_level: textLength.description,
+            recommended_age: `${age_min}-${age_max}`,
+            text_complexity: `${textLength.words} words per page`,
+          },
+          animation_data: {
+            storyboard_frames: veoAnimation.storyboard_frames,
+            duration_seconds: veoAnimation.duration_seconds,
+            visual_style: veoAnimation.visual_style,
+            age_range: veoAnimation.age_range,
+          },
+          generation_providers: {
+            story: "openai",
+            images: images.map((img) => img.provider),
+            cover: coverImage.provider,
+            animation: "google",
+          },
         },
       };
     } catch (error) {
@@ -723,25 +788,19 @@ You will return the story as a single JSON object with the following format:
         No book titles, no captions, no speech bubbles, no labels.
         Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
 
-        // Use Google Imagen instead of OpenAI DALL-E
-        const imageUrl = await this.imagenGenerator.generateImage(safePrompt, {
-          size: "1024x1024",
-          aspectRatio: "1:1",
-          model: "imagen-4.0-generate-001", // Use appropriate Imagen model
-        });
-
-        return imageUrl;
+        const imageResult = await this.generateImageWithGoogle(safePrompt);
+        return imageResult;
       } catch (error) {
-        console.error(
-          "Error generating chapter image with Google Imagen:",
-          error,
-        );
-        return `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`;
+        console.error("Error generating chapter image:", error);
+        return {
+          url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
+          provider: "error",
+        };
       }
     });
 
     const images = await Promise.all(imagePromises);
-    return images.filter((url) => url !== null);
+    return images.filter((result) => result.url !== null);
   }
 
   async generateCoverImage(storyData, gender, name, theme, age_min) {
@@ -755,25 +814,24 @@ You will return the story as a single JSON object with the following format:
     Pure visual illustration only with captivating magical atmosphere. NO TEXT whatsoever`;
 
     try {
-      // Use Google Imagen instead of OpenAI DALL-E
-      const coverImage = await this.imagenGenerator.generateImage(safePrompt, {
-        size: "1024x1024",
-        aspectRatio: "1:1",
-        model: "imagen-4.0-generate-001", // Use appropriate Imagen model
+      const coverResult = await this.generateImageWithGoogle(safePrompt, {
         quality: "high",
       });
-
-      return coverImage;
+      return coverResult;
     } catch (error) {
-      console.error("Error generating cover image with Google Imagen:", error);
-      return `https://via.placeholder.com/1024x1024/FF6B6B/FFFFFF?text=Cover+Image+Coming+Soon`;
+      console.error("Error generating cover image:", error);
+      return {
+        url: `https://via.placeholder.com/1024x1024/FF6B6B/FFFFFF?text=Cover+Image+Coming+Soon`,
+        provider: "error",
+      };
     }
   }
 
-  addImagesToStory(storyData, imageUrls) {
+  addImagesToStory(storyData, imageResults) {
     storyData.chapters.forEach((chapter, index) => {
-      if (imageUrls[index]) {
-        chapter.image_url = imageUrls[index];
+      if (imageResults[index] && imageResults[index].url) {
+        chapter.image_url = imageResults[index].url;
+        chapter.image_provider = imageResults[index].provider;
       }
     });
     return storyData;
