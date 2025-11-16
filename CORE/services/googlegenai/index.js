@@ -4,7 +4,7 @@ import { config } from "@/config";
 class VeoGenerator {
   constructor() {
     const apiKey = config.google.api_key;
-    const projectId = config.google.PROJECT_ID || "113460170069";
+    const projectId = config.google.PROJECT_ID || "962555248018";
 
     if (!apiKey) {
       throw new Error("Google API key is required for Veo generator.");
