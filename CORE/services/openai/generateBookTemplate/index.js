@@ -678,7 +678,7 @@ You will return the story as a single JSON object with the following format:
 
       const keywords = this.extractKeywords(storyData);
 
-      // Generate images with Google only
+      // Generate images sequentially instead of using Promise.all
       const images = await this.generateImagesForChapters(
         storyData.chapters,
         age_min,
@@ -774,8 +774,16 @@ You will return the story as a single JSON object with the following format:
     eye_color,
     clothing,
   ) {
-    const imagePromises = chapters.map(async (chapter) => {
+    const images = [];
+
+    // Generate images sequentially instead of using Promise.all
+    for (let i = 0; i < chapters.length; i++) {
+      const chapter = chapters[i];
       try {
+        console.log(
+          `Generating image for chapter ${i + 1}/${chapters.length}...`,
+        );
+
         const cleanImageDescription = this.sanitizeImagePrompt(
           chapter.image_description,
         );
@@ -789,17 +797,28 @@ You will return the story as a single JSON object with the following format:
         Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
 
         const imageResult = await this.generateImageWithGoogle(safePrompt);
-        return imageResult;
+        images.push(imageResult);
+
+        console.log(`Successfully generated image for chapter ${i + 1}`);
+
+        // Add a small delay between requests to avoid rate limiting
+        if (i < chapters.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       } catch (error) {
-        console.error("Error generating chapter image:", error);
-        return {
+        console.error(`Error generating image for chapter ${i + 1}:`, error);
+        images.push({
           url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
           provider: "error",
-        };
-      }
-    });
+        });
 
-    const images = await Promise.all(imagePromises);
+        // Continue with next chapter even if this one fails
+        if (i < chapters.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+    }
+
     return images.filter((result) => result.url !== null);
   }
 
