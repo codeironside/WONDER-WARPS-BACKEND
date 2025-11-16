@@ -23,7 +23,7 @@ export const personalizeBook = async (req, res, next) => {
     } = req.body;
     console.log(req.body);
 
-    if (!templateId || !childName || !personalisedId) {
+    if (!templateId || !personalisedId) {
       throw new ErrorHandler(
         "Template ID, child and personsalised Id name are required ",
         400,
