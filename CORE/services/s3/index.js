@@ -35,6 +35,55 @@ class S3Service {
     this.bucketName = config.aws.s3Bucket;
   }
 
+  // NEW METHOD: Upload base64 image
+  async uploadBase64Image(base64Data, key, contentType = "image/jpeg") {
+    try {
+      console.log(`Uploading base64 image with key: ${key}`);
+
+      // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+      const base64String = base64Data.replace(/^data:image\/\w+;base64,/, '');
+
+      // Convert base64 to buffer
+      const buffer = Buffer.from(base64String, 'base64');
+
+      console.log(`Base64 image buffer size: ${buffer.length} bytes`);
+
+      const uploadParams = {
+        Bucket: this.bucketName,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        ACL: "public-read",
+        Metadata: {
+          "upload-method": "base64",
+          "upload-timestamp": Date.now().toString(),
+        },
+      };
+
+      const upload = new Upload({
+        client: this.s3,
+        params: uploadParams,
+      });
+
+      const uploadResult = await upload.done();
+      console.log(`Base64 image uploaded successfully to: ${uploadResult.Location}`);
+
+      return uploadResult.Location;
+    } catch (error) {
+      console.error("Error uploading base64 image:", error);
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to upload base64 image to S3: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  // ALIAS METHOD: uploadImage (for backward compatibility)
+  async uploadImage(buffer, key, contentType = "image/jpeg") {
+    return this.uploadBuffer(buffer, key, contentType);
+  }
+
   async uploadImageFromUrl(imageUrl, key) {
     try {
       const response = await fetch(imageUrl);
@@ -212,6 +261,12 @@ class S3Service {
           ? "webp"
           : "jpg";
 
+    return `${prefix}/${timestamp}-${Math.random().toString(36).substring(2, 9)}.${extension}`;
+  }
+
+  // NEW METHOD: Generate image key for base64 uploads
+  generateBase64ImageKey(prefix, extension = "jpg") {
+    const timestamp = Date.now();
     return `${prefix}/${timestamp}-${Math.random().toString(36).substring(2, 9)}.${extension}`;
   }
 

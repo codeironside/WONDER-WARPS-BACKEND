@@ -8,60 +8,40 @@ import ImageValidator from "../validatePicture/index.js";
 
 const STYLE_MAPPINGS = {
   sci_fi: {
-    modern:
-      "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots' with realistic textures and atmospheric lighting",
-    cinematic:
-      "in a cinematic sci-fi CGI style with detailed models, complex lighting, and sophisticated rendering suitable for mature audiences",
+    modern: "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots' with realistic textures and atmospheric lighting",
+    cinematic: "in a cinematic sci-fi CGI style with detailed models, complex lighting, and sophisticated rendering suitable for mature audiences",
   },
   humor: {
-    simpsons:
-      "in the iconic cartoon style of 'The Simpsons' with yellow skin tones, simple character construction, and prominent overbites",
-    caricature:
-      "in an exaggerated caricature style like 'Mr. Bean: The Animated Series' with bulbous noses, big eyes, and over-the-top expressions",
-    modern_cartoon:
-      "in a quirky, expressive cartoon style like 'Regular Show' or 'Adventure Time' with simple designs and anthropomorphic characters",
+    simpsons: "in the iconic cartoon style of 'The Simpsons' with yellow skin tones, simple character construction, and prominent overbites",
+    caricature: "in an exaggerated caricature style like 'Mr. Bean: The Animated Series' with bulbous noses, big eyes, and over-the-top expressions",
+    modern_cartoon: "in a quirky, expressive cartoon style like 'Regular Show' or 'Adventure Time' with simple designs and anthropomorphic characters",
   },
   fantasy: {
-    disney_renaissance:
-      "in the classic Disney Renaissance 2D style of 'Mulan' with strong character acting, fluid motion, and detailed epic backgrounds",
-    modern_disney:
-      "with the vibrant, detailed CGI animation of Disney's 'Frozen II' or 'Encanto' with realistic textures and emotionally expressive characters",
-    anime_fantasy:
-      "in an anime-influenced style like 'Avatar: The Last Airbender' with dynamic action sequences, expressive eyes, and elemental effects",
+    disney_renaissance: "in the classic Disney Renaissance 2D style of 'Mulan' with strong character acting, fluid motion, and detailed epic backgrounds",
+    modern_disney: "with the vibrant, detailed CGI animation of Disney's 'Frozen II' or 'Encanto' with realistic textures and emotionally expressive characters",
+    anime_fantasy: "in an anime-influenced style like 'Avatar: The Last Airbender' with dynamic action sequences, expressive eyes, and elemental effects",
   },
   adventure: {
-    pixar:
-      "in a modern Pixar CGI style like 'Inside Out' with high-fidelity rendering, realistic textures and emotionally expressive rounded characters",
-    dreamworks:
-      "in a DreamWorks CGI style like 'The Boss Baby' with polished, streamlined, and cartoonishly stylized characters and vibrant environments",
-    moana:
-      "in the beautiful, dynamic CGI style of Disney's 'Moana' with expressive characters, vibrant colors, and oceanic themes",
-    volumetric:
-      "in a volumetric lighting 2D style like 'Klaus' that looks hand-drawn but incorporates three-dimensional lighting and painterly depth",
+    pixar: "in a modern Pixar CGI style like 'Inside Out' with high-fidelity rendering, realistic textures and emotionally expressive rounded characters",
+    dreamworks: "in a DreamWorks CGI style like 'The Boss Baby' with polished, streamlined, and cartoonishly stylized characters and vibrant environments",
+    moana: "in the beautiful, dynamic CGI style of Disney's 'Moana' with expressive characters, vibrant colors, and oceanic themes",
+    volumetric: "in a volumetric lighting 2D style like 'Klaus' that looks hand-drawn but incorporates three-dimensional lighting and painterly depth",
   },
   classic: {
-    hanna_barbera:
-      "in the classic Hanna-Barbera style of 'Tom and Jerry' with bold thick outlines, flat color palettes, and efficient character-driven animation",
-    golden_age:
-      "in the Disney Golden Age 2D style of 'Bambi' with soft painterly backgrounds, naturalistic rendering, and gentle lifelike animal movement",
-    flintstones:
-      "in the classic cartoon style of 'The Flintstones' with simple geometric shapes, limited animation, and prehistoric aesthetic",
+    hanna_barbera: "in the classic Hanna-Barbera style of 'Tom and Jerry' with bold thick outlines, flat color palettes, and efficient character-driven animation",
+    golden_age: "in the Disney Golden Age 2D style of 'Bambi' with soft painterly backgrounds, naturalistic rendering, and gentle lifelike animal movement",
+    flintstones: "in the classic cartoon style of 'The Flintstones' with simple geometric shapes, limited animation, and prehistoric aesthetic",
   },
   preschool: {
-    peppa_pig:
-      "in a simple vector style like 'Peppa Pig' with extremely simple flat 2D designs, minimal detail, and thin limbs in side-profile view",
-    simple_cartoon:
-      "in a simple friendly 2D cartoon style with bold outlines and bright colors, perfect for very young audiences",
+    peppa_pig: "in a simple vector style like 'Peppa Pig' with extremely simple flat 2D designs, minimal detail, and thin limbs in side-profile view",
+    simple_cartoon: "in a simple friendly 2D cartoon style with bold outlines and bright colors, perfect for very young audiences",
   },
   action: {
-    fast_furious:
-      "in an action-oriented CGI style with detailed vehicles, motion blur, and special effects to convey speed and dynamic action",
-    cartoon_network:
-      "in a modern Cartoon Network style with graphic angular designs, exaggerated proportions, and dynamic action sequences",
+    fast_furious: "in an action-oriented CGI style with detailed vehicles, motion blur, and special effects to convey speed and dynamic action",
+    cartoon_network: "in a modern Cartoon Network style with graphic angular designs, exaggerated proportions, and dynamic action sequences",
   },
 };
 
-// Helper function for retries with exponential backoff
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class StoryPersonalizer {
@@ -103,7 +83,6 @@ class StoryPersonalizer {
     try {
       console.log("🔍 Starting Google Vision API feature extraction...");
 
-      // Using fetch to call Google Vision API directly
       const requestBody = {
         requests: [
           {
@@ -147,7 +126,6 @@ class StoryPersonalizer {
       const face = faceAnnotations[0];
       console.log("✅ Face detected, analyzing features...");
 
-      // Extract features using Google Vision
       const features = this._extractFeaturesFromGoogleVision(
         face,
         labelAnnotations,
@@ -166,7 +144,6 @@ class StoryPersonalizer {
   }
 
   _extractFeaturesFromGoogleVision(face, labels, imageProperties) {
-    // Extract headwear information
     let headwear = "none";
     if (
       face.headwearLikelihood !== "VERY_UNLIKELY" &&
@@ -175,7 +152,6 @@ class StoryPersonalizer {
       headwear = this._getHeadwearType(labels);
     }
 
-    // Extract eyeglasses information
     let eyeglasses = "none";
     if (
       face.eyeglassesLikelihood !== "VERY_UNLIKELY" &&
@@ -184,7 +160,6 @@ class StoryPersonalizer {
       eyeglasses = this._getEyeglassesType(labels);
     }
 
-    // Extract facial hair information
     let facialHair = "none";
     if (
       face.beardLikelihood !== "VERY_UNLIKELY" &&
@@ -198,23 +173,18 @@ class StoryPersonalizer {
       facialHair = "mustache";
     }
 
-    // Extract clothing information
     const { clothingStyle, clothingColor } =
       this._extractClothingFromLabels(labels);
 
-    // Extract hair information
     const hairColor = this._extractHairColorFromLabels(labels);
     const hairStyle = this._extractHairStyleFromLabels(labels);
     const hairTexture = this._extractHairTextureFromLabels(labels);
     const hairLength = this._estimateHairLength(labels);
 
-    // Determine face shape
     const faceShape = this._determineFaceShape(face);
 
-    // Estimate skin tone from image properties
     const skinTone = this._estimateSkinToneFromColors(imageProperties);
 
-    // Estimate age
     const ageEstimate = this._estimateAgeFromLandmarks(face);
 
     return {
@@ -413,7 +383,6 @@ class StoryPersonalizer {
     const dominantColor = imageProperties.dominantColors.colors[0];
     if (dominantColor.color) {
       const { red, green, blue } = dominantColor.color;
-      // Simple skin tone estimation based on RGB values
       if (red > 200 && green > 180 && blue > 160) return "light tone";
       if (red > 150 && green > 120 && blue < 100) return "medium tone";
       if (red < 120 && green < 100 && blue < 80) return "dark tone";
@@ -422,14 +391,10 @@ class StoryPersonalizer {
   }
 
   _estimateGenderFromFace(face) {
-    // Google Vision doesn't directly provide gender, but we can make assumptions
-    // based on other features or return unknown
     return "unknown";
   }
 
   _estimateAgeFromLandmarks(face) {
-    // Very basic age estimation based on face detection confidence
-    // This is a rough approximation
     if (face.detectionConfidence > 0.9) return "8";
     if (face.detectionConfidence > 0.7) return "6";
     return "5";
@@ -473,14 +438,12 @@ class StoryPersonalizer {
   _extractDistinctiveFeatures(face, labels) {
     const features = [];
 
-    // Add expression-based features
     if (face.joyLikelihood === "VERY_LIKELY") features.push("bright smile");
     if (face.sorrowLikelihood === "VERY_LIKELY")
       features.push("thoughtful expression");
     if (face.surpriseLikelihood === "VERY_LIKELY")
       features.push("surprised expression");
 
-    // Add distinctive labels
     const distinctiveKeywords = ["freckle", "dimple", "birthmark", "scar"];
     const distinctiveLabels = labels?.filter((label) =>
       distinctiveKeywords.some((keyword) =>
@@ -516,7 +479,6 @@ class StoryPersonalizer {
     try {
       console.log("🔄 Starting comprehensive feature extraction...");
 
-      // Try Google Vision API first
       let features =
         await this.extractComprehensiveFeaturesWithGoogleVision(photoUrl);
 
@@ -525,7 +487,6 @@ class StoryPersonalizer {
           "⚠️ Google Vision features incomplete, falling back to OpenAI...",
         );
 
-        // Fall back to OpenAI
         features = await this.extractComprehensiveFeaturesWithOpenAI(photoUrl);
 
         if (features) {
@@ -633,13 +594,21 @@ class StoryPersonalizer {
           },
         ],
         max_tokens: 2000,
-        response_format: { type: "json_object" },
       });
 
       const content = response.choices[0].message.content.trim();
-      const features = JSON.parse(content);
+      let features;
+      try {
+        features = JSON.parse(content);
+      } catch (parseError) {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          features = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("Could not parse JSON from response");
+        }
+      }
 
-      // Ensure additional_features exists
       if (!features.additional_features) {
         features.additional_features = {
           headwear: "none",
@@ -889,11 +858,18 @@ class StoryPersonalizer {
           },
         ],
         max_tokens: 800,
-        response_format: { type: "json_object" },
       });
 
       const content = response.choices[0].message.content.trim();
-      return JSON.parse(content);
+      try {
+        return JSON.parse(content);
+      } catch (parseError) {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error("Could not parse JSON from response");
+      }
     } catch (error) {
       console.error("Error extracting facial expression:", error);
       return null;
@@ -959,7 +935,6 @@ class StoryPersonalizer {
         this.generateStorySummaryWithTemplate(template, childName),
       ]);
 
-      // Ensure the personalized title is used consistently
       const personalizedTitle = personalizedStory.book_title;
 
       const personalizedImages = await this.generateAllChapterImages(
@@ -973,7 +948,7 @@ class StoryPersonalizer {
       );
 
       const personalizedCover = await this.generateOptimizedPersonalizedCover(
-        personalizedTitle, // Pass the personalized title
+        personalizedTitle,
         personalizedStory,
         personalizationDetails,
         usePhotoData,
@@ -1160,7 +1135,6 @@ class StoryPersonalizer {
           },
         ],
         max_tokens: 500,
-        response_format: { type: "json_object" },
       });
 
       const content = response.choices[0].message.content.trim();
@@ -1506,7 +1480,6 @@ class StoryPersonalizer {
         ],
         max_tokens: 3000,
         temperature: 0.3,
-        response_format: { type: "json_object" },
       });
 
       const content = response.choices[0].message.content.trim();
@@ -1643,18 +1616,32 @@ class StoryPersonalizer {
         storySummary,
       );
 
-      let imageUrl;
-      if (photoUrl && usePhotoData) {
-        imageUrl = await this.generateImageWithOpenAI(prompt);
+      console.log(`Generating image for chapter ${index + 1} with prompt length: ${prompt.length}`);
+
+      const imageResult = await this.generateImageWithOpenAI(prompt);
+      let uploadedUrl;
+
+      if (imageResult.b64_json) {
+        console.log(`Uploading base64 image for chapter ${index + 1}`);
+        const s3Key = this.s3Service.generateBase64ImageKey(
+          `personalized-books/${childName}/chapters`,
+          "png"
+        );
+        uploadedUrl = await this.s3Service.uploadBase64Image(imageResult.b64_json, s3Key, "image/png");
+      } else if (imageResult.url) {
+        console.log(`Uploading URL image for chapter ${index + 1}`);
+        const s3Key = this.s3Service.generateImageKey(
+          `personalized-books/${childName}/chapters`,
+          `chapter-${index + 1}-${Date.now()}`
+        );
+        uploadedUrl = await this.s3Service.uploadImageFromUrl(imageResult.url, s3Key);
       } else {
-        imageUrl = await this.generateImageWithOpenAI(prompt);
+        throw new Error("No image data available from OpenAI");
       }
 
-      const s3Key = this.s3Service.generateImageKey(
-        `personalized-books/${childName}/chapters`,
-        `chapter-${index + 1}`,
-      );
-      return await this.s3Service.uploadImageFromUrl(imageUrl, s3Key);
+      console.log(`Successfully uploaded image for chapter ${index + 1}: ${uploadedUrl}`);
+      return uploadedUrl;
+
     } catch (error) {
       console.error(`Error generating chapter image ${index + 1}:`, error);
       return originalChapter.image_url || "";
@@ -1753,7 +1740,7 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
   }
 
   async generateOptimizedPersonalizedCover(
-    personalizedTitle, // Added personalizedTitle parameter
+    personalizedTitle,
     personalizedStory,
     personalizationDetails,
     usePhotoData,
@@ -1781,7 +1768,7 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
       );
 
       const coverPrompt = this.buildCoverPrompt(
-        personalizedTitle, // Use the personalized title
+        personalizedTitle,
         storySummary,
         childName,
         mergedChars,
@@ -1789,13 +1776,32 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
         genderDetails,
       );
 
-      const imageUrl = await this.generateImageWithOpenAI(coverPrompt);
+      console.log("Generating cover image with prompt length:", coverPrompt.length);
 
-      const s3Key = this.s3Service.generateImageKey(
-        `personalized-books/${childName}/covers`,
-        "personalized-cover",
-      );
-      return await this.s3Service.uploadImageFromUrl(imageUrl, s3Key);
+      const imageResult = await this.generateImageWithOpenAI(coverPrompt);
+      let uploadedUrl;
+
+      if (imageResult.b64_json) {
+        console.log("Uploading base64 cover image");
+        const s3Key = this.s3Service.generateBase64ImageKey(
+          `personalized-books/${childName}/covers`,
+          "png"
+        );
+        uploadedUrl = await this.s3Service.uploadBase64Image(imageResult.b64_json, s3Key, "image/png");
+      } else if (imageResult.url) {
+        console.log("Uploading URL cover image");
+        const s3Key = this.s3Service.generateImageKey(
+          `personalized-books/${childName}/covers`,
+          `personalized-cover-${Date.now()}`
+        );
+        uploadedUrl = await this.s3Service.uploadImageFromUrl(imageResult.url, s3Key);
+      } else {
+        throw new Error("No image data available from OpenAI for cover");
+      }
+
+      console.log(`Successfully uploaded cover image: ${uploadedUrl}`);
+      return uploadedUrl;
+
     } catch (error) {
       console.error("Error generating personalized cover:", error);
       return null;
@@ -1845,8 +1851,7 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
     if (mergedChars.clothingColor)
       characterDescription += ` in ${mergedChars.clothingColor}`;
 
-    // return `BOOK COVER: "${bookTitle}"
-    return `
+    return `BOOK COVER: "${bookTitle}"
 
 ${characterDescription}
 
@@ -1862,7 +1867,7 @@ STORY ELEMENTS:
 
 STORY SUMMARY: ${(storySummary.summary || "").substring(0, 100)}
 
-STYLE: children's book, no text, vibrant colors, captivating magical atmosphere. ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE. No book titles, no captions, no speech bubbles, no labels. Pure visual illustration only.`;
+STYLE: children's book cover, no text, vibrant colors, captivating magical atmosphere. ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE. No book titles, no captions, no speech bubbles, no labels. Pure visual illustration only.`;
   }
 
   async generateImageWithOpenAI(safePrompt, options = {}) {
@@ -1873,22 +1878,45 @@ STYLE: children's book, no text, vibrant colors, captivating magical atmosphere.
       try {
         console.log("Generating image with OpenAI...");
 
-        // FIXED: Use .generate() instead of .create() and correct model name
-        const response = await this.openai.images.generate({
-          model: "gpt-image-1", // Fixed model name
+        const requestOptions = {
+          model: "gpt-image-1",
           prompt: safePrompt,
           n: 1,
           size: "1024x1024",
-          quality: "high",
           ...options,
+        };
+
+        delete requestOptions.response_format;
+
+        const response = await this.openai.images.generate(requestOptions);
+
+        console.log("OpenAI response received:", {
+          hasData: !!response.data,
+          dataLength: response.data?.length,
+          firstItemKeys: response.data?.[0] ? Object.keys(response.data[0]) : 'no data'
         });
 
-        return response.data[0].url;
+        if (!response.data || !response.data[0]) {
+          throw new Error("No image data received from OpenAI");
+        }
+
+        const imageData = response.data[0];
+
+        if (imageData.b64_json) {
+          console.log("Returning base64 image data");
+          return { b64_json: imageData.b64_json, provider: "openai" };
+        }
+
+        if (imageData.url) {
+          console.log("Returning URL image data");
+          return { url: imageData.url, provider: "openai" };
+        }
+
+        throw new Error("No image data found in response");
 
       } catch (openAIError) {
         console.error("OpenAI image generation failed:", openAIError);
 
-        // Add retry logic with exponential backoff
         if (retries < MAX_RETRIES - 1) {
           const delay = initialDelay * Math.pow(2, retries);
           console.log(`Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`);
@@ -1900,7 +1928,10 @@ STYLE: children's book, no text, vibrant colors, captivating magical atmosphere.
     }
 
     console.warn("All retries failed for OpenAI image generation. Returning fallback.");
-    return `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`;
+    return {
+      url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
+      provider: "fallback",
+    };
   }
 
   assemblePersonalizedBook(
