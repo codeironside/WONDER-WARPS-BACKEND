@@ -3,77 +3,39 @@ import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import VeoGenerator from "../../googlegenai/index.js";
 import ImagenGenerator from "../../imagen/index.js";
+// Make sure this path is correct for your project structure
 import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 
 // Helper function for the delay
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// The delay you requested to avoid all rate-limiting.
-const GOOGLE_API_DELAY_MS = 15000; // 15 seconds
-
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
-    "full scene",
-    "character focus",
-    "action spotlight",
-    "top third",
-    "bottom third",
-    "diagonal spread",
-    "circular frame",
-    "speech bubble",
+    "full scene", "character focus", "action spotlight", "top third",
+    "bottom third", "diagonal spread", "circular frame", "speech bubble",
   ],
   MIDDLE_CHILD: [
-    "left panel",
-    "right panel",
-    "background layered",
-    "floating elements",
-    "comic strip",
-    "map integration",
-    "cutaway view",
-    "split screen",
+    "left panel", "right panel", "background layered", "floating elements",
+    "comic strip", "map integration", "cutaway view", "split screen",
   ],
   OLDER_CHILD: [
-    "text wrap",
-    "border integrated",
-    "corner accent",
-    "header banner",
-    "footer illustration",
-    "side bar",
-    "watermark style",
-    "interactive element",
+    "text wrap", "border integrated", "corner accent", "header banner",
+    "footer illustration", "side bar", "watermark style", "interactive element",
   ],
 };
 
 const SUGGESTED_FONTS = {
   YOUNGER_CHILD: [
-    "Comic Sans MS",
-    "KG Primary Penmanship",
-    "DK Crayon Crumble",
-    "OpenDyslexic",
-    "Sassoon Primary",
-    "Century Gothic",
-    "Verdana",
-    "Arial Rounded",
+    "Comic Sans MS", "KG Primary Penmanship", "DK Crayon Crumble", "OpenDyslexic",
+    "Sassoon Primary", "Century Gothic", "Verdana", "Arial Rounded",
   ],
   MIDDLE_CHILD: [
-    "Gill Sans",
-    "Trebuchet MS",
-    "Palatino",
-    "Georgia",
-    "Calibri",
-    "Cabin",
-    "Quicksand",
-    "Nunito",
+    "Gill Sans", "Trebuchet MS", "Palatino", "Georgia", "Calibri",
+    "Cabin", "Quicksand", "Nunito",
   ],
   OLDER_CHILD: [
-    "Times New Roman",
-    "Garamond",
-    "Baskerville",
-    "Helvetica",
-    "Lato",
-    "Merriweather",
-    "Roboto",
-    "Source Sans Pro",
+    "Times New Roman", "Garamond", "Baskerville", "Helvetica", "Lato",
+    "Merriweather", "Roboto", "Source Sans Pro",
   ],
   THEMED_FONTS: {
     fantasy: ["Papyrus", "Trajan Pro", "Uncial Antiqua"],
@@ -81,7 +43,7 @@ const SUGGESTED_FONTS = {
     sci_fi: ["Orbitron", "Eurostile", "Bank Gothic"],
     mystery: ["Courier New", "American Typewriter", "Baskerville"],
     humor: ["Comic Sans MS", "Marker Felt", "Chalkboard"],
-    educational: ["Georgia", "Palatino", "Calibri"],
+    educational: ["Georgia", "Palatino", "CalSibri"],
   },
 };
 
@@ -133,31 +95,15 @@ class StorybookGenerator {
 
   getTextLengthPerPage(ageMin) {
     if (ageMin <= 4) {
-      return {
-        sentences: "1-2",
-        words: "10-20",
-        description: "very short and simple",
-      };
+      return { sentences: "1-2", words: "10-20", description: "very short and simple" };
     } else if (ageMin <= 6) {
-      return {
-        sentences: "2-3",
-        words: "20-40",
-        description: "short and simple",
-      };
+      return { sentences: "2-3", words: "20-40", description: "short and simple" };
     } else if (ageMin <= 8) {
-      return {
-        sentences: "3-4",
-        words: "40-60",
-        description: "moderate length",
-      };
+      return { sentences: "3-4", words: "40-60", description: "moderate length" };
     } else if (ageMin <= 10) {
       return { sentences: "4-5", words: "60-80", description: "descriptive" };
     } else {
-      return {
-        sentences: "5-7",
-        words: "80-120",
-        description: "detailed and engaging",
-      };
+      return { sentences: "5-7", words: "80-120", description: "detailed and engaging" };
     }
   }
 
@@ -186,44 +132,12 @@ class StorybookGenerator {
       .toLowerCase();
 
     const commonKeywords = [
-      "adventure",
-      "friendship",
-      "magic",
-      "fantasy",
-      "bravery",
-      "courage",
-      "explore",
-      "journey",
-      "discovery",
-      "mystery",
-      "hero",
-      "quest",
-      "animal",
-      "forest",
-      "ocean",
-      "space",
-      "school",
-      "family",
-      "teamwork",
-      "imagination",
-      "dream",
-      "rescue",
-      "secret",
-      "treasure",
-      "map",
-      "island",
-      "castle",
-      "dragon",
-      "unicorn",
-      "fairy",
-      "wizard",
-      "robot",
-      "alien",
-      "pirate",
-      "knight",
-      "princess",
-      "superhero",
-      "detective",
+      "adventure", "friendship", "magic", "fantasy", "bravery", "courage",
+      "explore", "journey", "discovery", "mystery", "hero", "quest", "animal",
+      "forest", "ocean", "space", "school", "family", "teamwork", "imagination",
+      "dream", "rescue", "secret", "treasure", "map", "island", "castle",
+      "dragon", "unicorn", "fairy", "wizard", "robot", "alien", "pirate",
+      "knight", "princess", "superhero", "detective",
     ];
 
     const foundKeywords = commonKeywords.filter((keyword) =>
@@ -409,14 +323,7 @@ class StorybookGenerator {
     );
   }
 
-  async generateStorySpecificVeoPrompt(
-    storyData,
-    theme,
-    ageMin,
-    ageMax,
-    name,
-    gender,
-  ) {
+  async generateStorySpecificVeoPrompt(storyData, theme, ageMin, ageMax, name, gender) {
     try {
       const visualStyle = this._getVisualStyle(ageMin, theme);
       const storySummary = this.createStorySummary(storyData);
@@ -534,24 +441,60 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
     }
   }
 
-  // This function now uses the simple, fixed delay.
+  /**
+   * ==========================================================================
+   * MODIFIED: generateImageWithGoogle
+   * This now includes exponential backoff to handle rate-limiting errors.
+   * ==========================================================================
+   */
   async generateImageWithGoogle(safePrompt, options = {}) {
-    try {
-      console.log("Generating image with Google Imagen...");
-      const imageUrl = await this.imagenGenerator.generateImage(safePrompt, {
-        size: "1024x1024",
-        aspectRatio: "1:1",
-        model: "imagen-4.0-generate-001",
-        ...options,
-      });
-      return { url: imageUrl, provider: "google" };
-    } catch (googleError) {
-      console.error("Google Imagen failed:", googleError);
-      return {
-        url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
-        provider: "fallback",
-      };
+    const MAX_RETRIES = 5; // Try a total of 5 times
+    let initialDelay = 5000; // Start with a 5-second delay
+
+    for (let retries = 0; retries < MAX_RETRIES; retries++) {
+      try {
+        console.log("Generating image with Google Imagen...");
+        const imageUrl = await this.imagenGenerator.generateImage(safePrompt, {
+          size: "1024x1024",
+          aspectRatio: "1:1",
+          model: "imagen-4.0-generate-001",
+          ...options,
+        });
+
+        // SUCCESS! Return the image.
+        return { url: imageUrl, provider: "google" };
+
+      } catch (googleError) {
+        // Check if this is the rate-limit error (empty response)
+        const isRateLimitError = googleError.message.includes("rate limiting") ||
+          googleError.message.includes("no images");
+
+        if (isRateLimitError) {
+          if (retries === MAX_RETRIES - 1) {
+            // Last retry failed, so give up
+            console.error(`Google Imagen failed after ${MAX_RETRIES} retries:`, googleError.message);
+            break; // Exit loop and return fallback
+          }
+
+          // Calculate wait time: 5s, 10s, 20s, 40s
+          const waitTime = initialDelay * Math.pow(2, retries);
+          console.warn(`Google Imagen rate limit hit. Retrying in ${waitTime / 1000} seconds...`);
+          await sleep(waitTime);
+
+        } else {
+          // It was a different error (e.g., auth, bad prompt), fail immediately
+          console.error("Google Imagen failed (non-rate-limit):", googleError);
+          break; // Exit loop and return fallback
+        }
+      }
     }
+
+    // If we're here, all retries failed
+    console.warn("All retries failed for Google Imagen. Returning fallback.");
+    return {
+      url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
+      provider: "fallback",
+    };
   }
 
   async generateStoryTemplate({
@@ -569,7 +512,7 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
 
     Object.entries(otherDetails).forEach(([key, value]) => {
       if (value) {
-        const formattedKey = key.replace(/_/g, " ");
+        const formattedKey = key.replace(/_/g, ' ');
         prompt += `- ${formattedKey}: ${value}\n`;
       }
     });
@@ -688,6 +631,7 @@ You will return the story as a single JSON object with the following format:
         name,
         gender,
       };
+
     } catch (error) {
       console.error("Error generating story template:", error);
       throw new ErrorHandler(
@@ -700,8 +644,8 @@ You will return the story as a single JSON object with the following format:
   /**
    * ==========================================================================
    * MODIFIED: generateMediaAndSave
-   * This function is now SEQUENTIAL to avoid rate-limiting.
-   * It runs one Google API call at a time with a long delay between them.
+   * This is now sequential *without* the fixed 15s delays,
+   * relying on the retry logic in generateImageWithGoogle instead.
    * ==========================================================================
    */
   async generateMediaAndSave(storyTemplate, userId) {
@@ -732,15 +676,13 @@ You will return the story as a single JSON object with the following format:
 
     try {
       if (!theme) {
-        throw new ErrorHandler(
-          "Theme/Genre field is missing from the story template.",
-          400,
-        );
+        throw new ErrorHandler("Theme/Genre field is missing from the story template.", 400);
       }
 
       console.log(`Starting background media generation for: ${book_title}`);
 
-      // MODIFIED: Removed Promise.all and made sequential
+      // MODIFIED: Run requests sequentially, but *without* the long fixed delays.
+      // The retry logic in generateImageWithGoogle will handle rate-limiting.
 
       console.log("Step 1/3: Generating Cover Image...");
       const coverImage = await this.generateCoverImage(
@@ -750,8 +692,8 @@ You will return the story as a single JSON object with the following format:
         theme,
         ageMinNum,
       );
-      console.log(`Cover Image complete. Waiting ${GOOGLE_API_DELAY_MS}ms...`);
-      await sleep(GOOGLE_API_DELAY_MS);
+      console.log("Cover Image complete.");
+      // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
 
       console.log("Step 2/3: Generating Chapter Images (sequentially)...");
       const images = await this.generateImagesForChapters(
@@ -767,12 +709,9 @@ You will return the story as a single JSON object with the following format:
         eye_color,
         clothing,
       );
-      // Note: A 15s delay is already built into the end of generateImagesForChapters
-      console.log(
-        `Chapter Images complete. Waiting ${GOOGLE_API_DELAY_MS}ms...`,
-      );
-      // We add one *extra* delay just to be safe before the video call.
-      await sleep(GOOGLE_API_DELAY_MS);
+      console.log("Chapter Images complete.");
+      // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
+
 
       console.log("Step 3/3: Generating Veo Animation...");
       const veoAnimation = await this.generateVeoAnimation(
@@ -784,6 +723,7 @@ You will return the story as a single JSON object with the following format:
         gender,
       );
       console.log("Veo Animation complete.");
+
 
       console.log(
         `Media generation complete for: ${book_title}. Preparing to save.`,
@@ -836,7 +776,8 @@ You will return the story as a single JSON object with the following format:
   /**
    * ==========================================================================
    * MODIFIED: generateImagesForChapters
-   * This function now includes your 15-second delay *inside* the loop.
+   * The fixed 15-second delay is REMOVED. The retry logic in 
+   * generateImageWithGoogle will handle all necessary waiting.
    * ==========================================================================
    */
   async generateImagesForChapters(
@@ -853,6 +794,7 @@ You will return the story as a single JSON object with the following format:
     clothing,
   ) {
     const images = [];
+    // const IMAGE_DELAY_MS = 15000; // <-- REMOVED
 
     for (let i = 0; i < chapters.length; i++) {
       const chapter = chapters[i];
@@ -873,24 +815,28 @@ You will return the story as a single JSON object with the following format:
         No book titles, no captions, no speech bubbles, no labels.
         Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
 
+        // This function now has retry logic built in.
         const imageResult = await this.generateImageWithGoogle(safePrompt);
         images.push(imageResult);
 
-        console.log(`Successfully generated image for chapter ${i + 1}`);
+        // We check if the *result* was a fallback, not just if it threw an error
+        if (imageResult.provider === 'fallback') {
+          console.warn(`Successfully generated image for chapter ${i + 1} (used fallback)`);
+        } else {
+          console.log(`Successfully generated image for chapter ${i + 1}`);
+        }
 
-        // MODIFIED: Add the 15-second delay *after* the request
-        console.log(`Waiting ${GOOGLE_API_DELAY_MS}ms before next image...`);
-        await sleep(GOOGLE_API_DELAY_MS);
+        // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
+
       } catch (error) {
-        console.error(`Error generating image for chapter ${i + 1}:`, error);
+        // This catch is for *unexpected* errors, as generateImageWithGoogle handles its own.
+        console.error(`Critical error in generateImagesForChapters loop ${i + 1}:`, error);
         images.push({
           url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
           provider: "error",
         });
 
-        // MODIFIED: Also wait 15 seconds on failure to let the API cool down
-        console.log(`Waiting ${GOOGLE_API_DELAY_MS}ms after error...`);
-        await sleep(GOOGLE_API_DELAY_MS);
+        // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
       }
     }
 
@@ -908,12 +854,14 @@ You will return the story as a single JSON object with the following format:
     Pure visual illustration only with captivating magical atmosphere. NO TEXT whatsoever`;
 
     try {
+      // This function now has retry logic built in.
       const coverResult = await this.generateImageWithGoogle(safePrompt, {
         quality: "high",
       });
       return coverResult;
     } catch (error) {
-      console.error("Error generating cover image:", error);
+      // This catch is for *unexpected* errors
+      console.error("Critical error in generateCoverImage:", error);
       return {
         url: `https://via.placeholder.com/1024x1024/FF6B6B/FFFFFF?text=Cover+Image+Coming+Soon`,
         provider: "error",
