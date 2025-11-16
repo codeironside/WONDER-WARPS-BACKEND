@@ -1879,7 +1879,7 @@ STYLE: children's book, no text, vibrant colors, captivating magical atmosphere.
           prompt: safePrompt,
           n: 1,
           size: "1024x1024",
-          quality: "standard",
+          quality: "high",
           ...options,
         });
 
