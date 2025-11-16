@@ -780,9 +780,7 @@ You will return the story as a single JSON object with the following format:
     for (let i = 0; i < chapters.length; i++) {
       const chapter = chapters[i];
       try {
-        console.log(
-          `Generating image for chapter ${i + 1}/${chapters.length}...`,
-        );
+        console.log(`Generating image for chapter ${i + 1}/${chapters.length}...`);
 
         const cleanImageDescription = this.sanitizeImagePrompt(
           chapter.image_description,
@@ -803,7 +801,7 @@ You will return the story as a single JSON object with the following format:
 
         // Add a small delay between requests to avoid rate limiting
         if (i < chapters.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error) {
         console.error(`Error generating image for chapter ${i + 1}:`, error);
@@ -814,7 +812,7 @@ You will return the story as a single JSON object with the following format:
 
         // Continue with next chapter even if this one fails
         if (i < chapters.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
     }
