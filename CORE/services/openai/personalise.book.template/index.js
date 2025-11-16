@@ -1862,7 +1862,7 @@ STORY ELEMENTS:
 
 STORY SUMMARY: ${(storySummary.summary || "").substring(0, 100)}
 
-STYLE: children's book cover, no text, vibrant colors, captivating magical atmosphere. ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE. No book titles, no captions, no speech bubbles, no labels. Pure visual illustration only.`;
+STYLE: children's book, no text, vibrant colors, captivating magical atmosphere. ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE. No book titles, no captions, no speech bubbles, no labels. Pure visual illustration only.`;
   }
 
   async generateImageWithOpenAI(safePrompt, options = {}) {
