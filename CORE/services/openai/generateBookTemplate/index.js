@@ -3,6 +3,8 @@ import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import VeoGenerator from "../../googlegenai/index.js";
 import ImagenGenerator from "../../imagen/index.js";
+// Make sure this path is correct for your project structure
+import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
@@ -120,7 +122,6 @@ class StorybookGenerator {
     return [...new Set([...ageFonts, ...themeFonts])];
   }
 
-  // Always return exactly 7 chapters
   calculateChapterCount() {
     return 7;
   }
@@ -240,6 +241,12 @@ class StorybookGenerator {
   }
 
   _getVisualStyle(ageMin, theme) {
+    // FIX 1: Add check for undefined theme
+    if (!theme) {
+      console.warn("Theme is undefined, defaulting to Pixar style.");
+      return "in a modern Pixar CGI style with high-fidelity rendering, realistic textures, and emotionally expressive rounded characters";
+    }
+
     const lowerTheme = theme.toLowerCase();
 
     const styleMappings = {
@@ -505,13 +512,15 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
       };
     } catch (error) {
       console.error("Error generating Veo animation:", error);
+      const fallbackUrl = this.veoGenerator.generateFallbackUrl(
+        `Animation for ${storyData.book_title}`,
+      );
       return {
         veo_animation: {
           success: false,
           error: error.message,
-          fallback_url: this.veoGenerator.generateFallbackUrl(
-            `Animation for ${storyData.book_title}`,
-          ),
+          fallback_url: fallbackUrl,
+          video_uri: fallbackUrl,
         },
         storyboard_frames: [],
         duration_seconds: 10,
@@ -540,40 +549,32 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
     }
   }
 
-  async generateStory({
+  async generateStoryTemplate({
     theme,
     name = "",
-    photo_url = "",
-    skin_tone = "",
-    hair_type = "",
-    hairstyle = "",
-    hair_color = "",
-    eye_color = "",
-    facial_features = "",
-    clothing = "",
     gender = "",
-    milestone_date = "",
     age_min = 5,
     age_max = 10,
     prompt_message,
+    ...otherDetails
   }) {
     let prompt = `${theme}:\nWrite a full, detailed children's storybook with the following details:\n`;
     if (name) prompt += `- Name: ${name}\n`;
-    if (photo_url) prompt += `- Photo URL: ${photo_url}\n`;
-    if (skin_tone) prompt += `- Skin tone: ${skin_tone}\n`;
-    if (hair_type) prompt += `- Hair type: ${hair_type}\n`;
-    if (hairstyle) prompt += `- Hairstyle: ${hairstyle}\n`;
-    if (hair_color) prompt += `- Hair color: ${hair_color}\n`;
-    if (eye_color) prompt += `- Eye color: ${eye_color}\n`;
-    if (facial_features) prompt += `- Facial features: ${facial_features}\n`;
-    if (clothing) prompt += `- Clothing: ${clothing}\n`;
     if (gender) prompt += `- Gender: ${gender}\n`;
+
+    Object.entries(otherDetails).forEach(([key, value]) => {
+      if (value) {
+        const formattedKey = key.replace(/_/g, " ");
+        prompt += `- ${formattedKey}: ${value}\n`;
+      }
+    });
+
     prompt += `\n${prompt_message}\n`;
 
     const ageGroup = this.getAgeGroup(age_min);
     const imagePositions = this.getImagePositions(ageGroup);
     const suggestedFonts = this.getSuggestedFonts(ageGroup, theme);
-    const targetChapterCount = this.calculateChapterCount(); // Always 7
+    const targetChapterCount = this.calculateChapterCount();
     const textLength = this.getTextLengthPerPage(age_min);
 
     try {
@@ -585,9 +586,9 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
             content: `You are a professional children's storyteller. You will write a fun, magical, and joyful story for a child aged ${age_min} to ${age_max}, the gender is ${gender}.
 
 **STORY STRUCTURE:**
-* Create exactly 7 chapters (pages) for this storybook
+* Create exactly ${targetChapterCount} chapters (pages) for this storybook
 * Each chapter must be exactly one page with age-appropriate text length
-* The story must have a clear beginning, middle, and end across all 7 pages
+* The story must have a clear beginning, middle, and end across all ${targetChapterCount} pages
 * Make sure ${name} is the main character throughout the entire story
 
 **TEXT LENGTH REQUIREMENTS (for age ${age_min}-${age_max}):**
@@ -627,17 +628,17 @@ You will return the story as a single JSON object with the following format:
     }
   ],
   "suggested_font": "Choose from the available fonts above",
-  "total_pages": 7,
+  "total_pages": ${targetChapterCount},
   "age_range": "${age_min}-${age_max}",
   "reading_level": "${textLength.description}"
 }`,
           },
           {
             role: "user",
-            content: `Using the details below, weave a captivating 7-page story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across all 7 pages. Each chapter must be exactly ${textLength.sentences} sentences to maintain perfect pacing for ${age_min}-${age_max} year old readers.
+            content: `Using the details below, weave a captivating ${targetChapterCount}-page story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across all ${targetChapterCount} pages. Each chapter must be exactly ${textLength.sentences} sentences to maintain perfect pacing for ${age_min}-${age_max} year old readers.
 
-            Details for the story:
-            ${prompt}`,
+          Details for the story:
+          ${prompt}`,
           },
         ],
         max_tokens: 4000,
@@ -657,15 +658,9 @@ You will return the story as a single JSON object with the following format:
           throw new Error("Invalid JSON response from AI");
         }
       }
+
       if (!storyData.chapters || storyData.chapters.length === 0) {
         throw new Error("No chapters generated");
-      }
-
-      // Validate chapter count
-      if (storyData.chapters.length !== 7) {
-        console.warn(
-          `Generated ${storyData.chapters.length} chapters, expected exactly 7`,
-        );
       }
 
       storyData.chapters.forEach((chapter) => {
@@ -673,91 +668,153 @@ You will return the story as a single JSON object with the following format:
       });
 
       console.log(
-        `Generated story with ${storyData.chapters.length} chapters for age ${age_min}-${age_max}`,
+        `Generated story template with ${storyData.chapters.length} chapters for age ${age_min}-${age_max}`,
       );
 
       const keywords = this.extractKeywords(storyData);
 
-      // Generate images sequentially instead of using Promise.all
-      const images = await this.generateImagesForChapters(
-        storyData.chapters,
-        age_min,
-        gender,
+      return {
+        ...storyData,
+        keywords,
+        genre: theme, // This is the 'theme' from input
+        age_min: age_min.toString(),
+        age_max: age_max.toString(),
+        ...otherDetails,
         name,
-        theme,
+        gender,
+      };
+    } catch (error) {
+      console.error("Error generating story template:", error);
+      throw new ErrorHandler(
+        `Failed to generate the story template: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  /**
+   * ==========================================================================
+   * MODIFIED: generateMediaAndSave
+   * This function now correctly destructures the template and builds
+   * a clean `finalBookData` object that matches the validation schema.
+   * ==========================================================================
+   */
+  async generateMediaAndSave(storyTemplate, userId) {
+    // FIX 2: Be more explicit in destructuring to avoid passing
+    // unknown fields to the validation schema.
+    const {
+      genre: theme, // 'genre' from template becomes 'theme' for internal use
+      name = "",
+      skin_tone = "",
+      hair_type = "",
+      hairstyle = "",
+      hair_color = "",
+      eye_color = "",
+      clothing = "",
+      gender = "",
+      age_min = 5,
+      age_max = 10,
+      chapters,
+      book_title,
+      // Explicitly pull fields that *are* in the schema
+      author,
+      suggested_font,
+      description,
+      price,
+      is_personalizable,
+      is_public,
+      // We will *ignore* fields not in the schema, like:
+      // photo_url, facial_features, total_pages, age_range, reading_level
+    } = storyTemplate;
+
+    const ageMinNum = parseInt(age_min, 10);
+    const ageMaxNum = parseInt(age_max, 10);
+
+    try {
+      // Add a check in case 'genre' was missing
+      if (!theme) {
+        throw new ErrorHandler(
+          "Theme/Genre field is missing from the story template.",
+          400,
+        );
+      }
+
+      console.log(`Starting background media generation for: ${book_title}`);
+
+      const [images, coverImage, veoAnimation] = await Promise.all([
+        this.generateImagesForChapters(
+          chapters,
+          ageMinNum,
+          gender,
+          name,
+          theme,
+          skin_tone,
+          hair_type,
+          hairstyle,
+          hair_color,
+          eye_color,
+          clothing,
+        ),
+        this.generateCoverImage(storyTemplate, gender, name, theme, ageMinNum),
+        this.generateVeoAnimation(
+          storyTemplate,
+          theme,
+          ageMinNum,
+          ageMaxNum,
+          name,
+          gender,
+        ),
+      ]);
+
+      console.log(
+        `Media generation complete for: ${book_title}. Preparing to save.`,
+      );
+
+      const chaptersWithImages = chapters.map((chapter, index) => ({
+        ...chapter,
+        image_url: images[index]?.url || null,
+        image_provider: images[index]?.provider || "none",
+      }));
+
+      // FIX 3: Build the final data object *only* with keys
+      // that exist in your `BookTemplate.validationSchema`.
+      const finalBookData = {
+        user_id: userId,
+        book_title,
+        suggested_font,
+        description: description || null,
         skin_tone,
         hair_type,
-        hairstyle,
+        hair_style: hairstyle,
         hair_color,
         eye_color,
         clothing,
-      );
-
-      const coverImage = await this.generateCoverImage(
-        storyData,
         gender,
-        name,
-        theme,
-        age_min,
-      );
-
-      const veoAnimation = await this.generateVeoAnimation(
-        storyData,
-        theme,
-        age_min,
-        age_max,
-        name,
-        gender,
-      );
-
-      const storybookContent = this.addImagesToStory(storyData, images);
-
-      return {
-        story: {
-          ...storybookContent,
-          cover_image: [coverImage.url],
-          author: name,
-          genre: theme,
-          photo_url: photo_url || null,
-          skin_tone,
-          name,
-          hair_type,
-          hair_style: hairstyle,
-          hair_color,
-          eye_color,
-          facial_features: facial_features || null,
-          clothing,
-          gender,
-          age_min: age_min.toString(),
-          age_max: age_max.toString(),
-          keywords: keywords,
-          video_url: veoAnimation.veo_animation.video_uri,
-          story_metadata: {
-            total_pages: storyData.chapters.length,
-            reading_level: textLength.description,
-            recommended_age: `${age_min}-${age_max}`,
-            text_complexity: `${textLength.words} words per page`,
-          },
-          animation_data: {
-            storyboard_frames: veoAnimation.storyboard_frames,
-            duration_seconds: veoAnimation.duration_seconds,
-            visual_style: veoAnimation.visual_style,
-            age_range: veoAnimation.age_range,
-          },
-          generation_providers: {
-            story: "openai",
-            images: images.map((img) => img.provider),
-            cover: coverImage.provider,
-            animation: "google",
-          },
-        },
+        age_min: age_min.toString(),
+        age_max: age_max.toString(),
+        cover_image: [coverImage.url],
+        genre: theme,
+        author: author || name, // Map the 'name' to the 'author' field
+        price: price || 0,
+        chapters: chaptersWithImages,
+        keywords: this.extractKeywords(storyTemplate),
+        is_personalizable:
+          is_personalizable !== undefined ? is_personalizable : true,
+        is_public: is_public || false,
+        video_url: veoAnimation.veo_animation.video_uri,
       };
-    } catch (error) {
-      console.error("Error generating story:", error);
-      throw new ErrorHandler(
-        `Failed to generate the story: ${error.message}`,
-        500,
+
+      // This call will now pass validation
+      await BookTemplate.create(finalBookData);
+
+      console.log(
+        `SUCCESS: Background job finished and saved book: ${book_title}`,
       );
+    } catch (error) {
+      console.error(`FATAL: Background job failed for book: ${book_title}`);
+      console.error(error);
+      // FIX 4: Re-throw the error so the controller's .catch() can see it if needed
+      throw error;
     }
   }
 
@@ -775,12 +832,14 @@ You will return the story as a single JSON object with the following format:
     clothing,
   ) {
     const images = [];
+    const IMAGE_DELAY_MS = 3000;
 
-    // Generate images sequentially instead of using Promise.all
     for (let i = 0; i < chapters.length; i++) {
       const chapter = chapters[i];
       try {
-        console.log(`Generating image for chapter ${i + 1}/${chapters.length}...`);
+        console.log(
+          `Generating image for chapter ${i + 1}/${chapters.length}...`,
+        );
 
         const cleanImageDescription = this.sanitizeImagePrompt(
           chapter.image_description,
@@ -799,9 +858,9 @@ You will return the story as a single JSON object with the following format:
 
         console.log(`Successfully generated image for chapter ${i + 1}`);
 
-        // Add a small delay between requests to avoid rate limiting
         if (i < chapters.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log(`Waiting ${IMAGE_DELAY_MS}ms to avoid rate limit...`);
+          await new Promise((resolve) => setTimeout(resolve, IMAGE_DELAY_MS));
         }
       } catch (error) {
         console.error(`Error generating image for chapter ${i + 1}:`, error);
@@ -810,9 +869,8 @@ You will return the story as a single JSON object with the following format:
           provider: "error",
         });
 
-        // Continue with next chapter even if this one fails
         if (i < chapters.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, IMAGE_DELAY_MS));
         }
       }
     }
@@ -842,16 +900,6 @@ You will return the story as a single JSON object with the following format:
         provider: "error",
       };
     }
-  }
-
-  addImagesToStory(storyData, imageResults) {
-    storyData.chapters.forEach((chapter, index) => {
-      if (imageResults[index] && imageResults[index].url) {
-        chapter.image_url = imageResults[index].url;
-        chapter.image_provider = imageResults[index].provider;
-      }
-    });
-    return storyData;
   }
 }
 

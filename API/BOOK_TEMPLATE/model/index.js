@@ -45,7 +45,6 @@ const chapterSchema = new mongoose.Schema(
   },
 );
 
-// Define BookTemplate Schema
 const bookTemplateSchema = new mongoose.Schema(
   {
     user_id: {
@@ -147,14 +146,12 @@ const bookTemplateSchema = new mongoose.Schema(
       default: 1,
       index: true,
     },
-    // Simple video URL field
     video_url: {
       type: String,
       maxlength: 1000,
       default: null,
       validate: {
         validator: function (v) {
-          // Allow null/empty or valid URL
           return v === null || v === "" || /^https?:\/\/.+\..+/.test(v);
         },
         message: "Video URL must be a valid URL",
@@ -170,9 +167,8 @@ bookTemplateSchema.index({ user_id: 1, book_title: 1 }, { unique: true });
 bookTemplateSchema.index({ createdAt: -1 });
 bookTemplateSchema.index({ price: 1 });
 bookTemplateSchema.index({ age_min: 1, age_max: 1 });
-bookTemplateSchema.index({ video_url: 1 }); // Index for video URL queries
+bookTemplateSchema.index({ video_url: 1 });
 
-// Create models
 const Chapter = mongoose.model("Chapter", chapterSchema);
 const BookTemplateModel = mongoose.model("BookTemplate", bookTemplateSchema);
 
@@ -242,7 +238,6 @@ class BookTemplate {
       );
     }
 
-    // Upload images AND video to S3 before saving
     try {
       await this.uploadMediaToS3(validatedData);
     } catch (error) {
@@ -277,7 +272,6 @@ class BookTemplate {
       await session.commitTransaction();
       session.endSession();
 
-      // Return the complete template with chapters
       return await this.findByIdWithChapters(newTemplate._id);
     } catch (err) {
       await session.abortTransaction();
@@ -290,7 +284,6 @@ class BookTemplate {
   static async uploadMediaToS3(templateData) {
     console.log("Uploading media to S3...");
 
-    // Upload cover images to S3
     if (templateData.cover_image && Array.isArray(templateData.cover_image)) {
       const uploadedCoverImages = [];
 
@@ -325,7 +318,6 @@ class BookTemplate {
       throw new ErrorHandler("Cover image is required", 400);
     }
 
-    // Upload video to S3 if provided
     if (templateData.video_url) {
       try {
         console.log(`Uploading video: ${templateData.video_url}`);
@@ -341,12 +333,10 @@ class BookTemplate {
         templateData.video_url = s3Url;
       } catch (error) {
         console.error(`Failed to upload video: ${error.message}`);
-        // Keep the original URL if upload fails, or set to null
         templateData.video_url = null;
       }
     }
 
-    // Upload chapter images to S3
     if (templateData.chapters && Array.isArray(templateData.chapters)) {
       for (const chapter of templateData.chapters) {
         if (!chapter.image_url) continue;
@@ -365,7 +355,6 @@ class BookTemplate {
           chapter.image_url = s3Url;
         } catch (error) {
           console.error(`Failed to upload chapter image: ${error.message}`);
-          // Keep the original URL if upload fails
         }
       }
     }
@@ -391,7 +380,6 @@ class BookTemplate {
 
   static async updateVideoUrl(id, videoUrl) {
     try {
-      // Validate the video URL
       const { error } = Joi.string().uri().max(1000).validate(videoUrl);
       if (error) {
         throw new ErrorHandler("Invalid video URL", 400);
@@ -402,7 +390,6 @@ class BookTemplate {
         throw new ErrorHandler("Book template not found", 404);
       }
 
-      // Upload video to S3
       let finalVideoUrl = videoUrl;
       if (videoUrl) {
         try {
@@ -424,7 +411,6 @@ class BookTemplate {
         }
       }
 
-      // Update the template with the S3 video URL
       template.video_url = finalVideoUrl;
       await template.save();
 
@@ -457,7 +443,6 @@ class BookTemplate {
   static async uploadImagesToS3(templateData) {
     console.log("Uploading images to S3...");
 
-    // Upload cover images to S3
     if (templateData.cover_image && Array.isArray(templateData.cover_image)) {
       const uploadedCoverImages = [];
 
@@ -492,7 +477,6 @@ class BookTemplate {
       throw new ErrorHandler("Cover image is required", 400);
     }
 
-    // Upload chapter images to S3
     if (templateData.chapters && Array.isArray(templateData.chapters)) {
       for (const chapter of templateData.chapters) {
         if (!chapter.image_url) continue;
@@ -511,7 +495,6 @@ class BookTemplate {
           chapter.image_url = s3Url;
         } catch (error) {
           console.error(`Failed to upload chapter image: ${error.message}`);
-          // Keep the original URL if upload fails
         }
       }
     }
@@ -547,7 +530,6 @@ class BookTemplate {
     const skip = (page - 1) * limit;
     const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-    // Build query based on filters
     const query = {};
     if (filters.genre) query.genre = filters.genre;
     if (filters.age_min) query.age_min = filters.age_min;
@@ -588,7 +570,6 @@ class BookTemplate {
     const skip = (page - 1) * limit;
     const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-    // Build query - user's templates plus public templates if requested
     const query = includePublic
       ? { $or: [{ user_id: userId }, { is_public: true }] }
       : { user_id: userId };
@@ -638,7 +619,7 @@ class BookTemplate {
 
       const query = {
         keywords: { $in: keywords },
-        is_public: true, // Only search public templates
+        is_public: true,
       };
 
       const templates = await BookTemplateModel.find(query)
@@ -724,7 +705,6 @@ class BookTemplate {
     }
 
     try {
-      // Update only the provided fields
       const updatedTemplate = await BookTemplateModel.findByIdAndUpdate(
         id,
         { $set: validatedData },
@@ -824,7 +804,6 @@ class BookTemplate {
     session.startTransaction();
 
     try {
-      // Delete the template
       const template = await BookTemplateModel.findByIdAndDelete(id, {
         session,
       });
@@ -832,7 +811,6 @@ class BookTemplate {
         throw new ErrorHandler("Book template not found", 404);
       }
 
-      // Delete associated chapters
       await Chapter.deleteMany({ book_template_id: id }, { session });
 
       await session.commitTransaction();
@@ -857,7 +835,6 @@ class BookTemplate {
 
     const skip = (page - 1) * limit;
 
-    // Build projection based on options
     let projection = { __v: 0 };
     if (minimal) {
       projection = {
@@ -884,7 +861,6 @@ class BookTemplate {
 
     const total = await BookTemplateModel.countDocuments({ user_id: userId });
 
-    // Add chapter count if not including full chapters
     if (!includeChapters && !minimal) {
       for (const template of templates) {
         template.chapter_count = await Chapter.countDocuments({
@@ -961,16 +937,14 @@ class BookTemplate {
 
     const skip = (page - 1) * limit;
 
-    // Build base query
     const query = {
       ...filters,
       popularity_score: { $gte: min_popularity },
     };
 
-    // Get templates sorted by popularity
     const templates = await BookTemplateModel.find(query)
-      .select("-chapters -__v -user_id") // Exclude unnecessary fields
-      .sort({ popularity_score: -1, createdAt: -1 }) // Sort by popularity then date
+      .select("-chapters -__v -user_id")
+      .sort({ popularity_score: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
