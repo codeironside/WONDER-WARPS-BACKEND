@@ -5,7 +5,6 @@ import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 import PersonalizedBook from "../../../../API/PERSONALISATION/model/index.js";
 import S3Service from "../../s3/index.js";
 import ImageValidator from "../validatePicture/index.js";
-import ImagenGenerator from "../../imagen/index.js";
 
 const STYLE_MAPPINGS = {
   sci_fi: {
@@ -62,6 +61,9 @@ const STYLE_MAPPINGS = {
   },
 };
 
+// Helper function for retries with exponential backoff
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 class StoryPersonalizer {
   constructor() {
     const apiKey = config.openai.API_KEY;
@@ -73,17 +75,10 @@ class StoryPersonalizer {
         500,
       );
     }
-    if (!googleApiKey) {
-      throw new ErrorHandler(
-        "Google API key is required for image generation",
-        500,
-      );
-    }
 
     this.openai = new OpenAI({ apiKey });
     this.s3Service = new S3Service();
     this.imageValidator = new ImageValidator();
-    this.imagenGenerator = new ImagenGenerator();
     this.googleApiKey = googleApiKey;
   }
 
@@ -1637,8 +1632,8 @@ class StoryPersonalizer {
 
       const prompt = this.buildImagePrompt(
         personalizedChapter.image_description ||
-          originalChapter.image_description ||
-          "",
+        originalChapter.image_description ||
+        "",
         originalChapter.image_position || "full scene",
         childName,
         childAge,
@@ -1650,9 +1645,9 @@ class StoryPersonalizer {
 
       let imageUrl;
       if (photoUrl && usePhotoData) {
-        imageUrl = await this.generateStrictImagenImage(prompt, photoUrl);
+        imageUrl = await this.generateImageWithOpenAI(prompt);
       } else {
-        imageUrl = await this.generateStrictImagenImage(prompt);
+        imageUrl = await this.generateImageWithOpenAI(prompt);
       }
 
       const s3Key = this.s3Service.generateImageKey(
@@ -1661,6 +1656,7 @@ class StoryPersonalizer {
       );
       return await this.s3Service.uploadImageFromUrl(imageUrl, s3Key);
     } catch (error) {
+      console.error(`Error generating chapter image ${index + 1}:`, error);
       return originalChapter.image_url || "";
     }
   }
@@ -1753,7 +1749,7 @@ IMAGE POSITION: ${imagePosition}
 
 CLOTHING: ${mergedChars.clothing || clothingSuggestion}
 
-IMPORTANT: Character must maintain consistent appearance across all images. No text in image.`;
+IMPORTANT: Character must maintain consistent appearance across all images. No text in image. ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE. Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
   }
 
   async generateOptimizedPersonalizedCover(
@@ -1793,10 +1789,7 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
         genderDetails,
       );
 
-      const imageUrl = await this.generateStrictImagenImage(
-        coverPrompt,
-        photoUrl && usePhotoData ? photoUrl : null,
-      );
+      const imageUrl = await this.generateImageWithOpenAI(coverPrompt);
 
       const s3Key = this.s3Service.generateImageKey(
         `personalized-books/${childName}/covers`,
@@ -1804,6 +1797,7 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
       );
       return await this.s3Service.uploadImageFromUrl(imageUrl, s3Key);
     } catch (error) {
+      console.error("Error generating personalized cover:", error);
       return null;
     }
   }
@@ -1851,6 +1845,7 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
     if (mergedChars.clothingColor)
       characterDescription += ` in ${mergedChars.clothingColor}`;
 
+    // return `BOOK COVER: "${bookTitle}"
     return `BOOK COVER: "${bookTitle}"
 
 ${characterDescription}
@@ -1867,16 +1862,45 @@ STORY ELEMENTS:
 
 STORY SUMMARY: ${(storySummary.summary || "").substring(0, 100)}
 
-STYLE: children's book cover, no text, vibrant colors, captivating magical atmosphere.`;
+STYLE: children's book cover, no text, vibrant colors, captivating magical atmosphere. ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE. No book titles, no captions, no speech bubbles, no labels. Pure visual illustration only.`;
   }
 
-  async generateStrictImagenImage(prompt, photoUrl = null) {
-    return await this.imagenGenerator.generateImage(prompt, {
-      size: "1024x1024",
-      aspectRatio: "1:1",
-      baseImage: photoUrl,
-      model: "imagen-4.0-generate-001",
-    });
+  async generateImageWithOpenAI(safePrompt, options = {}) {
+    const MAX_RETRIES = 5;
+    let initialDelay = 5000;
+
+    for (let retries = 0; retries < MAX_RETRIES; retries++) {
+      try {
+        console.log("Generating image with OpenAI...");
+
+        // FIXED: Use .generate() instead of .create() and correct model name
+        const response = await this.openai.images.generate({
+          model: "dall-e-3", // Fixed model name
+          prompt: safePrompt,
+          n: 1,
+          size: "1024x1024",
+          quality: "standard",
+          ...options,
+        });
+
+        return response.data[0].url;
+
+      } catch (openAIError) {
+        console.error("OpenAI image generation failed:", openAIError);
+
+        // Add retry logic with exponential backoff
+        if (retries < MAX_RETRIES - 1) {
+          const delay = initialDelay * Math.pow(2, retries);
+          console.log(`Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`);
+          await sleep(delay);
+          continue;
+        }
+        break;
+      }
+    }
+
+    console.warn("All retries failed for OpenAI image generation. Returning fallback.");
+    return `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`;
   }
 
   assemblePersonalizedBook(

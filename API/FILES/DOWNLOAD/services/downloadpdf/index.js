@@ -35,7 +35,7 @@ export const downloadBookPDF = async (req, res, next) => {
     console.log(req.token);
     console.log("space");
     console.log(safeToken);
-    const printUrl = `http://localhost:5173/print-book/${bookId}?token=${safeToken}`;
+    const printUrl = `https://www.mystoryhat.com/print-book/${bookId}?token=${safeToken}`;
 
     const frontendDomain = process.env.BASE_URL.replace(/^https?:\/\//, "");
 

@@ -796,7 +796,7 @@ You will return the story as a single JSON object with the following format:
 
     try {
       const coverResult = await this.generateImageWithOpenAI(safePrompt, {
-        quality: "standard",
+        quality: "standa",
       });
       return coverResult;
     } catch (error) {
