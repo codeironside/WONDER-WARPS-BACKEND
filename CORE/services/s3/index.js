@@ -41,10 +41,10 @@ class S3Service {
       console.log(`Uploading base64 image with key: ${key}`);
 
       // Remove data URL prefix if present (e.g., "data:image/png;base64,")
-      const base64String = base64Data.replace(/^data:image\/\w+;base64,/, '');
+      const base64String = base64Data.replace(/^data:image\/\w+;base64,/, "");
 
       // Convert base64 to buffer
-      const buffer = Buffer.from(base64String, 'base64');
+      const buffer = Buffer.from(base64String, "base64");
 
       console.log(`Base64 image buffer size: ${buffer.length} bytes`);
 
@@ -66,7 +66,9 @@ class S3Service {
       });
 
       const uploadResult = await upload.done();
-      console.log(`Base64 image uploaded successfully to: ${uploadResult.Location}`);
+      console.log(
+        `Base64 image uploaded successfully to: ${uploadResult.Location}`,
+      );
 
       return uploadResult.Location;
     } catch (error) {

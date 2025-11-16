@@ -43,7 +43,7 @@ export const personalizeBook = async (req, res, next) => {
       photoUrl,
     };
 
-    const result = await storyPersonalizer.addPersonalizationToBook(
+    storyPersonalizer.addPersonalizationToBook(
       templateId,
       userId,
       personalisedId,
@@ -54,9 +54,12 @@ export const personalizeBook = async (req, res, next) => {
       `Book personalized for ${childName} by user ${userId} using AI`,
     );
 
-    sendResponse(res, 201, "Book personalized successfully using AI", {
-      personalizedBook: result,
-    });
+    sendResponse(
+      res,
+      201,
+      "Book personalization in pogress check back in few minutees",
+      {},
+    );
   } catch (error) {
     logger.error(`Failed to personalize book with AI: ${error.message}`);
     next(error);

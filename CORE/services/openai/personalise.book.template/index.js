@@ -8,37 +8,56 @@ import ImageValidator from "../validatePicture/index.js";
 
 const STYLE_MAPPINGS = {
   sci_fi: {
-    modern: "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots' with realistic textures and atmospheric lighting",
-    cinematic: "in a cinematic sci-fi CGI style with detailed models, complex lighting, and sophisticated rendering suitable for mature audiences",
+    modern:
+      "in a high-fidelity CGI style, reminiscent of the detailed animation in 'Love, Death & Robots' with realistic textures and atmospheric lighting",
+    cinematic:
+      "in a cinematic sci-fi CGI style with detailed models, complex lighting, and sophisticated rendering suitable for mature audiences",
   },
   humor: {
-    simpsons: "in the iconic cartoon style of 'The Simpsons' with yellow skin tones, simple character construction, and prominent overbites",
-    caricature: "in an exaggerated caricature style like 'Mr. Bean: The Animated Series' with bulbous noses, big eyes, and over-the-top expressions",
-    modern_cartoon: "in a quirky, expressive cartoon style like 'Regular Show' or 'Adventure Time' with simple designs and anthropomorphic characters",
+    simpsons:
+      "in the iconic cartoon style of 'The Simpsons' with yellow skin tones, simple character construction, and prominent overbites",
+    caricature:
+      "in an exaggerated caricature style like 'Mr. Bean: The Animated Series' with bulbous noses, big eyes, and over-the-top expressions",
+    modern_cartoon:
+      "in a quirky, expressive cartoon style like 'Regular Show' or 'Adventure Time' with simple designs and anthropomorphic characters",
   },
   fantasy: {
-    disney_renaissance: "in the classic Disney Renaissance 2D style of 'Mulan' with strong character acting, fluid motion, and detailed epic backgrounds",
-    modern_disney: "with the vibrant, detailed CGI animation of Disney's 'Frozen II' or 'Encanto' with realistic textures and emotionally expressive characters",
-    anime_fantasy: "in an anime-influenced style like 'Avatar: The Last Airbender' with dynamic action sequences, expressive eyes, and elemental effects",
+    disney_renaissance:
+      "in the classic Disney Renaissance 2D style of 'Mulan' with strong character acting, fluid motion, and detailed epic backgrounds",
+    modern_disney:
+      "with the vibrant, detailed CGI animation of Disney's 'Frozen II' or 'Encanto' with realistic textures and emotionally expressive characters",
+    anime_fantasy:
+      "in an anime-influenced style like 'Avatar: The Last Airbender' with dynamic action sequences, expressive eyes, and elemental effects",
   },
   adventure: {
-    pixar: "in a modern Pixar CGI style like 'Inside Out' with high-fidelity rendering, realistic textures and emotionally expressive rounded characters",
-    dreamworks: "in a DreamWorks CGI style like 'The Boss Baby' with polished, streamlined, and cartoonishly stylized characters and vibrant environments",
-    moana: "in the beautiful, dynamic CGI style of Disney's 'Moana' with expressive characters, vibrant colors, and oceanic themes",
-    volumetric: "in a volumetric lighting 2D style like 'Klaus' that looks hand-drawn but incorporates three-dimensional lighting and painterly depth",
+    pixar:
+      "in a modern Pixar CGI style like 'Inside Out' with high-fidelity rendering, realistic textures and emotionally expressive rounded characters",
+    dreamworks:
+      "in a DreamWorks CGI style like 'The Boss Baby' with polished, streamlined, and cartoonishly stylized characters and vibrant environments",
+    moana:
+      "in the beautiful, dynamic CGI style of Disney's 'Moana' with expressive characters, vibrant colors, and oceanic themes",
+    volumetric:
+      "in a volumetric lighting 2D style like 'Klaus' that looks hand-drawn but incorporates three-dimensional lighting and painterly depth",
   },
   classic: {
-    hanna_barbera: "in the classic Hanna-Barbera style of 'Tom and Jerry' with bold thick outlines, flat color palettes, and efficient character-driven animation",
-    golden_age: "in the Disney Golden Age 2D style of 'Bambi' with soft painterly backgrounds, naturalistic rendering, and gentle lifelike animal movement",
-    flintstones: "in the classic cartoon style of 'The Flintstones' with simple geometric shapes, limited animation, and prehistoric aesthetic",
+    hanna_barbera:
+      "in the classic Hanna-Barbera style of 'Tom and Jerry' with bold thick outlines, flat color palettes, and efficient character-driven animation",
+    golden_age:
+      "in the Disney Golden Age 2D style of 'Bambi' with soft painterly backgrounds, naturalistic rendering, and gentle lifelike animal movement",
+    flintstones:
+      "in the classic cartoon style of 'The Flintstones' with simple geometric shapes, limited animation, and prehistoric aesthetic",
   },
   preschool: {
-    peppa_pig: "in a simple vector style like 'Peppa Pig' with extremely simple flat 2D designs, minimal detail, and thin limbs in side-profile view",
-    simple_cartoon: "in a simple friendly 2D cartoon style with bold outlines and bright colors, perfect for very young audiences",
+    peppa_pig:
+      "in a simple vector style like 'Peppa Pig' with extremely simple flat 2D designs, minimal detail, and thin limbs in side-profile view",
+    simple_cartoon:
+      "in a simple friendly 2D cartoon style with bold outlines and bright colors, perfect for very young audiences",
   },
   action: {
-    fast_furious: "in an action-oriented CGI style with detailed vehicles, motion blur, and special effects to convey speed and dynamic action",
-    cartoon_network: "in a modern Cartoon Network style with graphic angular designs, exaggerated proportions, and dynamic action sequences",
+    fast_furious:
+      "in an action-oriented CGI style with detailed vehicles, motion blur, and special effects to convey speed and dynamic action",
+    cartoon_network:
+      "in a modern Cartoon Network style with graphic angular designs, exaggerated proportions, and dynamic action sequences",
   },
 };
 
@@ -1605,8 +1624,8 @@ class StoryPersonalizer {
 
       const prompt = this.buildImagePrompt(
         personalizedChapter.image_description ||
-        originalChapter.image_description ||
-        "",
+          originalChapter.image_description ||
+          "",
         originalChapter.image_position || "full scene",
         childName,
         childAge,
@@ -1616,7 +1635,9 @@ class StoryPersonalizer {
         storySummary,
       );
 
-      console.log(`Generating image for chapter ${index + 1} with prompt length: ${prompt.length}`);
+      console.log(
+        `Generating image for chapter ${index + 1} with prompt length: ${prompt.length}`,
+      );
 
       const imageResult = await this.generateImageWithOpenAI(prompt);
       let uploadedUrl;
@@ -1625,23 +1646,31 @@ class StoryPersonalizer {
         console.log(`Uploading base64 image for chapter ${index + 1}`);
         const s3Key = this.s3Service.generateBase64ImageKey(
           `personalized-books/${childName}/chapters`,
-          "png"
+          "png",
         );
-        uploadedUrl = await this.s3Service.uploadBase64Image(imageResult.b64_json, s3Key, "image/png");
+        uploadedUrl = await this.s3Service.uploadBase64Image(
+          imageResult.b64_json,
+          s3Key,
+          "image/png",
+        );
       } else if (imageResult.url) {
         console.log(`Uploading URL image for chapter ${index + 1}`);
         const s3Key = this.s3Service.generateImageKey(
           `personalized-books/${childName}/chapters`,
-          `chapter-${index + 1}-${Date.now()}`
+          `chapter-${index + 1}-${Date.now()}`,
         );
-        uploadedUrl = await this.s3Service.uploadImageFromUrl(imageResult.url, s3Key);
+        uploadedUrl = await this.s3Service.uploadImageFromUrl(
+          imageResult.url,
+          s3Key,
+        );
       } else {
         throw new Error("No image data available from OpenAI");
       }
 
-      console.log(`Successfully uploaded image for chapter ${index + 1}: ${uploadedUrl}`);
+      console.log(
+        `Successfully uploaded image for chapter ${index + 1}: ${uploadedUrl}`,
+      );
       return uploadedUrl;
-
     } catch (error) {
       console.error(`Error generating chapter image ${index + 1}:`, error);
       return originalChapter.image_url || "";
@@ -1776,7 +1805,10 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
         genderDetails,
       );
 
-      console.log("Generating cover image with prompt length:", coverPrompt.length);
+      console.log(
+        "Generating cover image with prompt length:",
+        coverPrompt.length,
+      );
 
       const imageResult = await this.generateImageWithOpenAI(coverPrompt);
       let uploadedUrl;
@@ -1785,23 +1817,29 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
         console.log("Uploading base64 cover image");
         const s3Key = this.s3Service.generateBase64ImageKey(
           `personalized-books/${childName}/covers`,
-          "png"
+          "png",
         );
-        uploadedUrl = await this.s3Service.uploadBase64Image(imageResult.b64_json, s3Key, "image/png");
+        uploadedUrl = await this.s3Service.uploadBase64Image(
+          imageResult.b64_json,
+          s3Key,
+          "image/png",
+        );
       } else if (imageResult.url) {
         console.log("Uploading URL cover image");
         const s3Key = this.s3Service.generateImageKey(
           `personalized-books/${childName}/covers`,
-          `personalized-cover-${Date.now()}`
+          `personalized-cover-${Date.now()}`,
         );
-        uploadedUrl = await this.s3Service.uploadImageFromUrl(imageResult.url, s3Key);
+        uploadedUrl = await this.s3Service.uploadImageFromUrl(
+          imageResult.url,
+          s3Key,
+        );
       } else {
         throw new Error("No image data available from OpenAI for cover");
       }
 
       console.log(`Successfully uploaded cover image: ${uploadedUrl}`);
       return uploadedUrl;
-
     } catch (error) {
       console.error("Error generating personalized cover:", error);
       return null;
@@ -1893,7 +1931,9 @@ STYLE: children's book cover, no text, vibrant colors, captivating magical atmos
         console.log("OpenAI response received:", {
           hasData: !!response.data,
           dataLength: response.data?.length,
-          firstItemKeys: response.data?.[0] ? Object.keys(response.data[0]) : 'no data'
+          firstItemKeys: response.data?.[0]
+            ? Object.keys(response.data[0])
+            : "no data",
         });
 
         if (!response.data || !response.data[0]) {
@@ -1913,13 +1953,14 @@ STYLE: children's book cover, no text, vibrant colors, captivating magical atmos
         }
 
         throw new Error("No image data found in response");
-
       } catch (openAIError) {
         console.error("OpenAI image generation failed:", openAIError);
 
         if (retries < MAX_RETRIES - 1) {
           const delay = initialDelay * Math.pow(2, retries);
-          console.log(`Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`);
+          console.log(
+            `Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`,
+          );
           await sleep(delay);
           continue;
         }
@@ -1927,7 +1968,9 @@ STYLE: children's book cover, no text, vibrant colors, captivating magical atmos
       }
     }
 
-    console.warn("All retries failed for OpenAI image generation. Returning fallback.");
+    console.warn(
+      "All retries failed for OpenAI image generation. Returning fallback.",
+    );
     return {
       url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
       provider: "fallback",

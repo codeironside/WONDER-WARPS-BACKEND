@@ -8,31 +8,67 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
-    "full scene", "character focus", "action spotlight", "top third",
-    "bottom third", "diagonal spread", "circular frame", "speech bubble",
+    "full scene",
+    "character focus",
+    "action spotlight",
+    "top third",
+    "bottom third",
+    "diagonal spread",
+    "circular frame",
+    "speech bubble",
   ],
   MIDDLE_CHILD: [
-    "left panel", "right panel", "background layered", "floating elements",
-    "comic strip", "map integration", "cutaway view", "split screen",
+    "left panel",
+    "right panel",
+    "background layered",
+    "floating elements",
+    "comic strip",
+    "map integration",
+    "cutaway view",
+    "split screen",
   ],
   OLDER_CHILD: [
-    "text wrap", "border integrated", "corner accent", "header banner",
-    "footer illustration", "side bar", "watermark style", "interactive element",
+    "text wrap",
+    "border integrated",
+    "corner accent",
+    "header banner",
+    "footer illustration",
+    "side bar",
+    "watermark style",
+    "interactive element",
   ],
 };
 
 const SUGGESTED_FONTS = {
   YOUNGER_CHILD: [
-    "Comic Sans MS", "KG Primary Penmanship", "DK Crayon Crumble", "OpenDyslexic",
-    "Sassoon Primary", "Century Gothic", "Verdana", "Arial Rounded",
+    "Comic Sans MS",
+    "KG Primary Penmanship",
+    "DK Crayon Crumble",
+    "OpenDyslexic",
+    "Sassoon Primary",
+    "Century Gothic",
+    "Verdana",
+    "Arial Rounded",
   ],
   MIDDLE_CHILD: [
-    "Gill Sans", "Trebuchet MS", "Palatino", "Georgia", "Calibri",
-    "Cabin", "Quicksand", "Nunito",
+    "Gill Sans",
+    "Trebuchet MS",
+    "Palatino",
+    "Georgia",
+    "Calibri",
+    "Cabin",
+    "Quicksand",
+    "Nunito",
   ],
   OLDER_CHILD: [
-    "Times New Roman", "Garamond", "Baskerville", "Helvetica", "Lato",
-    "Merriweather", "Roboto", "Source Sans Pro",
+    "Times New Roman",
+    "Garamond",
+    "Baskerville",
+    "Helvetica",
+    "Lato",
+    "Merriweather",
+    "Roboto",
+    "Source Sans Pro",
   ],
   THEMED_FONTS: {
     fantasy: ["Papyrus", "Trajan Pro", "Uncial Antiqua"],
@@ -84,15 +120,31 @@ class StorybookGenerator {
 
   getTextLengthPerPage(ageMin) {
     if (ageMin <= 4) {
-      return { sentences: "1-2", words: "10-20", description: "very short and simple" };
+      return {
+        sentences: "1-2",
+        words: "10-20",
+        description: "very short and simple",
+      };
     } else if (ageMin <= 6) {
-      return { sentences: "2-3", words: "20-40", description: "short and simple" };
+      return {
+        sentences: "2-3",
+        words: "20-40",
+        description: "short and simple",
+      };
     } else if (ageMin <= 8) {
-      return { sentences: "3-4", words: "40-60", description: "moderate length" };
+      return {
+        sentences: "3-4",
+        words: "40-60",
+        description: "moderate length",
+      };
     } else if (ageMin <= 10) {
       return { sentences: "4-5", words: "60-80", description: "descriptive" };
     } else {
-      return { sentences: "5-7", words: "80-120", description: "detailed and engaging" };
+      return {
+        sentences: "5-7",
+        words: "80-120",
+        description: "detailed and engaging",
+      };
     }
   }
 
@@ -121,12 +173,44 @@ class StorybookGenerator {
       .toLowerCase();
 
     const commonKeywords = [
-      "adventure", "friendship", "magic", "fantasy", "bravery", "courage",
-      "explore", "journey", "discovery", "mystery", "hero", "quest", "animal",
-      "forest", "ocean", "space", "school", "family", "teamwork", "imagination",
-      "dream", "rescue", "secret", "treasure", "map", "island", "castle",
-      "dragon", "unicorn", "fairy", "wizard", "robot", "alien", "pirate",
-      "knight", "princess", "superhero", "detective",
+      "adventure",
+      "friendship",
+      "magic",
+      "fantasy",
+      "bravery",
+      "courage",
+      "explore",
+      "journey",
+      "discovery",
+      "mystery",
+      "hero",
+      "quest",
+      "animal",
+      "forest",
+      "ocean",
+      "space",
+      "school",
+      "family",
+      "teamwork",
+      "imagination",
+      "dream",
+      "rescue",
+      "secret",
+      "treasure",
+      "map",
+      "island",
+      "castle",
+      "dragon",
+      "unicorn",
+      "fairy",
+      "wizard",
+      "robot",
+      "alien",
+      "pirate",
+      "knight",
+      "princess",
+      "superhero",
+      "detective",
     ];
 
     const foundKeywords = commonKeywords.filter((keyword) =>
@@ -312,7 +396,14 @@ class StorybookGenerator {
     );
   }
 
-  async generateStorySpecificVeoPrompt(storyData, theme, ageMin, ageMax, name, gender) {
+  async generateStorySpecificVeoPrompt(
+    storyData,
+    theme,
+    ageMin,
+    ageMax,
+    name,
+    gender,
+  ) {
     try {
       const visualStyle = this._getVisualStyle(ageMin, theme);
       const storySummary = this.createStorySummary(storyData);
@@ -448,14 +539,15 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
         });
 
         return { url: response.data[0].url, provider: "openai" };
-
       } catch (openAIError) {
         console.error("OpenAI image generation failed:", openAIError);
 
         // Add retry logic with exponential backoff
         if (retries < MAX_RETRIES - 1) {
           const delay = initialDelay * Math.pow(2, retries);
-          console.log(`Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`);
+          console.log(
+            `Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`,
+          );
           await sleep(delay);
           continue;
         }
@@ -463,7 +555,9 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
       }
     }
 
-    console.warn("All retries failed for OpenAI image generation. Returning fallback.");
+    console.warn(
+      "All retries failed for OpenAI image generation. Returning fallback.",
+    );
     return {
       url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
       provider: "fallback",
@@ -485,7 +579,7 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
 
     Object.entries(otherDetails).forEach(([key, value]) => {
       if (value) {
-        const formattedKey = key.replace(/_/g, ' ');
+        const formattedKey = key.replace(/_/g, " ");
         prompt += `- ${formattedKey}: ${value}\n`;
       }
     });
@@ -604,7 +698,6 @@ You will return the story as a single JSON object with the following format:
         name,
         gender,
       };
-
     } catch (error) {
       console.error("Error generating story template:", error);
       throw new ErrorHandler(
@@ -642,7 +735,10 @@ You will return the story as a single JSON object with the following format:
 
     try {
       if (!theme) {
-        throw new ErrorHandler("Theme/Genre field is missing from the story template.", 400);
+        throw new ErrorHandler(
+          "Theme/Genre field is missing from the story template.",
+          400,
+        );
       }
 
       console.log(`Starting background media generation for: ${book_title}`);
@@ -683,7 +779,6 @@ You will return the story as a single JSON object with the following format:
         gender,
       );
       console.log("Veo Animation complete.");
-
 
       console.log(
         `Media generation complete for: ${book_title}. Preparing to save.`,
@@ -771,9 +866,11 @@ You will return the story as a single JSON object with the following format:
         images.push(imageResult);
 
         console.log(`Successfully generated image for chapter ${i + 1}`);
-
       } catch (error) {
-        console.error(`Critical error in generateImagesForChapters loop ${i + 1}:`, error);
+        console.error(
+          `Critical error in generateImagesForChapters loop ${i + 1}:`,
+          error,
+        );
         images.push({
           url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
           provider: "error",

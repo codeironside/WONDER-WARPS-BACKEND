@@ -19,7 +19,11 @@ export const saveTemplateAndGenerateMedia = (req, res, next) => {
     // We now expect 'storyTemplate' from the body, not 'story'.
     const { storyTemplate } = req.body;
 
-    if (!storyTemplate || !storyTemplate.book_title || !storyTemplate.chapters) {
+    if (
+      !storyTemplate ||
+      !storyTemplate.book_title ||
+      !storyTemplate.chapters
+    ) {
       // Check for the new object structure
       throw new ErrorHandler("Valid story template is required", 400);
     }
@@ -36,7 +40,8 @@ export const saveTemplateAndGenerateMedia = (req, res, next) => {
     // --- 2. START BACKGROUND JOB ---
     // Call the slow media generation function *without* await
     // It runs in the background after the response is sent.
-    storybookGenerator.generateMediaAndSave(storyTemplate, userId)
+    storybookGenerator
+      .generateMediaAndSave(storyTemplate, userId)
       .then(() => {
         // Job succeeded. Log it.
         logger.info(
