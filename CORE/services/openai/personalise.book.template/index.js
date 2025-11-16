@@ -1846,7 +1846,7 @@ IMPORTANT: Character must maintain consistent appearance across all images. No t
       characterDescription += ` in ${mergedChars.clothingColor}`;
 
     // return `BOOK COVER: "${bookTitle}"
-    return `BOOK COVER: "${bookTitle}"
+    return `
 
 ${characterDescription}
 
@@ -1875,7 +1875,7 @@ STYLE: children's book, no text, vibrant colors, captivating magical atmosphere.
 
         // FIXED: Use .generate() instead of .create() and correct model name
         const response = await this.openai.images.generate({
-          model: "dall-e-3", // Fixed model name
+          model: "gpt-image-1", // Fixed model name
           prompt: safePrompt,
           n: 1,
           size: "1024x1024",
