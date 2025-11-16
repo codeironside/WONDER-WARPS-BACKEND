@@ -437,18 +437,28 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
     for (let retries = 0; retries < MAX_RETRIES; retries++) {
       try {
         console.log("Generating image with OpenAI...");
-        const imageUrl = await this.openai.images.create({
+
+        // FIXED: Use .generate() instead of .create() and correct model name
+        const response = await this.openai.images.generate({
+          model: "dall-e-3", // Fixed model name
           prompt: safePrompt,
           n: 1,
           size: "1024x1024",
-          model: "gpt-image-1",
           ...options,
         });
 
-        return { url: imageUrl.data[0].url, provider: "openai" };
+        return { url: response.data[0].url, provider: "openai" };
 
       } catch (openAIError) {
         console.error("OpenAI image generation failed:", openAIError);
+
+        // Add retry logic with exponential backoff
+        if (retries < MAX_RETRIES - 1) {
+          const delay = initialDelay * Math.pow(2, retries);
+          console.log(`Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`);
+          await sleep(delay);
+          continue;
+        }
         break;
       }
     }
@@ -777,7 +787,7 @@ You will return the story as a single JSON object with the following format:
   async generateCoverImage(storyData, gender, name, theme, age_min) {
     const visualStyle = this._getVisualStyle(age_min, theme);
 
-    const safePrompt = `Children's book cover illustration ${visualStyle}.
+    const safePrompt = `Children's book illustration ${visualStyle}.
     A magical and joyful scene featuring the main character, ${name}, a ${gender} child protagonist.
     The cover should be bright, friendly, and enchanting, suitable for a children's storybook.
     ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
@@ -786,7 +796,7 @@ You will return the story as a single JSON object with the following format:
 
     try {
       const coverResult = await this.generateImageWithOpenAI(safePrompt, {
-        quality: "high",
+        quality: "standard",
       });
       return coverResult;
     } catch (error) {
