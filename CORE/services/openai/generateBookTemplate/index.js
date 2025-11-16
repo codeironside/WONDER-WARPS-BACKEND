@@ -2,11 +2,8 @@ import OpenAI from "openai";
 import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import VeoGenerator from "../../googlegenai/index.js";
-import ImagenGenerator from "../../imagen/index.js";
-// Make sure this path is correct for your project structure
 import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 
-// Helper function for the delay
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const IMAGE_POSITIONS = {
@@ -50,7 +47,6 @@ const SUGGESTED_FONTS = {
 class StorybookGenerator {
   constructor() {
     const apiKey = config.openai.API_KEY;
-    const googleApiKey = config.google.api_key;
 
     if (!apiKey) {
       throw new ErrorHandler(
@@ -58,16 +54,9 @@ class StorybookGenerator {
         500,
       );
     }
-    if (!googleApiKey) {
-      throw new ErrorHandler(
-        "Google API key is required for image generation",
-        500,
-      );
-    }
 
     this.openai = new OpenAI({ apiKey });
     this.veoGenerator = new VeoGenerator();
-    this.imagenGenerator = new ImagenGenerator();
   }
 
   getAgeGroup(ageMin) {
@@ -441,56 +430,30 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
     }
   }
 
-  /**
-   * ==========================================================================
-   * MODIFIED: generateImageWithGoogle
-   * This now includes exponential backoff to handle rate-limiting errors.
-   * ==========================================================================
-   */
-  async generateImageWithGoogle(safePrompt, options = {}) {
-    const MAX_RETRIES = 5; // Try a total of 5 times
-    let initialDelay = 5000; // Start with a 5-second delay
+  async generateImageWithOpenAI(safePrompt, options = {}) {
+    const MAX_RETRIES = 5;
+    let initialDelay = 5000;
 
     for (let retries = 0; retries < MAX_RETRIES; retries++) {
       try {
-        console.log("Generating image with Google Imagen...");
-        const imageUrl = await this.imagenGenerator.generateImage(safePrompt, {
+        console.log("Generating image with OpenAI...");
+        const imageUrl = await this.openai.images.create({
+          prompt: safePrompt,
+          n: 1,
           size: "1024x1024",
-          aspectRatio: "1:1",
-          model: "imagen-4.0-generate-001",
+          model: "gpt-image-1",
           ...options,
         });
 
-        // SUCCESS! Return the image.
-        return { url: imageUrl, provider: "google" };
+        return { url: imageUrl.data[0].url, provider: "openai" };
 
-      } catch (googleError) {
-        // Check if this is the rate-limit error (empty response)
-        const isRateLimitError = googleError.message.includes("rate limiting") ||
-          googleError.message.includes("no images");
-
-        if (isRateLimitError) {
-          if (retries === MAX_RETRIES - 1) {
-            // Last retry failed, so give up
-            console.error(`Google Imagen failed after ${MAX_RETRIES} retries:`, googleError.message);
-            break; // Exit loop and return fallback
-          }
-
-          // Calculate wait time: 5s, 10s, 20s, 40s
-          const waitTime = initialDelay * Math.pow(2, retries);
-          console.warn(`Google Imagen rate limit hit. Retrying in ${waitTime / 1000} seconds...`);
-          await sleep(waitTime);
-
-        } else {
-          // It was a different error (e.g., auth, bad prompt), fail immediately
-          console.error("Google Imagen failed (non-rate-limit):", googleError);
-          break; // Exit loop and return fallback
-        }
+      } catch (openAIError) {
+        console.error("OpenAI image generation failed:", openAIError);
+        break;
       }
     }
 
-    // If we're here, all retries failed
-    console.warn("All retries failed for Google Imagen. Returning fallback.");
+    console.warn("All retries failed for OpenAI image generation. Returning fallback.");
     return {
       url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
       provider: "fallback",
@@ -624,7 +587,7 @@ You will return the story as a single JSON object with the following format:
       return {
         ...storyData,
         keywords,
-        genre: theme, // This is the 'theme' from input
+        genre: theme,
         age_min: age_min.toString(),
         age_max: age_max.toString(),
         ...otherDetails,
@@ -641,13 +604,6 @@ You will return the story as a single JSON object with the following format:
     }
   }
 
-  /**
-   * ==========================================================================
-   * MODIFIED: generateMediaAndSave
-   * This is now sequential *without* the fixed 15s delays,
-   * relying on the retry logic in generateImageWithGoogle instead.
-   * ==========================================================================
-   */
   async generateMediaAndSave(storyTemplate, userId) {
     const {
       genre: theme,
@@ -681,9 +637,6 @@ You will return the story as a single JSON object with the following format:
 
       console.log(`Starting background media generation for: ${book_title}`);
 
-      // MODIFIED: Run requests sequentially, but *without* the long fixed delays.
-      // The retry logic in generateImageWithGoogle will handle rate-limiting.
-
       console.log("Step 1/3: Generating Cover Image...");
       const coverImage = await this.generateCoverImage(
         storyTemplate,
@@ -693,7 +646,6 @@ You will return the story as a single JSON object with the following format:
         ageMinNum,
       );
       console.log("Cover Image complete.");
-      // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
 
       console.log("Step 2/3: Generating Chapter Images (sequentially)...");
       const images = await this.generateImagesForChapters(
@@ -710,8 +662,6 @@ You will return the story as a single JSON object with the following format:
         clothing,
       );
       console.log("Chapter Images complete.");
-      // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
-
 
       console.log("Step 3/3: Generating Veo Animation...");
       const veoAnimation = await this.generateVeoAnimation(
@@ -773,13 +723,6 @@ You will return the story as a single JSON object with the following format:
     }
   }
 
-  /**
-   * ==========================================================================
-   * MODIFIED: generateImagesForChapters
-   * The fixed 15-second delay is REMOVED. The retry logic in 
-   * generateImageWithGoogle will handle all necessary waiting.
-   * ==========================================================================
-   */
   async generateImagesForChapters(
     chapters,
     age_min,
@@ -794,7 +737,6 @@ You will return the story as a single JSON object with the following format:
     clothing,
   ) {
     const images = [];
-    // const IMAGE_DELAY_MS = 15000; // <-- REMOVED
 
     for (let i = 0; i < chapters.length; i++) {
       const chapter = chapters[i];
@@ -815,28 +757,17 @@ You will return the story as a single JSON object with the following format:
         No book titles, no captions, no speech bubbles, no labels.
         Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
 
-        // This function now has retry logic built in.
-        const imageResult = await this.generateImageWithGoogle(safePrompt);
+        const imageResult = await this.generateImageWithOpenAI(safePrompt);
         images.push(imageResult);
 
-        // We check if the *result* was a fallback, not just if it threw an error
-        if (imageResult.provider === 'fallback') {
-          console.warn(`Successfully generated image for chapter ${i + 1} (used fallback)`);
-        } else {
-          console.log(`Successfully generated image for chapter ${i + 1}`);
-        }
-
-        // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
+        console.log(`Successfully generated image for chapter ${i + 1}`);
 
       } catch (error) {
-        // This catch is for *unexpected* errors, as generateImageWithGoogle handles its own.
         console.error(`Critical error in generateImagesForChapters loop ${i + 1}:`, error);
         images.push({
           url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
           provider: "error",
         });
-
-        // await sleep(GOOGLE_API_DELAY_MS); // <-- REMOVED
       }
     }
 
@@ -854,13 +785,11 @@ You will return the story as a single JSON object with the following format:
     Pure visual illustration only with captivating magical atmosphere. NO TEXT whatsoever`;
 
     try {
-      // This function now has retry logic built in.
-      const coverResult = await this.generateImageWithGoogle(safePrompt, {
+      const coverResult = await this.generateImageWithOpenAI(safePrompt, {
         quality: "high",
       });
       return coverResult;
     } catch (error) {
-      // This catch is for *unexpected* errors
       console.error("Critical error in generateCoverImage:", error);
       return {
         url: `https://via.placeholder.com/1024x1024/FF6B6B/FFFFFF?text=Cover+Image+Coming+Soon`,
