@@ -3,8 +3,13 @@ import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import VeoGenerator from "../../googlegenai/index.js";
 import ImagenGenerator from "../../imagen/index.js";
-// Make sure this path is correct for your project structure
 import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
+
+// Helper function for the delay
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// The delay you requested to avoid all rate-limiting.
+const GOOGLE_API_DELAY_MS = 15000; // 15 seconds
 
 const IMAGE_POSITIONS = {
   YOUNGER_CHILD: [
@@ -241,7 +246,6 @@ class StorybookGenerator {
   }
 
   _getVisualStyle(ageMin, theme) {
-    // FIX 1: Add check for undefined theme
     if (!theme) {
       console.warn("Theme is undefined, defaulting to Pixar style.");
       return "in a modern Pixar CGI style with high-fidelity rendering, realistic textures, and emotionally expressive rounded characters";
@@ -530,6 +534,7 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
     }
   }
 
+  // This function now uses the simple, fixed delay.
   async generateImageWithGoogle(safePrompt, options = {}) {
     try {
       console.log("Generating image with Google Imagen...");
@@ -695,15 +700,13 @@ You will return the story as a single JSON object with the following format:
   /**
    * ==========================================================================
    * MODIFIED: generateMediaAndSave
-   * This function now correctly destructures the template and builds
-   * a clean `finalBookData` object that matches the validation schema.
+   * This function is now SEQUENTIAL to avoid rate-limiting.
+   * It runs one Google API call at a time with a long delay between them.
    * ==========================================================================
    */
   async generateMediaAndSave(storyTemplate, userId) {
-    // FIX 2: Be more explicit in destructuring to avoid passing
-    // unknown fields to the validation schema.
     const {
-      genre: theme, // 'genre' from template becomes 'theme' for internal use
+      genre: theme,
       name = "",
       skin_tone = "",
       hair_type = "",
@@ -716,22 +719,18 @@ You will return the story as a single JSON object with the following format:
       age_max = 10,
       chapters,
       book_title,
-      // Explicitly pull fields that *are* in the schema
       author,
       suggested_font,
       description,
       price,
       is_personalizable,
       is_public,
-      // We will *ignore* fields not in the schema, like:
-      // photo_url, facial_features, total_pages, age_range, reading_level
     } = storyTemplate;
 
     const ageMinNum = parseInt(age_min, 10);
     const ageMaxNum = parseInt(age_max, 10);
 
     try {
-      // Add a check in case 'genre' was missing
       if (!theme) {
         throw new ErrorHandler(
           "Theme/Genre field is missing from the story template.",
@@ -741,30 +740,50 @@ You will return the story as a single JSON object with the following format:
 
       console.log(`Starting background media generation for: ${book_title}`);
 
-      const [images, coverImage, veoAnimation] = await Promise.all([
-        this.generateImagesForChapters(
-          chapters,
-          ageMinNum,
-          gender,
-          name,
-          theme,
-          skin_tone,
-          hair_type,
-          hairstyle,
-          hair_color,
-          eye_color,
-          clothing,
-        ),
-        this.generateCoverImage(storyTemplate, gender, name, theme, ageMinNum),
-        this.generateVeoAnimation(
-          storyTemplate,
-          theme,
-          ageMinNum,
-          ageMaxNum,
-          name,
-          gender,
-        ),
-      ]);
+      // MODIFIED: Removed Promise.all and made sequential
+
+      console.log("Step 1/3: Generating Cover Image...");
+      const coverImage = await this.generateCoverImage(
+        storyTemplate,
+        gender,
+        name,
+        theme,
+        ageMinNum,
+      );
+      console.log(`Cover Image complete. Waiting ${GOOGLE_API_DELAY_MS}ms...`);
+      await sleep(GOOGLE_API_DELAY_MS);
+
+      console.log("Step 2/3: Generating Chapter Images (sequentially)...");
+      const images = await this.generateImagesForChapters(
+        chapters,
+        ageMinNum,
+        gender,
+        name,
+        theme,
+        skin_tone,
+        hair_type,
+        hairstyle,
+        hair_color,
+        eye_color,
+        clothing,
+      );
+      // Note: A 15s delay is already built into the end of generateImagesForChapters
+      console.log(
+        `Chapter Images complete. Waiting ${GOOGLE_API_DELAY_MS}ms...`,
+      );
+      // We add one *extra* delay just to be safe before the video call.
+      await sleep(GOOGLE_API_DELAY_MS);
+
+      console.log("Step 3/3: Generating Veo Animation...");
+      const veoAnimation = await this.generateVeoAnimation(
+        storyTemplate,
+        theme,
+        ageMinNum,
+        ageMaxNum,
+        name,
+        gender,
+      );
+      console.log("Veo Animation complete.");
 
       console.log(
         `Media generation complete for: ${book_title}. Preparing to save.`,
@@ -776,8 +795,6 @@ You will return the story as a single JSON object with the following format:
         image_provider: images[index]?.provider || "none",
       }));
 
-      // FIX 3: Build the final data object *only* with keys
-      // that exist in your `BookTemplate.validationSchema`.
       const finalBookData = {
         user_id: userId,
         book_title,
@@ -794,7 +811,7 @@ You will return the story as a single JSON object with the following format:
         age_max: age_max.toString(),
         cover_image: [coverImage.url],
         genre: theme,
-        author: author || name, // Map the 'name' to the 'author' field
+        author: author || name,
         price: price || 0,
         chapters: chaptersWithImages,
         keywords: this.extractKeywords(storyTemplate),
@@ -804,7 +821,6 @@ You will return the story as a single JSON object with the following format:
         video_url: veoAnimation.veo_animation.video_uri,
       };
 
-      // This call will now pass validation
       await BookTemplate.create(finalBookData);
 
       console.log(
@@ -813,11 +829,16 @@ You will return the story as a single JSON object with the following format:
     } catch (error) {
       console.error(`FATAL: Background job failed for book: ${book_title}`);
       console.error(error);
-      // FIX 4: Re-throw the error so the controller's .catch() can see it if needed
       throw error;
     }
   }
 
+  /**
+   * ==========================================================================
+   * MODIFIED: generateImagesForChapters
+   * This function now includes your 15-second delay *inside* the loop.
+   * ==========================================================================
+   */
   async generateImagesForChapters(
     chapters,
     age_min,
@@ -832,7 +853,6 @@ You will return the story as a single JSON object with the following format:
     clothing,
   ) {
     const images = [];
-    const IMAGE_DELAY_MS = 3000;
 
     for (let i = 0; i < chapters.length; i++) {
       const chapter = chapters[i];
@@ -858,10 +878,9 @@ You will return the story as a single JSON object with the following format:
 
         console.log(`Successfully generated image for chapter ${i + 1}`);
 
-        if (i < chapters.length - 1) {
-          console.log(`Waiting ${IMAGE_DELAY_MS}ms to avoid rate limit...`);
-          await new Promise((resolve) => setTimeout(resolve, IMAGE_DELAY_MS));
-        }
+        // MODIFIED: Add the 15-second delay *after* the request
+        console.log(`Waiting ${GOOGLE_API_DELAY_MS}ms before next image...`);
+        await sleep(GOOGLE_API_DELAY_MS);
       } catch (error) {
         console.error(`Error generating image for chapter ${i + 1}:`, error);
         images.push({
@@ -869,9 +888,9 @@ You will return the story as a single JSON object with the following format:
           provider: "error",
         });
 
-        if (i < chapters.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, IMAGE_DELAY_MS));
-        }
+        // MODIFIED: Also wait 15 seconds on failure to let the API cool down
+        console.log(`Waiting ${GOOGLE_API_DELAY_MS}ms after error...`);
+        await sleep(GOOGLE_API_DELAY_MS);
       }
     }
 
