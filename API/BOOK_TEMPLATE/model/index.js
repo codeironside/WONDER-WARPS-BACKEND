@@ -933,11 +933,18 @@ class BookTemplate {
   }
 
   static async findPopularTemplates(options = {}) {
-    const { page = 1, limit = 10, min_popularity = 0, filters = {} } = options;
+    const {
+      page = 1,
+      limit = 8, // Changed default to 8
+      min_popularity = 0,
+      filters = {}
+    } = options;
 
     const skip = (page - 1) * limit;
 
+    // Ensure is_personalizable is true and add other filters
     const query = {
+      is_personalizable: true,
       ...filters,
       popularity_score: { $gte: min_popularity },
     };

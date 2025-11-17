@@ -7,25 +7,26 @@ export const getPopularTemplates = async (req, res, next) => {
   try {
     const {
       page = 1,
-      limit = 20,
-      min_popularity = 5,
+      limit = 8, // Set default limit to 8
+      min_popularity = 0,
       genre,
       age_min,
       age_max,
     } = req.query;
+
     const filters = {
-      is_public: true,
+      is_personalizable: true, // Add this filter
       popularity_score: { $gte: parseInt(min_popularity) },
     };
 
     if (genre) filters.genre = genre;
     if (age_min) filters.age_min = age_min;
     if (age_max) filters.age_max = age_max;
-    const result = await BookTemplate.findAllPublicTemplates({
+
+    const result = await BookTemplate.findPopularTemplates({
       page: parseInt(page),
       limit: parseInt(limit),
-      sortBy: "popularity_score",
-      sortOrder: "desc",
+      min_popularity: parseInt(min_popularity),
       filters,
     });
 
