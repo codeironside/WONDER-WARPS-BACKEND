@@ -26,6 +26,7 @@ class EmailService {
       payment: null,
       reset_password: null,
       change_password: null,
+      bookgenerationorpersonalisation: null,
     };
 
     this.loadTemplates();
@@ -41,14 +42,22 @@ class EmailService {
         "payment-template.html",
         "password-reset-otp.html",
         "passwordchangenotification.html",
+        "bookgenerationorpersonalisation.html",
       ];
 
-      const [otp, welcome, login, payment, reset_password, change_password] =
-        await Promise.all(
-          templateFiles.map((file) =>
-            fs.promises.readFile(path.join(templatesDir, file), "utf8"),
-          ),
-        );
+      const [
+        otp,
+        welcome,
+        login,
+        payment,
+        reset_password,
+        change_password,
+        bookgenerationorpersonalisation,
+      ] = await Promise.all(
+        templateFiles.map((file) =>
+          fs.promises.readFile(path.join(templatesDir, file), "utf8"),
+        ),
+      );
 
       this.templates = {
         otp,
@@ -57,6 +66,7 @@ class EmailService {
         payment,
         reset_password,
         change_password,
+        bookgenerationorpersonalisation,
       };
       logger.info("Email templates loaded successfully");
     } catch (error) {
@@ -274,6 +284,112 @@ class EmailService {
     } catch (error) {
       logger.error("Failed to send password reset email:", error);
       throw new Error(`Failed to send password reset email: ${error.message}`);
+    }
+  }
+  async bookgenerationorpersonalisation(
+    email,
+    bookTitle,
+    username,
+    type,
+    status,
+    additionalData = {},
+  ) {
+    try {
+      let statusConfig = {
+        success: {
+          subject: `🎉 Your ${type} "${bookTitle}" is Ready!`,
+          icon: "🎉",
+          title: "Your Book is Ready!",
+          class: "success",
+        },
+        processing: {
+          subject: `⏳ Your ${type} "${bookTitle}" is Being Processed`,
+          icon: "⏳",
+          title: "Book Generation in Progress",
+          class: "processing",
+        },
+        failed: {
+          subject: `⚠️ Issue with Your ${type} "${bookTitle}"`,
+          icon: "⚠️",
+          title: "Book Generation Issue",
+          class: "failed",
+        },
+      };
+
+      const configStatus = statusConfig[status] || statusConfig.processing;
+
+      let htmlContent = this.templates.bookgenerationorpersonalisation;
+
+      if (!htmlContent) {
+        throw new Error("Book generation template not found");
+      }
+
+      // Fix: Use config.app.base_url (with underscore) and provide fallback
+      const baseUrl = config.app.base_url || "https://mystoryhat.com";
+
+      htmlContent = htmlContent
+        .replace(/{{USER_NAME}}/g, username)
+        .replace(/{{BOOK_TITLE}}/g, bookTitle)
+        .replace(/{{TYPE}}/g, type)
+        .replace(/{{STATUS}}/g, status)
+        .replace(/{{STATUS_ICON}}/g, configStatus.icon)
+        .replace(/{{STATUS_TITLE}}/g, configStatus.title)
+        .replace(/{{STATUS_CLASS}}/g, configStatus.class)
+        .replace(/{{BOOK_URL}}/g, additionalData.bookUrl || `${baseUrl}/books`)
+        .replace(
+          /{{ERROR_MESSAGE}}/g,
+          additionalData.errorMessage || "Unknown error occurred",
+        );
+
+      const statusUpper = status.toUpperCase();
+      ["PROCESSING", "SUCCESS", "FAILED"].forEach((statusType) => {
+        if (statusType !== statusUpper) {
+          const regex = new RegExp(
+            `{{#if \\(eq STATUS "${statusType.toLowerCase()}"\\)}}[\\s\\S]*?{{\\/if}}`,
+            "g",
+          );
+          htmlContent = htmlContent.replace(regex, "");
+        }
+      });
+
+      htmlContent = htmlContent
+        .replace(new RegExp(`{{#if \\(eq STATUS "${status}"\\)}}`, "g"), "")
+        .replace(new RegExp(`{{\\/if}}`, "g"), "");
+
+      let textContent;
+      switch (status) {
+        case "success":
+          textContent = `Hi ${username}, Your ${type} "${bookTitle}" has been successfully completed! View it here: ${additionalData.bookUrl || `${baseUrl}/books`}`;
+          break;
+        case "processing":
+          textContent = `Hi ${username}, Your ${type} "${bookTitle}" is currently being processed. We're working on writing your story, creating illustrations, and producing animations. This usually takes 5-10 minutes. We'll notify you when it's ready!`;
+          break;
+        case "failed":
+          textContent = `Hi ${username}, We encountered an issue while processing your ${type} "${bookTitle}". Please try again or contact our support team at support@mystoryhat.com.`;
+          break;
+        default:
+          textContent = `Hi ${username}, Update on your ${type} "${bookTitle}": ${status}`;
+      }
+
+      const result = await this._sendEmail(
+        email,
+        configStatus.subject,
+        htmlContent,
+        textContent,
+      );
+
+      logger.info(`Book ${type} ${status} notification sent to ${email}`, {
+        messageId: result.MessageId,
+        bookTitle,
+        type,
+        status,
+      });
+      return result;
+    } catch (error) {
+      logger.error(`Failed to send book ${type} ${status} email:`, error);
+      throw new Error(
+        `Failed to send book ${type} ${status} email: ${error.message}`,
+      );
     }
   }
 

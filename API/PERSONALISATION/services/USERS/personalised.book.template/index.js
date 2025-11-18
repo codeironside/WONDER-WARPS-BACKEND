@@ -50,9 +50,7 @@ export const personalizeBook = async (req, res, next) => {
       personalizationDetails,
     );
 
-    logger.info(
-      `Book personalized for ${childName} by user ${userId} using AI`,
-    );
+    logger.info(`Book :${templateId} personalized by user ${userId} using AI`);
 
     sendResponse(
       res,

@@ -937,7 +937,7 @@ class BookTemplate {
       page = 1,
       limit = 8, // Changed default to 8
       min_popularity = 0,
-      filters = {}
+      filters = {},
     } = options;
 
     const skip = (page - 1) * limit;

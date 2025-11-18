@@ -3,6 +3,8 @@ import { config } from "@/config";
 import ErrorHandler from "@/Error";
 import VeoGenerator from "../../googlegenai/index.js";
 import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
+import User from "../../../../API/AUTH/model/index.js";
+import emailService from "../../Email/index.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -733,7 +735,34 @@ You will return the story as a single JSON object with the following format:
     const ageMinNum = parseInt(age_min, 10);
     const ageMaxNum = parseInt(age_max, 10);
 
+    let user = null;
+    let savedBook = null;
+
     try {
+      try {
+        user = await User.findById(userId);
+        if (!user) {
+          console.warn(`User not found with ID: ${userId}`);
+        }
+      } catch (userError) {
+        console.error("Failed to fetch user for notification:", userError);
+      }
+
+      if (user && user.email) {
+        try {
+          await emailService.bookgenerationorpersonalisation(
+            user.email,
+            book_title,
+            user.username || user.name || "there",
+            "book generation",
+            "processing",
+          );
+          console.log(`Processing notification sent to ${user.email}`);
+        } catch (emailError) {
+          console.error("Failed to send processing email:", emailError);
+        }
+      }
+
       if (!theme) {
         throw new ErrorHandler(
           "Theme/Genre field is missing from the story template.",
@@ -816,14 +845,55 @@ You will return the story as a single JSON object with the following format:
         video_url: veoAnimation.veo_animation.video_uri,
       };
 
-      await BookTemplate.create(finalBookData);
+      savedBook = await BookTemplate.create(finalBookData);
 
       console.log(
         `SUCCESS: Background job finished and saved book: ${book_title}`,
       );
+
+      if (user && user.email) {
+        try {
+          await emailService.bookgenerationorpersonalisation(
+            user.email,
+            book_title,
+            user.username || user.name || "there",
+            "book generation",
+            "success",
+            {
+              bookUrl: `${config.app.base_url}/books/${savedBook._id}`,
+            },
+          );
+          console.log(`Success notification sent to ${user.email}`);
+        } catch (emailError) {
+          console.error("Failed to send success email:", emailError);
+        }
+      }
+
+      return savedBook;
     } catch (error) {
       console.error(`FATAL: Background job failed for book: ${book_title}`);
       console.error(error);
+
+      if (user && user.email) {
+        try {
+          await emailService.bookgenerationorpersonalisation(
+            user.email,
+            book_title,
+            user.username || user.name || "there",
+            "book generation",
+            "failed",
+            {
+              errorMessage:
+                error.message ||
+                "Unknown error occurred during book generation",
+            },
+          );
+          console.log(`Failure notification sent to ${user.email}`);
+        } catch (emailError) {
+          console.error("Failed to send failure email:", emailError);
+        }
+      }
+
       throw error;
     }
   }
