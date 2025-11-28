@@ -27,6 +27,7 @@ class EmailService {
       reset_password: null,
       change_password: null,
       bookgenerationorpersonalisation: null,
+      gift_notification: null,
     };
 
     this.loadTemplates();
@@ -43,6 +44,7 @@ class EmailService {
         "password-reset-otp.html",
         "passwordchangenotification.html",
         "bookgenerationorpersonalisation.html",
+        "gift-notification.html",
       ];
 
       const [
@@ -53,6 +55,7 @@ class EmailService {
         reset_password,
         change_password,
         bookgenerationorpersonalisation,
+        gift_notification,
       ] = await Promise.all(
         templateFiles.map((file) =>
           fs.promises.readFile(path.join(templatesDir, file), "utf8"),
@@ -67,6 +70,7 @@ class EmailService {
         reset_password,
         change_password,
         bookgenerationorpersonalisation,
+        gift_notification,
       };
       logger.info("Email templates loaded successfully");
     } catch (error) {
@@ -324,7 +328,6 @@ class EmailService {
         throw new Error("Book generation template not found");
       }
 
-      // Fix: Use config.app.base_url (with underscore) and provide fallback
       const baseUrl = config.app.base_url || "https://mystoryhat.com";
 
       htmlContent = htmlContent
@@ -425,6 +428,69 @@ class EmailService {
       logger.error("Failed to send password change notification:", error);
       throw new Error(
         `Failed to send password change notification: ${error.message}`,
+      );
+    }
+  }
+
+  async sendGiftNotificationEmail(recipientEmail, giftDetails) {
+    const {
+      recipientName,
+      senderName,
+      bookTitle,
+      giftMessage,
+      claimUrl,
+      coverImage,
+    } = giftDetails;
+
+    try {
+      let htmlContent = this.templates.gift_notification
+        .replace(/{{RECIPIENT_NAME}}/g, recipientName)
+        .replace(/{{SENDER_NAME}}/g, senderName)
+        .replace(/{{BOOK_TITLE}}/g, bookTitle)
+        .replace(
+          /{{GIFT_MESSAGE}}/g,
+          giftMessage || "Enjoy this special story!",
+        )
+        .replace(/{{CLAIM_URL}}/g, claimUrl);
+
+      let coverImageSection = "";
+      if (coverImage) {
+        coverImageSection = `
+          <div style="text-align: center; margin: 20px 0;">
+            <img 
+              src="${coverImage}" 
+              alt="${bookTitle} Cover" 
+              style="max-width: 250px; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); border: 2px solid #ffffff;" 
+            />
+          </div>`;
+      }
+
+      htmlContent = htmlContent.replace(
+        "{{COVER_IMAGE_SECTION}}",
+        coverImageSection,
+      );
+
+      const textContent = `Hi ${recipientName}, ${senderName} has sent you a personalized storybook: "${bookTitle}"! \n\nMessage: "${giftMessage}" \n\nClaim your gift here: ${claimUrl}`;
+
+      const result = await this._sendEmail(
+        recipientEmail,
+        `🎁 Gift: "${bookTitle}" from ${senderName}`,
+        htmlContent,
+        textContent,
+      );
+
+      logger.info(
+        `Gift notification sent to ${recipientEmail} for book "${bookTitle}"`,
+        {
+          messageId: result.MessageId,
+          sender: senderName,
+        },
+      );
+      return result;
+    } catch (error) {
+      logger.error("Failed to send gift notification email:", error);
+      throw new Error(
+        `Failed to send gift notification email: ${error.message}`,
       );
     }
   }

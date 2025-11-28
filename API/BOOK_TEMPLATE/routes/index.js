@@ -11,11 +11,12 @@ import { getPublicTemplateWithChapters } from "../services/USERS/get.book.with.c
 import { getPublicTemplates } from "../services/USERS/get.all.book.template/index.js";
 import { updateBookTemplate } from "../services/ADMIN/update.a.book.template/index.js";
 import { getPopularTemplates } from "../services/USERS/getpopulartemplates/index.js";
+import { searchBookTemplates } from "../services/ADMIN/search.template/index.js";
 
 export const BookTemplateRouter = Router();
 
 // ===========public routes
-
+BookTemplateRouter.get("/search", searchBookTemplates);
 // authorize['admin']
 
 // ============private rotes

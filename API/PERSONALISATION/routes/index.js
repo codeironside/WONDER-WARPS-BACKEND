@@ -12,6 +12,8 @@ import { getUserPersonalizedBook } from "../services/USERS/get.one.for.user/inde
 import { getPersonalizedBooksByGenre } from "../services/USERS/search.by.genre/index.js";
 import { updateDedicationMessage } from "../services/USERS/add.dedication.messsage/index.js";
 import { getPrintDataToDownload } from "../services/USERS/printdatatodownload/index.js";
+import { sendGift } from "../services/USERS/gift.a.friend/index.js";
+import { redeemGift } from "../services/USERS/claim.a.gift/index.js";
 
 export const BookPersonalizer = Router();
 
@@ -29,6 +31,12 @@ BookPersonalizer.patch(
   updateDedicationMessage,
 );
 
+BookPersonalizer.post(
+  "/giftafriend/:bookId",
+  authorize(["User", "Admin"]),
+  sendGift,
+);
+BookPersonalizer.post("/redeem-gift", authorize(["User", "Admin"]), redeemGift);
 //=========for admin
 BookPersonalizer.get(
   "/admin/getallforuser/:userId",

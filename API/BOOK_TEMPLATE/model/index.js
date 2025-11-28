@@ -500,24 +500,6 @@ class BookTemplate {
     }
   }
 
-  static async findById(id) {
-    return await BookTemplateModel.findById(id);
-  }
-
-  static async findByIdWithChapters(id) {
-    const template = await BookTemplateModel.findById(id);
-    if (!template) return null;
-
-    const chapters = await Chapter.find({ book_template_id: id })
-      .sort({ order: 1 })
-      .select("-book_template_id -__v");
-
-    return {
-      ...template.toObject(),
-      chapters,
-    };
-  }
-
   static async findAll(options = {}) {
     const {
       page = 1,
@@ -757,6 +739,7 @@ class BookTemplate {
       throw new ErrorHandler("Failed to update personalization count", 500);
     }
   }
+
   static async findAllPublicTemplates(options = {}) {
     try {
       const {
@@ -777,17 +760,21 @@ class BookTemplate {
         query.is_personalizable = filters.is_personalizable;
       if (filters.keywords) query.keywords = { $in: filters.keywords };
 
-      const templates = await BookTemplateModel.find(query)
-        .select("-chapters -__v -user_id")
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      const total = await BookTemplateModel.countDocuments(query);
+      // Execute find, count, and distinct keywords aggregation in parallel
+      const [templates, total, keywords] = await Promise.all([
+        BookTemplateModel.find(query)
+          .select("-chapters -__v -user_id")
+          .sort(sort)
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        BookTemplateModel.countDocuments(query),
+        BookTemplateModel.distinct("keywords", query),
+      ]);
 
       return {
         templates,
+        keywords, // Sent separately as requested
         pagination: {
           page,
           limit,
@@ -799,6 +786,7 @@ class BookTemplate {
       throw new ErrorHandler("Failed to fetch public templates", 500);
     }
   }
+
   static async delete(id) {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -822,6 +810,130 @@ class BookTemplate {
       session.endSession();
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler("Failed to delete book template", 500);
+    }
+  }
+
+  static async searchPublicTemplates(q, options = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "popularity_score",
+        sortOrder = "desc",
+        filters = {},
+      } = options;
+
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+
+      const query = {
+        is_personalizable: true,
+      };
+
+      if (filters.is_public !== undefined) {
+        query.is_public = filters.is_public;
+      }
+
+      if (filters.genre) {
+        query.genre = filters.genre;
+      }
+
+      if (Array.isArray(filters.keywords) && filters.keywords.length > 0) {
+        query.keywords = { $in: filters.keywords };
+      }
+
+      const trimmedQ = (q || "").trim();
+      let startsWithRegex;
+
+      if (trimmedQ) {
+        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        const escaped = escapeRegex(trimmedQ);
+        const containsRegex = new RegExp(escaped, "i");
+        startsWithRegex = new RegExp("^" + escaped, "i");
+
+        // 🔹 Main search: includes title
+        query.$or = [
+          { book_title: containsRegex },
+          { genre: containsRegex },
+          { keywords: containsRegex },
+          { author: containsRegex },
+        ];
+      }
+
+      // 🔹 Suggestion query base (respect filters)
+      const suggestionBaseQuery = {
+        is_personalizable: true,
+      };
+
+      if (filters.is_public !== undefined) {
+        suggestionBaseQuery.is_public = filters.is_public;
+      }
+
+      if (filters.genre) {
+        suggestionBaseQuery.genre = filters.genre;
+      }
+
+      if (Array.isArray(filters.keywords) && filters.keywords.length > 0) {
+        suggestionBaseQuery.keywords = { $in: filters.keywords };
+      }
+
+      const [
+        templates,
+        total,
+        titleSuggestions,
+        genreSuggestions,
+        keywordSuggestions,
+      ] = await Promise.all([
+        BookTemplateModel.find(query)
+          .select("-chapters -__v -user_id")
+          .sort(sort)
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        BookTemplateModel.countDocuments(query),
+        trimmedQ
+          ? BookTemplateModel.distinct("book_title", {
+              ...suggestionBaseQuery,
+              book_title: startsWithRegex,
+            })
+          : [],
+        trimmedQ
+          ? BookTemplateModel.distinct("genre", {
+              ...suggestionBaseQuery,
+              genre: startsWithRegex,
+            })
+          : [],
+        trimmedQ
+          ? BookTemplateModel.distinct("keywords", {
+              ...suggestionBaseQuery,
+              keywords: startsWithRegex,
+            })
+          : [],
+      ]);
+
+      const clean = (arr) =>
+        (arr || [])
+          .filter((v) => typeof v === "string" && v.trim().length > 0)
+          .slice(0, 10);
+
+      return {
+        templates,
+        suggestions: {
+          titles: clean(titleSuggestions), // 🔹 title autosuggest
+          genres: clean(genreSuggestions),
+          keywords: clean(keywordSuggestions),
+        },
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to search book templates", 500);
     }
   }
 

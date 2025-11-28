@@ -149,7 +149,7 @@ Time: ${loginDetails.time}
 
 If this wasn't you, please reset your password immediately.
 
-View your account: https://my-story-hat.com/account
+View your account: https://mystoryhat.com/account
 
 Questions? Contact us at support@mystoryhat.com
 

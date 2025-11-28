@@ -6,7 +6,9 @@ import logger from "../../../CORE/utils/logger/index.js";
 import stripeService from "../../../CORE/services/stripe/index.js";
 import emailService from "../../../CORE/services/Email/index.js";
 import Receipt from "../../PAYMENT/model/index.js";
+import crypto from "crypto";
 import BookTemplate from "../../BOOK_TEMPLATE/model/index.js";
+import { config } from "../../../CORE/utils/config/index.js";
 
 const personalizedBookSchema = new mongoose.Schema(
   {
@@ -17,6 +19,7 @@ const personalizedBookSchema = new mongoose.Schema(
       maxlength: 255,
     },
     user_id: { type: String, required: true },
+    purchaser_id: { type: String, required: true, index: true },
     child_name: { type: String, required: true, trim: true, maxlength: 255 },
     child_age: { type: Number, min: 0, max: 18, default: null },
     gender_preference: {
@@ -35,6 +38,21 @@ const personalizedBookSchema = new mongoose.Schema(
       required: false,
     },
     is_personalized: { type: Boolean, default: false },
+    is_gift: { type: Boolean, default: false },
+    gift_metadata: {
+      recipient_email: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        default: null,
+      },
+      recipient_name: { type: String, trim: true, default: null },
+      sender_name: { type: String, trim: true, default: null },
+      gift_message: { type: String, maxlength: 500, default: null },
+      claim_token: { type: String, default: null, index: true }, // For the email link
+      is_claimed: { type: Boolean, default: false },
+      claimed_at: { type: Date, default: null },
+    },
     personalization_date: { type: Date, default: null },
     cover_image: [{ type: String, required: true }],
     video_url: { type: String, required: true },
@@ -70,6 +88,27 @@ class PersonalizedBook {
     price: Joi.number().precision(2).positive().required(),
     book_title: Joi.string().trim().max(255).optional(),
     genre: Joi.string().trim().max(100).optional(),
+    is_gift: Joi.boolean().optional(),
+    purchaser_id: { type: String, required: true, index: true },
+    gift_details: Joi.object({
+      recipient_email: Joi.string().email().required(),
+      recipient_name: Joi.string().trim().optional(),
+      sender_name: Joi.string().trim().optional(),
+      gift_message: Joi.string().max(500).optional(),
+    })
+      .when("is_gift", {
+        is: true,
+        then: Joi.required(),
+        otherwise: Joi.optional(),
+      })
+      .unknown(false),
+  });
+
+  static giftValidationSchema = Joi.object({
+    recipient_email: Joi.string().email().required(),
+    recipient_name: Joi.string().trim().min(1).required(),
+    sender_name: Joi.string().trim().optional(),
+    gift_message: Joi.string().max(1000).optional(),
   }).unknown(false);
 
   static personalizationValidationSchema = Joi.object({
@@ -95,6 +134,7 @@ class PersonalizedBook {
 
       const bookData = {
         ...validatedData,
+        purchaser_id: validatedData.user_id,
         personalized_content: null,
         is_personalized: false,
       };
@@ -109,6 +149,131 @@ class PersonalizedBook {
         `Failed to create book for payment: ${error.message}`,
         500,
       );
+    }
+  }
+
+  static async initiateGift(bookId, userId, giftData) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const { error, value: validatedGiftData } =
+        this.giftValidationSchema.validate(giftData);
+
+      if (error) {
+        throw new ErrorHandler(this.formatValidationError(error), 400);
+      }
+      const book = await PersonalizedBookModel.findOne({
+        _id: bookId,
+        user_id: userId,
+      }).session(session);
+
+      if (!book) {
+        throw new ErrorHandler(
+          "Book not found or you do not have permission",
+          404,
+        );
+      }
+
+      if (!book.is_paid) {
+        throw new ErrorHandler(
+          "You must pay for the book before gifting it",
+          402,
+        );
+      }
+
+      if (book.is_gift && book.gift_metadata?.status === "claimed") {
+        throw new ErrorHandler(
+          "This book has already been gifted and claimed",
+          400,
+        );
+      }
+
+      const claimToken = crypto.randomBytes(32).toString("hex");
+      book.purchaser_id = userId;
+      book.is_gift = true;
+      book.gift_metadata = {
+        recipient_email: validatedGiftData.recipient_email,
+        recipient_name: validatedGiftData.recipient_name,
+        sender_name: validatedGiftData.sender_name || "A friend",
+        gift_message: validatedGiftData.gift_message,
+        claim_token: claimToken,
+        status: "sent",
+        sent_at: new Date(),
+        is_claimed: false,
+      };
+
+      await book.save({ session });
+
+      const claimUrl = `${config.app.base_url}/redeem-gift?token=${claimToken}`;
+
+      try {
+        await emailService.sendGiftNotificationEmail(
+          validatedGiftData.recipient_email,
+          {
+            recipientName: validatedGiftData.recipient_name,
+            senderName: validatedGiftData.sender_name,
+            bookTitle: book.book_title,
+            giftMessage: validatedGiftData.gift_message,
+            claimUrl: claimUrl,
+            coverImage: book.cover_image?.[0] || "",
+          },
+        );
+      } catch (emailError) {
+        logger.error("Failed to send gift email", emailError);
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info(
+        `Book ${bookId} gifted to ${validatedGiftData.recipient_email}`,
+      );
+      return book.toObject();
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(`Failed to gift book: ${error.message}`, 500);
+    }
+  }
+
+  static async claimGift(token, recipientUserId) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      console.log(token);
+      const book = await PersonalizedBookModel.findOne({
+        "gift_metadata.claim_token": token,
+        "gift_metadata.status": "sent",
+      }).session(session);
+
+      if (!book) {
+        throw new ErrorHandler("Invalid or expired gift link", 404);
+      }
+
+      const previousOwnerId = book.user_id;
+      book.user_id = recipientUserId;
+
+      book.gift_metadata.status = "claimed";
+      book.gift_metadata.is_claimed = true;
+      book.gift_metadata.claimed_at = new Date();
+      book.gift_metadata.claim_token = null;
+
+      await book.save({ session });
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info(
+        `Gift ${book._id} transferred from ${previousOwnerId} to ${recipientUserId}`,
+      );
+      return book.toObject();
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(`Failed to claim gift: ${error.message}`, 500);
     }
   }
 
