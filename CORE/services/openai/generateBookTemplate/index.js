@@ -956,7 +956,7 @@ You will return the story as a single JSON object with the following format:
 
     const safePrompt = `Children's book illustration ${visualStyle}.
     A magical and joyful scene featuring the main character, ${name}, a ${gender} child protagonist.
-    The cover should be bright, friendly, and enchanting, suitable for a children's storybook.
+    The image should be bright, friendly, and enchanting, suitable for a children's storybook.
     ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
     No book titles, no captions, no speech bubbles, no labels.
     Pure visual illustration only with captivating magical atmosphere. NO TEXT whatsoever`;

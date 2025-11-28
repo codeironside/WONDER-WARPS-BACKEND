@@ -52,6 +52,7 @@ const personalizedBookSchema = new mongoose.Schema(
       claim_token: { type: String, default: null, index: true }, // For the email link
       is_claimed: { type: Boolean, default: false },
       claimed_at: { type: Date, default: null },
+      status: { type: String, default: "null" },
     },
     personalization_date: { type: Date, default: null },
     cover_image: [{ type: String, required: true }],

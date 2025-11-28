@@ -12,7 +12,7 @@ export const searchBookTemplates = async (req, res, next) => {
       sortOrder = "desc",
       genre,
       keywords,
-      is_public,
+      is_personalizable,
     } = req.query;
 
     const filters = {};
@@ -21,8 +21,8 @@ export const searchBookTemplates = async (req, res, next) => {
       filters.genre = String(genre).trim();
     }
 
-    if (typeof is_public !== "undefined") {
-      filters.is_public = String(is_public) === "true";
+    if (typeof is_personalizable !== "undefined") {
+      filters.is_personalizable = String(is_personalizable) === "true";
     }
 
     if (keywords) {

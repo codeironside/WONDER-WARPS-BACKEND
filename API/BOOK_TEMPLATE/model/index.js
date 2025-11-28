@@ -745,22 +745,37 @@ class BookTemplate {
       const {
         page = 1,
         limit = 20,
-        sortBy,
+        sortBy = "createdAt",
         sortOrder = "desc",
         filters = {},
       } = options;
 
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
-      const query = { is_personalizable: true };
-      if (filters.genre) query.genre = filters.genre;
-      if (filters.age_min) query.age_min = filters.age_min;
-      if (filters.age_max) query.age_max = filters.age_max;
-      if (filters.is_personalizable !== undefined)
-        query.is_personalizable = filters.is_personalizable;
-      if (filters.keywords) query.keywords = { $in: filters.keywords };
 
-      // Execute find, count, and distinct keywords aggregation in parallel
+      const query = { is_personalizable: true };
+
+      if (filters.is_personalizable !== undefined) {
+        query.is_personalizable = filters.is_personalizable;
+      }
+
+      if (filters.genre) {
+        // exact match; if you want contains, switch to $regex here
+        query.genre = filters.genre;
+      }
+
+      if (filters.age_min) {
+        query.age_min = filters.age_min;
+      }
+
+      if (filters.age_max) {
+        query.age_max = filters.age_max;
+      }
+
+      if (filters.keywords && filters.keywords.length > 0) {
+        query.keywords = { $in: filters.keywords };
+      }
+      console.log(query);
       const [templates, total, keywords] = await Promise.all([
         BookTemplateModel.find(query)
           .select("-chapters -__v -user_id")
@@ -774,7 +789,7 @@ class BookTemplate {
 
       return {
         templates,
-        keywords, // Sent separately as requested
+        keywords,
         pagination: {
           page,
           limit,
@@ -826,12 +841,12 @@ class BookTemplate {
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-      const query = {
-        is_personalizable: true,
-      };
+      const query = {};
 
-      if (filters.is_public !== undefined) {
-        query.is_public = filters.is_public;
+      if (typeof filters.is_personalizable !== "undefined") {
+        query.is_personalizable = filters.is_personalizable;
+      } else {
+        query.is_personalizable = true;
       }
 
       if (filters.genre) {
@@ -843,16 +858,14 @@ class BookTemplate {
       }
 
       const trimmedQ = (q || "").trim();
-      let startsWithRegex;
+      let containsRegex;
 
       if (trimmedQ) {
         const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
         const escaped = escapeRegex(trimmedQ);
-        const containsRegex = new RegExp(escaped, "i");
-        startsWithRegex = new RegExp("^" + escaped, "i");
+        containsRegex = new RegExp(escaped, "i");
 
-        // 🔹 Main search: includes title
         query.$or = [
           { book_title: containsRegex },
           { genre: containsRegex },
@@ -861,13 +874,12 @@ class BookTemplate {
         ];
       }
 
-      // 🔹 Suggestion query base (respect filters)
-      const suggestionBaseQuery = {
-        is_personalizable: true,
-      };
+      const suggestionBaseQuery = {};
 
-      if (filters.is_public !== undefined) {
-        suggestionBaseQuery.is_public = filters.is_public;
+      if (typeof filters.is_personalizable !== "undefined") {
+        suggestionBaseQuery.is_personalizable = filters.is_personalizable;
+      } else {
+        suggestionBaseQuery.is_personalizable = true;
       }
 
       if (filters.genre) {
@@ -895,19 +907,19 @@ class BookTemplate {
         trimmedQ
           ? BookTemplateModel.distinct("book_title", {
               ...suggestionBaseQuery,
-              book_title: startsWithRegex,
+              book_title: containsRegex,
             })
           : [],
         trimmedQ
           ? BookTemplateModel.distinct("genre", {
               ...suggestionBaseQuery,
-              genre: startsWithRegex,
+              genre: containsRegex,
             })
           : [],
         trimmedQ
           ? BookTemplateModel.distinct("keywords", {
               ...suggestionBaseQuery,
-              keywords: startsWithRegex,
+              keywords: containsRegex,
             })
           : [],
       ]);
@@ -920,7 +932,7 @@ class BookTemplate {
       return {
         templates,
         suggestions: {
-          titles: clean(titleSuggestions), // 🔹 title autosuggest
+          titles: clean(titleSuggestions),
           genres: clean(genreSuggestions),
           keywords: clean(keywordSuggestions),
         },
