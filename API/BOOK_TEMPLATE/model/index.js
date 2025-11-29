@@ -802,6 +802,79 @@ class BookTemplate {
     }
   }
 
+  static async getTemplateWithPendingBook(templateId, userId) {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(templateId)) {
+        throw new ErrorHandler("Invalid Template ID", 400);
+      }
+
+      const template = await this.findByIdWithChapters(templateId);
+
+      if (!template) {
+        throw new ErrorHandler("Book Template not found", 404);
+      }
+
+      const PersonalizedBookModel = mongoose.model("PersonalizedBook");
+
+      const pendingBook = await PersonalizedBookModel.findOne({
+        original_template_id: templateId,
+        user_id: userId,
+        is_personalized: false,
+      }).lean();
+
+      // Flattened response object
+      const comprehensiveResponse = {
+        _id: template._id,
+        title: template.book_title,
+        description: template.description,
+        suggested_font: template.suggested_font,
+        base_price: template.price,
+        video_url: template.video_url,
+        cover_images: template.cover_image,
+        age_range: {
+          min: template.age_min,
+          max: template.age_max
+        },
+        default_configuration: {
+          hair_type: template.hair_type,
+          hair_style: template.hair_style,
+          hair_color: template.hair_color,
+          eye_color: template.eye_color,
+          skin_tone: template.skin_tone,
+          clothing: template.clothing,
+          gender: template.gender,
+        },
+        is_personalizable: template.is_personalizable,
+        chapters: template.chapters.map(chap => ({
+          chapter_title: chap.chapter_title,
+          chapter_content: chap.chapter_content,
+          image_url: chap.image_url,
+          image_position: chap.image_position,
+          order: chap.order
+        })),
+        user_personalization_status: {
+          has_pending_book: !!pendingBook,
+          book_id: pendingBook ? pendingBook._id : null,
+          payment_status: pendingBook ? (pendingBook.is_paid ? "paid" : "unpaid") : "none",
+          is_gift: pendingBook ? pendingBook.is_gift : false,
+          child_name: pendingBook ? pendingBook.child_name : null,
+          child_age: pendingBook ? pendingBook.child_age : null,
+          gender_preference: pendingBook ? pendingBook.gender_preference : null,
+          dedication_message: pendingBook ? pendingBook.dedication_message : null
+        }
+      };
+
+      return comprehensiveResponse;
+
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to fetch template with pending book: ${error.message}`,
+        500
+      );
+    }
+  }
+
   static async delete(id) {
     const session = await mongoose.startSession();
     session.startTransaction();

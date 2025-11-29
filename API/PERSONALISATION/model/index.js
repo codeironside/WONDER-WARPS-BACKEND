@@ -255,6 +255,7 @@ class PersonalizedBook {
       }
 
       const previousOwnerId = book.user_id;
+      book.purchaser_id = previousOwnerId
       book.user_id = recipientUserId;
 
       book.gift_metadata.status = "claimed";

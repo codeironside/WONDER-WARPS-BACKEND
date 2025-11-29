@@ -12,6 +12,7 @@ import { getPublicTemplates } from "../services/USERS/get.all.book.template/inde
 import { updateBookTemplate } from "../services/ADMIN/update.a.book.template/index.js";
 import { getPopularTemplates } from "../services/USERS/getpopulartemplates/index.js";
 import { searchBookTemplates } from "../services/ADMIN/search.template/index.js";
+import { getPublicTemplateWithChapterssigned } from "../services/USERS/getbookwithchaptersforuser/index.js";
 
 export const BookTemplateRouter = Router();
 
@@ -62,6 +63,11 @@ BookTemplateRouter.get(
 BookTemplateRouter.get(
   "/getbookwithchaptersforuser/:id",
   getPublicTemplateWithChapters,
+);
+BookTemplateRouter.get(
+  "/getbookwithchaptersforusersigned/:id",
+  authorize(["Admin", "User"]),
+  getPublicTemplateWithChapterssigned,
 );
 BookTemplateRouter.put(
   "/updateBookTemplates/:id",
