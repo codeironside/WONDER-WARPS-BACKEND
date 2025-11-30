@@ -5,10 +5,14 @@ import Blog from "../../model/index.js";
 export const createBlog = async (req, res, next) => {
   try {
     const blogData = req.body;
+
     if (req.user) {
       blogData.author = {
-        ...blogData.author,
-        user_id: req.user._id,
+        name: `${req.user.firstname} ${req.user.lastname}`,
+        role: "Admin",
+        avatar: req.user.profilePicture || null,
+        // Use .toString() to get the clean 24-char hex string
+        user_id: req.user._id.toString(),
       };
     }
 

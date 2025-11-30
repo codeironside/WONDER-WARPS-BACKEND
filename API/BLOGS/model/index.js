@@ -87,6 +87,7 @@ const BlogModel = mongoose.model("Blog", blogSchema);
 class Blog {
   static s3Service = new S3Service();
 
+  // --- UPDATED VALIDATION SCHEMA ---
   static validationSchema = Joi.object({
     title: Joi.string().trim().min(5).max(255).required(),
     excerpt: Joi.string().trim().min(10).max(300).required(),
@@ -100,8 +101,11 @@ class Blog {
     author: Joi.object({
       name: Joi.string().required(),
       role: Joi.string().optional(),
-      avatar: Joi.string().uri().optional(),
-      user_id: Joi.string().hex().length(24).optional(),
+      avatar: Joi.string().uri().allow(null).optional(),
+      // Allow string (24 chars) OR ObjectId object
+      user_id: Joi.alternatives()
+        .try(Joi.string().hex().length(24), Joi.object())
+        .optional(),
     }).required(),
     is_published: Joi.boolean().default(false),
     is_featured: Joi.boolean().default(false),
@@ -120,7 +124,11 @@ class Blog {
     author: Joi.object({
       name: Joi.string().optional(),
       role: Joi.string().optional(),
-      avatar: Joi.string().uri().optional(),
+      avatar: Joi.string().uri().allow(null).optional(),
+      // Allow string (24 chars) OR ObjectId object
+      user_id: Joi.alternatives()
+        .try(Joi.string().hex().length(24), Joi.object())
+        .optional(),
     }).optional(),
     is_published: Joi.boolean().optional(),
     is_featured: Joi.boolean().optional(),
@@ -178,11 +186,11 @@ class Blog {
     }
 
     const isVideo = file.mimetype.startsWith("video/");
-    const maxSize = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 8 * 1024 * 1024;
 
     if (file.size > maxSize) {
       throw new ErrorHandler(
-        `File too large. Limit is ${isVideo ? "50MB" : "5MB"}.`,
+        `File too large. Limit is ${isVideo ? "50MB" : "8MB"}.`,
         400,
       );
     }
