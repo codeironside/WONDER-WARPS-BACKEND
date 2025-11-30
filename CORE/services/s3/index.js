@@ -304,6 +304,21 @@ class S3Service {
       );
     }
   }
+  generateBlogAssetKey(mimetype) {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 9);
+    let extension = "bin";
+    if (mimetype.includes("jpeg") || mimetype.includes("jpg"))
+      extension = "jpg";
+    else if (mimetype.includes("png")) extension = "png";
+    else if (mimetype.includes("gif")) extension = "gif";
+    else if (mimetype.includes("webp")) extension = "webp";
+    else if (mimetype.includes("mp4")) extension = "mp4";
+    else if (mimetype.includes("webm")) extension = "webm";
+    else if (mimetype.includes("quicktime")) extension = "mov";
+
+    return `blogs/content/${timestamp}-${random}.${extension}`;
+  }
 
   async generatePresignedUrl(key, expiresIn = 3600) {
     try {

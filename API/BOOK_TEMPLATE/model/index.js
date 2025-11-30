@@ -833,7 +833,7 @@ class BookTemplate {
         cover_images: template.cover_image,
         age_range: {
           min: template.age_min,
-          max: template.age_max
+          max: template.age_max,
         },
         default_configuration: {
           hair_type: template.hair_type,
@@ -845,32 +845,37 @@ class BookTemplate {
           gender: template.gender,
         },
         is_personalizable: template.is_personalizable,
-        chapters: template.chapters.map(chap => ({
+        chapters: template.chapters.map((chap) => ({
           chapter_title: chap.chapter_title,
           chapter_content: chap.chapter_content,
           image_url: chap.image_url,
           image_position: chap.image_position,
-          order: chap.order
+          order: chap.order,
         })),
         user_personalization_status: {
           has_pending_book: !!pendingBook,
           book_id: pendingBook ? pendingBook._id : null,
-          payment_status: pendingBook ? (pendingBook.is_paid ? "paid" : "unpaid") : "none",
+          payment_status: pendingBook
+            ? pendingBook.is_paid
+              ? "paid"
+              : "unpaid"
+            : "none",
           is_gift: pendingBook ? pendingBook.is_gift : false,
           child_name: pendingBook ? pendingBook.child_name : null,
           child_age: pendingBook ? pendingBook.child_age : null,
           gender_preference: pendingBook ? pendingBook.gender_preference : null,
-          dedication_message: pendingBook ? pendingBook.dedication_message : null
-        }
+          dedication_message: pendingBook
+            ? pendingBook.dedication_message
+            : null,
+        },
       };
 
       return comprehensiveResponse;
-
     } catch (error) {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(
         `Failed to fetch template with pending book: ${error.message}`,
-        500
+        500,
       );
     }
   }

@@ -1,12 +1,10 @@
-import ErrorHandler from "@/Error";
 import { sendResponse } from "../../../../../CORE/utils/response.handler/index.js";
-import logger from "../../../../../CORE/utils/logger/index.js";
 import PersonalizedBook from "../../../model/index.js";
 
 export const redeemGift = async (req, res, next) => {
   try {
     const { token } = req.body;
-    const userId = req.user.id; // User must be logged in to claim
+    const userId = req.user._id;
 
     const claimedBook = await PersonalizedBook.claimGift(token, userId);
 

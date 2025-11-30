@@ -6,6 +6,7 @@ import { BookPersonalizer } from "../../API/PERSONALISATION/routes/index.js";
 import { fileRouter } from "../../API/FILES/routes/index.js";
 import { PaymentRouter } from "../../API/PAYMENT/routes/index.js";
 import { printOrderRouter } from "../../API/PRINTANDDELIVERSERVICE/routes/index.js";
+import { blogRouter } from "../../API/BLOGS/routes/index.js";
 
 export const apiRouter = Router();
 
@@ -16,3 +17,4 @@ apiRouter.use("/file", fileRouter);
 apiRouter.use("/personalization", BookPersonalizer);
 apiRouter.use("/payment", PaymentRouter);
 apiRouter.use("/printorder", printOrderRouter);
+apiRouter.use("/blogs", blogRouter);

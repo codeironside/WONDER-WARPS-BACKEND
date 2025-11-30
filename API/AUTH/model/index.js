@@ -392,6 +392,7 @@ userSchema.statics.getDashboardStats = async function () {
       roles,
       genreStats,
       recentActivities,
+      blogStats, // <--- New
     ] = await Promise.all([
       this.getUserStatistics(),
       this.getBookTemplateStatistics(),
@@ -400,16 +401,22 @@ userSchema.statics.getDashboardStats = async function () {
       this.getAllRoles(),
       this.getGenreStatistics(),
       this.getRecentActivities(),
+      this.getBlogStatistics(), // <--- New call
     ]);
+
+    // NEW: Generate Graph Data for Charting
+    const graphData = await this.generateGraphData();
 
     return {
       user_stats: userStats,
       book_template_stats: bookTemplateStats,
       personalized_book_stats: personalizedBookStats,
       payment_stats: paymentStats,
+      blog_stats: blogStats, // <--- Included in response
       roles: roles,
       genre_stats: genreStats,
       recent_activities: recentActivities,
+      graph_data: graphData, // <--- New format for charts
     };
   } catch (error) {
     console.log(error);
@@ -417,6 +424,115 @@ userSchema.statics.getDashboardStats = async function () {
   }
 };
 
+// === NEW BLOG STATISTICS METHOD ===
+userSchema.statics.getBlogStatistics = async function () {
+  try {
+    const BlogModel = mongoose.model("Blog");
+
+    const totalBlogs = await BlogModel.countDocuments();
+    const publishedBlogs = await BlogModel.countDocuments({
+      is_published: true,
+    });
+    const draftBlogs = await BlogModel.countDocuments({ is_published: false });
+
+    // Sum of all views
+    const viewsResult = await BlogModel.aggregate([
+      { $group: { _id: null, totalViews: { $sum: "$views" } } },
+    ]);
+    const totalViews = viewsResult[0]?.totalViews || 0;
+
+    const blogsByCategory = await BlogModel.aggregate([
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $project: { category: "$_id", count: 1, _id: 0 } },
+    ]);
+
+    return {
+      total_blogs: totalBlogs,
+      published_blogs: publishedBlogs,
+      draft_blogs: draftBlogs,
+      total_views: totalViews,
+      blogs_by_category: blogsByCategory,
+    };
+  } catch (error) {
+    console.error("Failed to fetch blog statistics", error);
+    return {
+      total_blogs: 0,
+      published_blogs: 0,
+      draft_blogs: 0,
+      total_views: 0,
+      blogs_by_category: [],
+    };
+  }
+};
+
+userSchema.statics.generateGraphData = async function () {
+  try {
+    const ReceiptModel = mongoose.model("Receipt");
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    sixMonthsAgo.setDate(1);
+
+    const revenueGraph = await ReceiptModel.aggregate([
+      {
+        $match: {
+          status: "succeeded",
+          paid_at: { $gte: sixMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$paid_at" },
+            month: { $month: "$paid_at" },
+            dateStr: { $dateToString: { format: "%Y-%m", date: "$paid_at" } },
+          },
+          revenue: { $sum: "$amount" },
+          orders: { $sum: 1 },
+        },
+      },
+      { $sort: { "_id.dateStr": 1 } },
+      {
+        $project: {
+          name: "$_id.dateStr",
+          revenue: 1,
+          orders: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    const userGrowthGraph = await this.aggregate([
+      {
+        $match: { createdAt: { $gte: sixMonthsAgo } },
+      },
+      {
+        $group: {
+          _id: {
+            dateStr: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
+          },
+          new_users: { $sum: 1 },
+        },
+      },
+      { $sort: { "_id.dateStr": 1 } },
+      {
+        $project: {
+          name: "$_id.dateStr",
+          new_users: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    return {
+      revenue_over_time: revenueGraph,
+      user_growth_over_time: userGrowthGraph,
+    };
+  } catch (error) {
+    console.error("Failed to generate graph data", error);
+    return { revenue_over_time: [], user_growth_over_time: [] };
+  }
+};
 userSchema.statics.getUserStatistics = async function () {
   try {
     const totalUsers = await this.countDocuments();
