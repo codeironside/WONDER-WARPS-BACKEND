@@ -820,7 +820,7 @@ class BookTemplate {
         original_template_id: templateId,
         user_id: userId,
         is_personalized: false,
-      }).lean();
+      });
 
       // Flattened response object
       const comprehensiveResponse = {
@@ -829,8 +829,10 @@ class BookTemplate {
         description: template.description,
         suggested_font: template.suggested_font,
         base_price: template.price,
+        user_id: userId,
         video_url: template.video_url,
         cover_images: template.cover_image,
+        purchaser_id: pendingBook ? pendingBook.purchaser_id : null,
         age_range: {
           min: template.age_min,
           max: template.age_max,
@@ -864,6 +866,7 @@ class BookTemplate {
           child_name: pendingBook ? pendingBook.child_name : null,
           child_age: pendingBook ? pendingBook.child_age : null,
           gender_preference: pendingBook ? pendingBook.gender_preference : null,
+          purchaser_id: pendingBook ? pendingBook.purchaser_id : null,
           dedication_message: pendingBook
             ? pendingBook.dedication_message
             : null,
