@@ -20,7 +20,7 @@ export const BookPersonalizer = Router();
 
 //=============for admin and user both
 BookPersonalizer.patch(
-  "/:bookId/shipping",
+  "/ship/:bookId/shipping",
   authorize(["Admin", "User"]),
   saveShippingDetails,
 );
