@@ -14,10 +14,16 @@ import { updateDedicationMessage } from "../services/USERS/add.dedication.messsa
 import { getPrintDataToDownload } from "../services/USERS/printdatatodownload/index.js";
 import { sendGift } from "../services/USERS/gift.a.friend/index.js";
 import { redeemGift } from "../services/USERS/claim.a.gift/index.js";
+import { saveShippingDetails } from "../services/USERS/shipping/index.js";
 
 export const BookPersonalizer = Router();
 
 //=============for admin and user both
+BookPersonalizer.patch(
+  "/:bookId/shipping",
+  authorize(["Admin", "User"]),
+  saveShippingDetails,
+);
 
 BookPersonalizer.post(
   "/personalisebooktemplate",

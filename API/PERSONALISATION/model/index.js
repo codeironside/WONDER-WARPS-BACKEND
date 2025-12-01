@@ -54,6 +54,18 @@ const personalizedBookSchema = new mongoose.Schema(
       claimed_at: { type: Date, default: null },
       status: { type: String, default: "null" },
     },
+    // --- ADDED SHIPPING FIELDS ---
+    shipping_details: {
+      full_name: { type: String, default: null },
+      address_line1: { type: String, default: null },
+      address_line2: { type: String, default: null },
+      city: { type: String, default: null },
+      state: { type: String, default: null },
+      postal_code: { type: String, default: null },
+      country: { type: String, default: null },
+      phone_number: { type: String, default: null },
+      email: { type: String, default: null }, // Contact email for shipping updates
+    },
     personalization_date: { type: Date, default: null },
     cover_image: [{ type: String, required: true }],
     video_url: { type: String, required: true },
@@ -117,9 +129,65 @@ class PersonalizedBook {
     dedication_message: Joi.string().max(1000).optional(),
   }).unknown(false);
 
+  // --- NEW SHIPPING VALIDATION SCHEMA ---
+  static shippingValidationSchema = Joi.object({
+    full_name: Joi.string().required().label("Full Name"),
+    address_line1: Joi.string().required().label("Address Line 1"),
+    address_line2: Joi.string()
+      .allow(null, "")
+      .optional()
+      .label("Address Line 2"),
+    city: Joi.string().required().label("City"),
+    state: Joi.string().required().label("State/Province"),
+    postal_code: Joi.string().required().label("Postal Code"),
+    country: Joi.string().required().label("Country"),
+    phone_number: Joi.string().required().label("Phone Number"),
+    email: Joi.string().email().required().label("Contact Email"),
+  }).unknown(false);
+
   static updateValidationSchema = Joi.object({
     dedication_message: Joi.string().max(1000).optional(),
   }).unknown(false);
+
+  // --- NEW METHOD: SAVE SHIPPING DETAILS ---
+  static async saveShippingDetails(bookId, userId, shippingData) {
+    try {
+      // 1. Validate Input Data
+      const { error, value: validatedData } =
+        this.shippingValidationSchema.validate(shippingData, {
+          abortEarly: false,
+          stripUnknown: true,
+        });
+
+      if (error) {
+        throw new ErrorHandler(this.formatValidationError(error), 400);
+      }
+
+      // 2. Find Book & Verify Ownership
+      const book = await PersonalizedBookModel.findOne({
+        _id: bookId,
+        user_id: userId,
+      });
+
+      if (!book) {
+        throw new ErrorHandler("Book not found or unauthorized", 404);
+      }
+
+      // 3. Update Shipping Details
+      book.shipping_details = validatedData;
+      await book.save();
+
+      logger.info(`Shipping details saved for book ${bookId}`, { userId });
+
+      return book.toObject();
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to save shipping details: ${error.message}`,
+        500,
+      );
+    }
+  }
 
   static async createBookForPayment(data) {
     try {
