@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import logger from "../../utils/logger/index.js";
 import { config } from "../../utils/config/index.js";
 import { getLoginDetails } from "../getlogindetails/index.js";
+import ErrorHandler from "../../middleware/errorhandler/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +29,7 @@ class EmailService {
       change_password: null,
       bookgenerationorpersonalisation: null,
       gift_notification: null,
+      shipping_confirmation: null,
     };
 
     this.loadTemplates();
@@ -45,6 +47,7 @@ class EmailService {
         "passwordchangenotification.html",
         "bookgenerationorpersonalisation.html",
         "gift-notification.html",
+        "shipping_confirmation.html",
       ];
 
       const [
@@ -56,6 +59,7 @@ class EmailService {
         change_password,
         bookgenerationorpersonalisation,
         gift_notification,
+        shipping_confirmation,
       ] = await Promise.all(
         templateFiles.map((file) =>
           fs.promises.readFile(path.join(templatesDir, file), "utf8"),
@@ -71,6 +75,7 @@ class EmailService {
         change_password,
         bookgenerationorpersonalisation,
         gift_notification,
+        shipping_confirmation,
       };
       logger.info("Email templates loaded successfully");
     } catch (error) {
@@ -493,6 +498,112 @@ class EmailService {
         `Failed to send gift notification email: ${error.message}`,
       );
     }
+  }
+
+  async sendShippingConfirmationEmail(
+    userEmail,
+    userName,
+    shippingDetails,
+    bookDetails,
+  ) {
+    try {
+      let htmlContent = this.templates.shipping_confirmation;
+
+      if (!htmlContent) {
+        throw new Error("Shipping confirmation template not loaded");
+      }
+
+      const replacements = {
+        USER_NAME: userName || "there",
+        BOOK_TITLE: bookDetails.book_title || "Your Personalized Book",
+        CHILD_NAME: bookDetails.child_name || "",
+        ORDER_ID: bookDetails.order_id || bookDetails._id || "",
+        SHIPPING_FULL_NAME: shippingDetails.full_name || "",
+        SHIPPING_ADDRESS_LINE1: shippingDetails.address_line1 || "",
+        SHIPPING_ADDRESS_LINE2: shippingDetails.address_line2 || "",
+        SHIPPING_CITY: shippingDetails.city || "",
+        SHIPPING_STATE: shippingDetails.state || "",
+        SHIPPING_POSTAL_CODE: shippingDetails.postal_code || "",
+        SHIPPING_COUNTRY: shippingDetails.country || "",
+        SHIPPING_PHONE: shippingDetails.phone_number || "",
+        SHIPPING_EMAIL: shippingDetails.email || userEmail,
+      };
+
+      Object.keys(replacements).forEach((key) => {
+        const regex = new RegExp(`{{${key}}}`, "g");
+        htmlContent = htmlContent.replace(regex, replacements[key]);
+
+        if (key === "SHIPPING_ADDRESS_LINE2" && !replacements[key]) {
+          htmlContent = htmlContent.replace(
+            /\{\{#SHIPPING_ADDRESS_LINE2\}[\s\S]*?\{\{\/SHIPPING_ADDRESS_LINE2\}\}/g,
+            "",
+          );
+        }
+      });
+
+      htmlContent = htmlContent.replace(/\{\{.*?\}\}/g, "");
+
+      const textContent = this.generateShippingTextContent(replacements);
+
+      const result = await this._sendEmail(
+        userEmail,
+        "Shipping Details Confirmed - My Story Hat",
+        htmlContent,
+        textContent,
+      );
+
+      logger.info("Shipping confirmation email sent", {
+        userEmail,
+        orderId: replacements.ORDER_ID,
+        messageId: result.MessageId,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error("Failed to send shipping confirmation email:", error);
+      throw new ErrorHandler(
+        `Failed to send shipping confirmation email: ${error}`,
+        500,
+      );
+    }
+  }
+
+  generateShippingTextContent(data) {
+    return `
+Shipping Details Confirmed - My Story Hat
+
+Hi ${data.USER_NAME},
+
+Your shipping details have been successfully saved for your personalized book.
+
+BOOK DETAILS:
+- Title: ${data.BOOK_TITLE}
+- For: ${data.CHILD_NAME}
+- Order ID: ${data.ORDER_ID}
+
+SHIPPING ADDRESS:
+${data.SHIPPING_FULL_NAME}
+${data.SHIPPING_ADDRESS_LINE1}
+${data.SHIPPING_ADDRESS_LINE2 ? data.SHIPPING_ADDRESS_LINE2 + "\n" : ""}${data.SHIPPING_CITY}, ${data.SHIPPING_STATE} ${data.SHIPPING_POSTAL_CODE}
+${data.SHIPPING_COUNTRY}
+Phone: ${data.SHIPPING_PHONE}
+Email: ${data.SHIPPING_EMAIL}
+
+WHAT HAPPENS NEXT?
+you would be contacted about further costs regarding shipping and printing
+Your personalized book will be printed and shipped within 5-7 business days.
+You'll receive a tracking email once it's on its way!
+
+View your order: https://mystoryhat.com/orders/${data.ORDER_ID}
+
+Need to update your shipping details? You can edit them anytime before your order is processed.
+
+Questions about your order?
+Contact us: support@mystoryhat.com
+Shipping FAQ: https://mystoryhat.com/help/shipping
+
+© ${new Date().getFullYear()} My Story Hat. All rights reserved.
+    `.trim();
   }
 }
 

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shipping Details Confirmed - My Story Hat</title>
+</head>
+
+<body style="
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #fef7ed;
+    ">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+        style="background-color: #fef7ed">
+        <tr>
+            <td style="padding: 40px 20px">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="
+              max-width: 600px;
+              margin: 0 auto;
+              background-color: #ffffff;
+              border-radius: 16px;
+              box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            ">
+                    <tr>
+                        <td style="
+                  padding: 40px 40px 20px 40px;
+                  text-align: center;
+                  border-radius: 16px 16px 0 0;
+                ">
+                            <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                  ">
+                                <a href="https://mystoryhat.com" style="text-decoration: none">
+                                    <img src="https://mystoryhat.s3.eu-north-1.amazonaws.com/photos/2025/09/23/photo-my-story-hat-logo-d8f38f50.png"
+                                        alt="My Story Hat" height="96" width="auto" />
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding: 40px; padding-top: 20px">
+                            <div style="text-align: center; margin-bottom: 30px">
+                                <span style="font-size: 42px; margin-bottom: 20px;">📦</span>
+                                <h2 style="
+                      margin: 0 0 16px 0;
+                      color: #1f2937;
+                      font-size: 28px;
+                      font-weight: 600;
+                    ">
+                                    Shipping Details Confirmed!
+                                </h2>
+                                <p style="
+                      margin: 0;
+                      color: #6b7280;
+                      font-size: 18px;
+                      line-height: 1.6;
+                    ">
+                                    Hi <strong style="color: #fb923c">{{USER_NAME}}</strong>, your shipping details have
+                                    been saved successfully.
+                                </p>
+                            </div>
+
+                            <div style="
+                    margin: 30px 0;
+                    padding: 25px;
+                    background-color: #f9fafb;
+                    border-radius: 12px;
+                    border: 1px solid #e5e7eb;
+                  ">
+                                <h3 style="
+                      margin: 0 0 20px 0;
+                      color: #374151;
+                      font-size: 18px;
+                      text-align: center;
+                    ">
+                                    📖 Your Book Details
+                                </h3>
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 15px; width: 40%">
+                                            Book Title:
+                                        </td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 15px; font-weight: 500">
+                                            {{BOOK_TITLE}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 15px">
+                                            For:
+                                        </td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 15px; font-weight: 500">
+                                            {{CHILD_NAME}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 15px">
+                                            Order ID:
+                                        </td>
+                                        <td style="padding: 8px 0; color: #1f2937; font-size: 15px; font-weight: 500">
+                                            {{ORDER_ID}}
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <div style="
+                    margin: 30px 0;
+                    padding: 25px;
+                    background-color: #f0f9ff;
+                    border-radius: 12px;
+                    border: 1px solid #bae6fd;
+                  ">
+                                <h3 style="
+                      margin: 0 0 20px 0;
+                      color: #0c4a6e;
+                      font-size: 18px;
+                      text-align: center;
+                    ">
+                                    📍 Shipping Address
+                                </h3>
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px; width: 40%">
+                                            Full Name:
+                                        </td>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px; font-weight: 500">
+                                            {{SHIPPING_FULL_NAME}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px">
+                                            Address:
+                                        </td>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px; font-weight: 500">
+                                            {{SHIPPING_ADDRESS_LINE1}}<br />
+                                            {{#SHIPPING_ADDRESS_LINE2}}{{SHIPPING_ADDRESS_LINE2}}<br />{{/SHIPPING_ADDRESS_LINE2}}
+                                            {{SHIPPING_CITY}}, {{SHIPPING_STATE}} {{SHIPPING_POSTAL_CODE}}<br />
+                                            {{SHIPPING_COUNTRY}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px">
+                                            Phone:
+                                        </td>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px; font-weight: 500">
+                                            {{SHIPPING_PHONE}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px">
+                                            Email:
+                                        </td>
+                                        <td style="padding: 8px 0; color: #0c4a6e; font-size: 15px; font-weight: 500">
+                                            {{SHIPPING_EMAIL}}
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <div style="
+                    margin: 30px 0;
+                    padding: 20px;
+                    background-color: #f0fdf4;
+                    border-radius: 12px;
+                    border: 1px solid #bbf7d0;
+                    text-align: center;
+                  ">
+                                <h3 style="
+                      margin: 0 0 15px 0;
+                      color: #166534;
+                      font-size: 16px;
+                    ">
+                                    ⏳ What Happens Next?
+                                </h3>
+                                <p style="
+                      margin: 0;
+                      color: #166534;
+                      font-size: 14px;
+                      line-height: 1.6;
+                    ">
+                                    you would be contacted about further costs regarding <strong>shipping and printing</strong>,<br />Your personalized book will be printed and shipped within <strong>5-7 business
+                                        days</strong>.<br />
+                                    You'll receive a tracking email once it's on its way!
+                                </p>
+                            </div>
+
+                            <div style="text-align: center; margin: 30px 0">
+                                <a href="https://mystoryhat.com/book" style="
+                      display: inline-block;
+                      background: #fb923c;
+                      color: #ffffff;
+                      text-decoration: none;
+                      padding: 16px 32px;
+                      border-radius: 12px;
+                      font-weight: 600;
+                      font-size: 16px;
+                      box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+                      transition: all 0.3s ease;
+                    ">View Your Book</a>
+                            </div>
+
+                            <div style="text-align: center; margin-top: 20px">
+                                <p style="
+                      margin: 0;
+                      color: #6b7280;
+                      font-size: 14px;
+                      font-weight: 500;
+                    ">
+                                    Need to update your shipping details?<br />
+                                    You can edit them anytime before your order is processed.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="
+                  padding: 30px 40px;
+                  background-color: #f9fafb;
+                  border-radius: 0 0 16px 16px;
+                  border-top: 1px solid #e5e7eb;
+                ">
+                            <div style="text-align: center">
+                                <p style="margin: 0 0 16px 0; color: #6b7280; font-size: 14px">
+                                    Questions about your order?
+                                </p>
+                                <a href="mailto:support@mystoryhat.com" style="
+                      color: #fb923c;
+                      text-decoration: none;
+                      font-weight: 600;
+                      margin-right: 20px;
+                    ">support@mystoryhat.com</a>
+                                <a href="https://mystoryhat.com/" style="
+                      color: #3b82f6;
+                      text-decoration: none;
+                      font-weight: 600;
+                    ">Shipping FAQ</a>
+                                <div style="margin-top: 20px; padding-top: 20px">
+                                    <p style="margin: 0; color: #9ca3af; font-size: 12px">
+                                        &copy;
+                                        <script>
+                                            document.write(new Date().getFullYear());
+                                        </script>
+                                        My Story Hat. All rights reserved.
+                                    </p>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+
+</html>

@@ -19,7 +19,14 @@ const personalizedBookSchema = new mongoose.Schema(
       maxlength: 255,
     },
     user_id: { type: String, required: true },
-    purchaser_id: { type: String, required: true, index: true },
+    // Updated: Defaults to user_id if not provided
+    purchaser_id: {
+      type: String,
+      default: function () {
+        return this.user_id;
+      },
+      index: true,
+    },
     child_name: { type: String, required: true, trim: true, maxlength: 255 },
     child_age: { type: Number, min: 0, max: 18, default: null },
     gender_preference: {
@@ -49,12 +56,12 @@ const personalizedBookSchema = new mongoose.Schema(
       recipient_name: { type: String, trim: true, default: null },
       sender_name: { type: String, trim: true, default: null },
       gift_message: { type: String, maxlength: 500, default: null },
-      claim_token: { type: String, default: null, index: true }, // For the email link
+      claim_token: { type: String, default: null, index: true },
       is_claimed: { type: Boolean, default: false },
       claimed_at: { type: Date, default: null },
       status: { type: String, default: "null" },
     },
-    // --- ADDED SHIPPING FIELDS ---
+    // Added Shipping Fields
     shipping_details: {
       full_name: { type: String, default: null },
       address_line1: { type: String, default: null },
@@ -64,7 +71,7 @@ const personalizedBookSchema = new mongoose.Schema(
       postal_code: { type: String, default: null },
       country: { type: String, default: null },
       phone_number: { type: String, default: null },
-      email: { type: String, default: null }, // Contact email for shipping updates
+      email: { type: String, default: null },
     },
     personalization_date: { type: Date, default: null },
     cover_image: [{ type: String, required: true }],
@@ -102,7 +109,7 @@ class PersonalizedBook {
     book_title: Joi.string().trim().max(255).optional(),
     genre: Joi.string().trim().max(100).optional(),
     is_gift: Joi.boolean().optional(),
-    purchaser_id: { type: String, required: true, index: true },
+    purchaser_id: Joi.string().optional(), // Made optional to allow default behavior
     gift_details: Joi.object({
       recipient_email: Joi.string().email().required(),
       recipient_name: Joi.string().trim().optional(),
@@ -129,7 +136,7 @@ class PersonalizedBook {
     dedication_message: Joi.string().max(1000).optional(),
   }).unknown(false);
 
-  // --- NEW SHIPPING VALIDATION SCHEMA ---
+  // Shipping Validation Schema
   static shippingValidationSchema = Joi.object({
     full_name: Joi.string().required().label("Full Name"),
     address_line1: Joi.string().required().label("Address Line 1"),
@@ -149,10 +156,8 @@ class PersonalizedBook {
     dedication_message: Joi.string().max(1000).optional(),
   }).unknown(false);
 
-  // --- NEW METHOD: SAVE SHIPPING DETAILS ---
   static async saveShippingDetails(bookId, userId, shippingData) {
     try {
-      // 1. Validate Input Data
       const { error, value: validatedData } =
         this.shippingValidationSchema.validate(shippingData, {
           abortEarly: false,
@@ -163,7 +168,6 @@ class PersonalizedBook {
         throw new ErrorHandler(this.formatValidationError(error), 400);
       }
 
-      // 2. Find Book & Verify Ownership
       const book = await PersonalizedBookModel.findOne({
         _id: bookId,
         user_id: userId,
@@ -173,11 +177,51 @@ class PersonalizedBook {
         throw new ErrorHandler("Book not found or unauthorized", 404);
       }
 
-      // 3. Update Shipping Details
+      if (book.is_gift && book.user_id === book.purchaser_id) {
+        throw new ErrorHandler(
+          "Gifts must be claimed by the recipient before adding shipping details. " +
+            "Only the recipient can provide shipping information for a gifted book.",
+          403,
+        );
+      }
+
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new ErrorHandler("User not found", 404);
+      }
+
       book.shipping_details = validatedData;
       await book.save();
 
-      logger.info(`Shipping details saved for book ${bookId}`, { userId });
+      logger.info(`Shipping details saved for book ${bookId}`, {
+        userId,
+        isGift: book.is_gift,
+        isRecipient: !book.is_gift || book.user_id !== book.purchaser_id,
+      });
+
+      try {
+        await emailService.sendShippingConfirmationEmail(
+          user.email,
+          user.username || user.firstname || "there",
+          validatedData,
+          {
+            book_title: book.book_title || "Your Personalized Book",
+            child_name: book.child_name,
+            order_id: book._id.toString(),
+            is_gift: book.is_gift,
+
+            ...(book.is_gift && {
+              gift_info: {
+                sender: book.gift_metadata?.sender_name || "A friend",
+                message: book.gift_metadata?.gift_message || "",
+              },
+            }),
+          },
+        );
+      } catch (error) {
+        console.log(error);
+        logger.error("Failed to send shipping confirmation email:", error);
+      }
 
       return book.toObject();
     } catch (error) {
@@ -203,7 +247,8 @@ class PersonalizedBook {
 
       const bookData = {
         ...validatedData,
-        purchaser_id: validatedData.user_id,
+        // Fallback handled by Schema default if purchaser_id is missing
+        purchaser_id: validatedData.purchaser_id || validatedData.user_id,
         personalized_content: null,
         is_personalized: false,
       };
@@ -323,6 +368,7 @@ class PersonalizedBook {
       }
 
       const previousOwnerId = book.user_id;
+      // Ensure purchaser_id is preserved as the original buyer (previousOwnerId)
       book.purchaser_id = previousOwnerId;
       book.user_id = recipientUserId;
 
@@ -346,6 +392,8 @@ class PersonalizedBook {
       throw new ErrorHandler(`Failed to claim gift: ${error.message}`, 500);
     }
   }
+
+  // ... [Rest of existing methods: addPersonalization, findById, findByUser, updatePaymentStatus, etc. remain exactly as provided] ...
 
   static async addPersonalization(
     bookId,
@@ -841,31 +889,6 @@ class PersonalizedBook {
     }
   }
 
-  static getHumanReadablePaymentMethod(paymentMethodType) {
-    const paymentMethodMap = {
-      card: "Credit Card",
-      credit_card: "Credit Card",
-      debit_card: "Debit Card",
-      paypal: "PayPal",
-      apple_pay: "Apple Pay",
-      google_pay: "Google Pay",
-      bank_transfer: "Bank Transfer",
-      ach_debit: "Bank Transfer (ACH)",
-      sepa_debit: "SEPA Debit",
-      link: "Link",
-      us_bank_account: "US Bank Account",
-      affirm: "Affirm",
-      klarna: "Klarna",
-      afterpay_clearpay: "Afterpay/Clearpay",
-    };
-
-    return paymentMethodMap[paymentMethodType] || "Credit Card";
-  }
-
-  static formatValidationError(error) {
-    return error.details.map((detail) => detail.message).join(", ");
-  }
-
   static async handleCheckoutSessionCompleted(session) {
     const sessionMongo = await mongoose.startSession();
     sessionMongo.startTransaction();
@@ -996,6 +1019,31 @@ class PersonalizedBook {
     } catch (error) {
       throw new ErrorHandler("Failed to get personalization statistics", 500);
     }
+  }
+
+  static getHumanReadablePaymentMethod(paymentMethodType) {
+    const paymentMethodMap = {
+      card: "Credit Card",
+      credit_card: "Credit Card",
+      debit_card: "Debit Card",
+      paypal: "PayPal",
+      apple_pay: "Apple Pay",
+      google_pay: "Google Pay",
+      bank_transfer: "Bank Transfer",
+      ach_debit: "Bank Transfer (ACH)",
+      sepa_debit: "SEPA Debit",
+      link: "Link",
+      us_bank_account: "US Bank Account",
+      affirm: "Affirm",
+      klarna: "Klarna",
+      afterpay_clearpay: "Afterpay/Clearpay",
+    };
+
+    return paymentMethodMap[paymentMethodType] || "Credit Card";
+  }
+
+  static formatValidationError(error) {
+    return error.details.map((detail) => detail.message).join(", ");
   }
 }
 
