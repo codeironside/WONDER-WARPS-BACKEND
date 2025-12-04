@@ -347,6 +347,44 @@ class PersonalizedBook {
     }
   }
 
+  static async findOneForAdmin(id, options = {}) {
+    try {
+      const { includeChapters = true } = options;
+
+      const book = await PersonalizedBookModel.findById(id).lean();
+
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      if (book.original_template_id) {
+        const template = await BookTemplate.findById(book.original_template_id)
+          .select(
+            includeChapters
+              ? "title chapters cover_image video_url"
+              : "title cover_image video_url",
+          )
+          .lean();
+
+        if (template) {
+          book.template_details = template;
+
+          if (!includeChapters && template.chapters) {
+            delete template.chapters;
+          }
+        }
+      }
+
+      return book;
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to find personalized book for admin: ${error.message}`,
+        500,
+      );
+    }
+  }
+
   static async initiateGift(bookId, userId, giftData) {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -474,7 +512,80 @@ class PersonalizedBook {
     }
   }
 
-  // ... [Rest of existing methods: addPersonalization, findById, findByUser, updatePaymentStatus, etc. remain exactly as provided] ...
+  static async findAllByUserForAdmin(userId, options = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+        filters = {},
+      } = options;
+
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+
+      const andConditions = [{ user_id: userId }];
+
+      if (typeof filters.is_paid === "boolean") {
+        andConditions.push({ is_paid: filters.is_paid });
+      }
+
+      if (filters.min_price !== undefined || filters.max_price !== undefined) {
+        const priceQuery = {};
+        if (filters.min_price !== undefined)
+          priceQuery.$gte = Number(filters.min_price);
+        if (filters.max_price !== undefined)
+          priceQuery.$lte = Number(filters.max_price);
+        andConditions.push({ price: priceQuery });
+      }
+
+      if (filters.start_date || filters.end_date) {
+        const dateQuery = {};
+        if (filters.start_date) dateQuery.$gte = new Date(filters.start_date);
+        if (filters.end_date) dateQuery.$lte = new Date(filters.end_date);
+        andConditions.push({ createdAt: dateQuery });
+      }
+
+      if (filters.search) {
+        const searchRegex = new RegExp(filters.search, "i");
+        andConditions.push({
+          $or: [
+            { book_title: searchRegex },
+            { "personalized_content.book_title": searchRegex },
+            { child_name: searchRegex },
+            { "shipping_details.full_name": searchRegex },
+            { "shipping_details.email": searchRegex },
+          ],
+        });
+      }
+
+      const query = { $and: andConditions };
+
+      const books = await PersonalizedBookModel.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const total = await PersonalizedBookModel.countDocuments(query);
+
+      return {
+        books,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      throw new ErrorHandler(
+        `Failed to fetch user books for admin: ${error.message}`,
+        500,
+      );
+    }
+  }
 
   static async addPersonalization(
     bookId,
@@ -688,6 +799,7 @@ class PersonalizedBook {
         andConditions.push({
           $or: [
             { book_title: searchRegex },
+            { "personalized_content.book_title": searchRegex },
             { child_name: searchRegex },
             { "shipping_details.full_name": searchRegex },
             { "shipping_details.email": searchRegex },
