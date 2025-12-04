@@ -115,6 +115,7 @@ class Blog {
     title: Joi.string().trim().min(5).max(255).optional(),
     excerpt: Joi.string().trim().min(10).max(300).optional(),
     content: Joi.string().min(20).optional(),
+    slug: Joi.string().min(20).optional(),
     cover_media: Joi.object({
       url: Joi.string().uri().optional(),
       type: Joi.string().valid("image", "video").optional(),
