@@ -48,6 +48,7 @@ class EmailService {
         "bookgenerationorpersonalisation.html",
         "gift-notification.html",
         "shipping_confirmation.html",
+        "processing-notification.html",
       ];
 
       const [
@@ -60,6 +61,7 @@ class EmailService {
         bookgenerationorpersonalisation,
         gift_notification,
         shipping_confirmation,
+        processing_notification,
       ] = await Promise.all(
         templateFiles.map((file) =>
           fs.promises.readFile(path.join(templatesDir, file), "utf8"),
@@ -76,6 +78,7 @@ class EmailService {
         bookgenerationorpersonalisation,
         gift_notification,
         shipping_confirmation,
+        processing_notification,
       };
       logger.info("Email templates loaded successfully");
     } catch (error) {
@@ -83,7 +86,6 @@ class EmailService {
       throw new Error("Failed to load email templates");
     }
   }
-
   async _sendEmail(to, subject, htmlBody, textBody) {
     const params = {
       Source: config.ses.from_info,
@@ -603,6 +605,98 @@ Contact us: support@mystoryhat.com
 Shipping FAQ: https://mystoryhat.com/help/shipping
 
 © ${new Date().getFullYear()} My Story Hat. All rights reserved.
+    `.trim();
+  }
+  async sendProcessingNotificationEmail(userEmail, userName, bookDetails) {
+    try {
+      let htmlContent = this.templates.processing_notification;
+
+      if (!htmlContent) {
+        throw new Error("Processing notification template not loaded");
+      }
+
+      const replacements = {
+        USER_NAME: userName || "there",
+        BOOK_TITLE: bookDetails.book_title || "Your Personalized Book",
+        CHILD_NAME: bookDetails.child_name || "",
+        ORDER_ID: bookDetails.order_id || bookDetails._id || "",
+        PROCESSING_DATE:
+          bookDetails.processing_date ||
+          new Date().toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }),
+        CURRENT_YEAR: new Date().getFullYear().toString(),
+      };
+
+      Object.keys(replacements).forEach((key) => {
+        const regex = new RegExp(`{{${key}}}`, "g");
+        htmlContent = htmlContent.replace(regex, replacements[key]);
+      });
+
+      htmlContent = htmlContent.replace(/\{\{.*?\}\}/g, "");
+
+      const textContent = this.generateProcessingTextContent(replacements);
+
+      const result = await this._sendEmail(
+        userEmail,
+        "✨ Your Book is Being Processed - My Story Hat",
+        htmlContent,
+        textContent,
+      );
+
+      logger.info("Processing notification email sent", {
+        userEmail,
+        orderId: replacements.ORDER_ID,
+        messageId: result.MessageId,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error("Failed to send processing notification email:", error);
+      throw new Error(
+        `Failed to send processing notification email: ${error.message}`,
+      );
+    }
+  }
+
+  generateProcessingTextContent(data) {
+    return `
+✨ Your Book is Being Processed - My Story Hat
+
+Hi ${data.USER_NAME}!
+
+Great news! We've received your order and have started processing "${data.BOOK_TITLE}" for ${data.CHILD_NAME}.
+
+📅 Order Timeline:
+1. ✅ Order Confirmed - Payment received and shipping details confirmed
+2. ⏳ Processing Started (Now) - Personalizing your story and preparing for printing
+3. 🔍 Quality Check - Ensuring every detail is perfect
+4. 🚚 Shipped to You - Your book is on its way! (5-7 business days)
+
+📋 Order Summary:
+• Order Number: ${data.ORDER_ID}
+• Book Title: ${data.BOOK_TITLE}
+• For: ${data.CHILD_NAME}
+• Processing Started: ${data.PROCESSING_DATE}
+
+What Happens Next?
+Your book is now being personalized, printed, and prepared with care.
+We'll send you another email when it ships with tracking information.
+
+Estimated completion: 5-7 business days
+
+View your order: https://mystoryhat.com/orders/${data.ORDER_ID}
+
+Questions about your order?
+Contact us: support@mystoryhat.com
+Order FAQ: https://mystoryhat.com/faq
+
+© ${data.CURRENT_YEAR} My Story Hat. All rights reserved.
+Privacy Policy: https://mystoryhat.com/privacy
+Terms of Service: https://mystoryhat.com/terms
     `.trim();
   }
 }

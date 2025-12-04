@@ -15,6 +15,7 @@ import { getPrintDataToDownload } from "../services/USERS/printdatatodownload/in
 import { sendGift } from "../services/USERS/gift.a.friend/index.js";
 import { redeemGift } from "../services/USERS/claim.a.gift/index.js";
 import { saveShippingDetails } from "../services/USERS/shipping/index.js";
+import { updateBookProcessedStatus } from "../services/ADMIN/updateisshippingprocess/index.js";
 
 export const BookPersonalizer = Router();
 
@@ -58,6 +59,11 @@ BookPersonalizer.get(
   "/admnin/getgenrestatistics",
   authorize(["Admin"]),
   getGenreStatistics,
+);
+BookPersonalizer.patch(
+  "/:bookId/process",
+  authorize(["Admin"]),
+  updateBookProcessedStatus,
 );
 BookPersonalizer.get(
   "/admin/advancedfiltering",

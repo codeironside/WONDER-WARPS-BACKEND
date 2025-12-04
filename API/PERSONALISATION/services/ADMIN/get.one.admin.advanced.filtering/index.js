@@ -1,4 +1,4 @@
-import ErrorHandler from "@/Error";
+import ErrorHandler from "../../../../../CORE/middleware/errorhandler/index.js";
 import { sendResponse } from "../../../../../CORE/utils/response.handler/index.js";
 import logger from "../../../../../CORE/utils/logger/index.js";
 import PersonalizedBook from "../../../model/index.js";
@@ -17,16 +17,22 @@ export const getAdminAllPersonalizedBooks = async (req, res, next) => {
       start_date,
       end_date,
       genre,
+      search,
     } = req.query;
 
     const filters = {};
-    if (is_paid !== undefined) filters.is_paid = is_paid === "true";
+
+    if (is_paid !== undefined) {
+      filters.is_paid = is_paid === "true";
+    }
+
     if (user_id) filters.user_id = user_id;
-    if (min_price !== undefined) filters.min_price = min_price;
-    if (max_price !== undefined) filters.max_price = max_price;
+    if (min_price !== undefined) filters.min_price = Number(min_price);
+    if (max_price !== undefined) filters.max_price = Number(max_price);
     if (start_date) filters.start_date = start_date;
     if (end_date) filters.end_date = end_date;
     if (genre) filters.genre = genre;
+    if (search) filters.search = search;
 
     const result = await PersonalizedBook.findAllForAdminAdvanced({
       page: parseInt(page),

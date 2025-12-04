@@ -19,7 +19,6 @@ const personalizedBookSchema = new mongoose.Schema(
       maxlength: 255,
     },
     user_id: { type: String, required: true },
-    // Updated: Defaults to user_id if not provided
     purchaser_id: {
       type: String,
       default: function () {
@@ -61,7 +60,6 @@ const personalizedBookSchema = new mongoose.Schema(
       claimed_at: { type: Date, default: null },
       status: { type: String, default: "null" },
     },
-    // Added Shipping Fields
     shipping_details: {
       full_name: { type: String, default: null },
       address_line1: { type: String, default: null },
@@ -72,6 +70,11 @@ const personalizedBookSchema = new mongoose.Schema(
       country: { type: String, default: null },
       phone_number: { type: String, default: null },
       email: { type: String, default: null },
+    },
+    is_processed: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
     personalization_date: { type: Date, default: null },
     cover_image: [{ type: String, required: true }],
@@ -177,10 +180,16 @@ class PersonalizedBook {
         throw new ErrorHandler("Book not found or unauthorized", 404);
       }
 
+      if (book.is_processed) {
+        throw new ErrorHandler(
+          "Book is already processed, shipping details cannot be changed",
+          403,
+        );
+      }
+
       if (book.is_gift && book.user_id === book.purchaser_id) {
         throw new ErrorHandler(
-          "Gifts must be claimed by the recipient before adding shipping details. " +
-            "Only the recipient can provide shipping information for a gifted book.",
+          "Gifts must be claimed by the recipient before adding shipping details.",
           403,
         );
       }
@@ -193,11 +202,7 @@ class PersonalizedBook {
       book.shipping_details = validatedData;
       await book.save();
 
-      logger.info(`Shipping details saved for book ${bookId}`, {
-        userId,
-        isGift: book.is_gift,
-        isRecipient: !book.is_gift || book.user_id !== book.purchaser_id,
-      });
+      logger.info(`Shipping details saved for book ${bookId}`, { userId });
 
       try {
         await emailService.sendShippingConfirmationEmail(
@@ -209,7 +214,6 @@ class PersonalizedBook {
             child_name: book.child_name,
             order_id: book._id.toString(),
             is_gift: book.is_gift,
-
             ...(book.is_gift && {
               gift_info: {
                 sender: book.gift_metadata?.sender_name || "A friend",
@@ -218,9 +222,8 @@ class PersonalizedBook {
             }),
           },
         );
-      } catch (error) {
-        console.log(error);
-        logger.error("Failed to send shipping confirmation email:", error);
+      } catch (emailError) {
+        logger.error("Failed to send shipping confirmation email:", emailError);
       }
 
       return book.toObject();
@@ -228,6 +231,84 @@ class PersonalizedBook {
       if (error instanceof ErrorHandler) throw error;
       throw new ErrorHandler(
         `Failed to save shipping details: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  static async updateProcessedStatus(bookId, isProcessed) {
+    try {
+      const book = await PersonalizedBookModel.findById(bookId);
+
+      if (!book) {
+        throw new ErrorHandler("Book not found", 404);
+      }
+
+      if (isProcessed) {
+        if (!book.shipping_details?.full_name) {
+          throw new ErrorHandler(
+            "Cannot mark as processed without shipping details",
+            400,
+          );
+        }
+        if (!book.is_paid) {
+          throw new ErrorHandler(
+            "Cannot mark as processed without payment",
+            400,
+          );
+        }
+        book.processed_date = new Date();
+
+        const user = await User.findById(book.user_id);
+        if (user && user.email) {
+          try {
+            await emailService.sendProcessingNotificationEmail(
+              user.email,
+              user.username || user.firstname || "there",
+              {
+                book_title: book.book_title || "Your Personalized Book",
+                child_name: book.child_name,
+                order_id: book._id.toString(),
+                processing_date: book.processed_date.toLocaleDateString(
+                  "en-US",
+                  {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  },
+                ),
+              },
+            );
+            logger.info(
+              `Processing notification email sent for book ${bookId}`,
+              {
+                userEmail: user.email,
+              },
+            );
+          } catch (error) {
+            logger.error(
+              "Failed to send processing notification email:",
+              error,
+            );
+          }
+        }
+      } else {
+        book.processed_date = null;
+      }
+
+      book.is_processed = isProcessed;
+      await book.save();
+
+      logger.info(`Book processing status updated for book ${bookId}`, {
+        is_processed: isProcessed,
+      });
+
+      return book.toObject();
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to update processing status: ${error.message}`,
         500,
       );
     }
@@ -554,6 +635,92 @@ class PersonalizedBook {
     }
   }
 
+  static async findAllForAdminAdvanced(options = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+        filters = {},
+      } = options;
+
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+
+      const andConditions = [];
+
+      if (typeof filters.is_paid === "boolean") {
+        andConditions.push({ is_paid: filters.is_paid });
+      }
+
+      if (filters.user_id) {
+        andConditions.push({ user_id: filters.user_id });
+      }
+
+      if (filters.min_price !== undefined || filters.max_price !== undefined) {
+        const priceQuery = {};
+        if (filters.min_price !== undefined)
+          priceQuery.$gte = Number(filters.min_price);
+        if (filters.max_price !== undefined)
+          priceQuery.$lte = Number(filters.max_price);
+        andConditions.push({ price: priceQuery });
+      }
+
+      if (filters.start_date || filters.end_date) {
+        const dateQuery = {};
+        if (filters.start_date) dateQuery.$gte = new Date(filters.start_date);
+        if (filters.end_date) dateQuery.$lte = new Date(filters.end_date);
+        andConditions.push({ createdAt: dateQuery });
+      }
+
+      if (filters.genre) {
+        andConditions.push({
+          $or: [
+            { genre: filters.genre },
+            { "personalized_content.genre": filters.genre },
+          ],
+        });
+      }
+
+      if (filters.search) {
+        const searchRegex = new RegExp(filters.search, "i");
+        andConditions.push({
+          $or: [
+            { book_title: searchRegex },
+            { child_name: searchRegex },
+            { "shipping_details.full_name": searchRegex },
+            { "shipping_details.email": searchRegex },
+          ],
+        });
+      }
+
+      const query = andConditions.length > 0 ? { $and: andConditions } : {};
+
+      const books = await PersonalizedBookModel.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const total = await PersonalizedBookModel.countDocuments(query);
+
+      return {
+        books,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      throw new ErrorHandler(
+        `Failed to fetch admin books: ${error.message}`,
+        500,
+      );
+    }
+  }
   static async findByIdForUser(bookId, personsalisedId, userId) {
     try {
       console.log(
