@@ -358,20 +358,26 @@ class PersonalizedBook {
       }
 
       if (book.original_template_id) {
-        const template = await BookTemplate.findById(book.original_template_id)
-          .select(
-            includeChapters
-              ? "title chapters cover_image video_url"
-              : "title cover_image video_url",
-          )
-          .lean();
+        let template;
+
+        if (includeChapters) {
+          template = await BookTemplate.findByIdWithChapters(
+            book.original_template_id,
+          );
+        } else {
+          template = await BookTemplate.findById(book.original_template_id);
+          if (template) {
+            template = template.toObject ? template.toObject() : template;
+            template = {
+              book_title: template.book_title,
+              cover_image: template.cover_image,
+              video_url: template.video_url,
+            };
+          }
+        }
 
         if (template) {
           book.template_details = template;
-
-          if (!includeChapters && template.chapters) {
-            delete template.chapters;
-          }
         }
       }
 
