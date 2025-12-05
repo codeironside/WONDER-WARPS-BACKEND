@@ -364,6 +364,124 @@ class BookTemplate {
     return await BookTemplateModel.findById(id);
   }
 
+  static async updateBookWithChapters(id, data, userId) {
+    try {
+      const bookUpdateValidationSchema = Joi.object({
+        book_title: Joi.string().trim().min(3).max(255).optional(),
+        suggested_font: Joi.string().trim().min(3).max(255).optional(),
+        description: Joi.string().allow(null, "").optional(),
+        skin_tone: Joi.string().allow(null, "").optional(),
+        hair_type: Joi.string().optional(),
+        hair_style: Joi.string().optional(),
+        hair_color: Joi.string().allow(null, "").optional(),
+        eye_color: Joi.string().allow(null, "").optional(),
+        clothing: Joi.string().allow(null, "").optional(),
+        gender: Joi.string().optional(),
+        age_min: Joi.string().optional(),
+        age_max: Joi.string().allow(null, "").optional(),
+        genre: Joi.string().allow(null, "").optional(),
+        author: Joi.string().allow(null, "").optional(),
+        price: Joi.number().precision(2).min(0).allow(null).optional(),
+        keywords: Joi.array().items(Joi.string()).optional(),
+        is_personalizable: Joi.boolean().optional(),
+        chapters: Joi.array()
+          .items(
+            Joi.object({
+              _id: Joi.string().hex().length(24).required(),
+              chapter_title: Joi.string().max(500).required(),
+              chapter_content: Joi.string().required(),
+            }).unknown(false),
+          )
+          .optional(),
+      }).unknown(false);
+
+      const { error, value: validatedData } =
+        bookUpdateValidationSchema.validate(data, {
+          abortEarly: false,
+          stripUnknown: true,
+        });
+
+      if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
+
+      const existingTemplate = await BookTemplateModel.findOne({
+        _id: id,
+      });
+
+      if (!existingTemplate) {
+        throw new ErrorHandler("Book template not found or unauthorized", 404);
+      }
+
+      if (
+        validatedData.book_title &&
+        validatedData.book_title !== existingTemplate.book_title
+      ) {
+        const titleExists = await this.findByTitle(
+          validatedData.book_title,
+          userId,
+        );
+        if (titleExists) {
+          throw new ErrorHandler(
+            "A book template with this title already exists",
+            409,
+          );
+        }
+      }
+
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        const bookUpdateData = { ...validatedData };
+        delete bookUpdateData.chapters;
+
+        const updatedTemplate = await BookTemplateModel.findByIdAndUpdate(
+          id,
+          { $set: bookUpdateData },
+          { new: true, runValidators: true, session },
+        );
+
+        if (validatedData.chapters && validatedData.chapters.length > 0) {
+          for (const chapterData of validatedData.chapters) {
+            const existingChapter = await Chapter.findOne({
+              _id: chapterData._id,
+              book_template_id: id,
+            }).session(session);
+
+            if (!existingChapter) {
+              throw new ErrorHandler(
+                `Chapter with ID ${chapterData._id} not found in this book`,
+                404,
+              );
+            }
+
+            await Chapter.findByIdAndUpdate(
+              chapterData._id,
+              {
+                $set: {
+                  chapter_title: chapterData.chapter_title.substring(0, 500),
+                  chapter_content: chapterData.chapter_content,
+                },
+              },
+              { session, runValidators: true },
+            );
+          }
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+        return await this.findByIdWithChapters(id);
+      } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        throw error;
+      }
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      console.error("Update book error:", error);
+      throw new ErrorHandler(`Failed to update book: ${error.message}`, 500);
+    }
+  }
+
   static async findByIdWithChapters(id) {
     const template = await BookTemplateModel.findById(id);
     if (!template) return null;

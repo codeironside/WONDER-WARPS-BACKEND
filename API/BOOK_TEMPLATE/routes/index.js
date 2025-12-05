@@ -13,6 +13,7 @@ import { updateBookTemplate } from "../services/ADMIN/update.a.book.template/ind
 import { getPopularTemplates } from "../services/USERS/getpopulartemplates/index.js";
 import { searchBookTemplates } from "../services/ADMIN/search.template/index.js";
 import { getPublicTemplateWithChapterssigned } from "../services/USERS/getbookwithchaptersforuser/index.js";
+import { updateBookWithChapters } from "../services/ADMIN/editchapterscontent/index.js";
 
 export const BookTemplateRouter = Router();
 
@@ -22,6 +23,7 @@ BookTemplateRouter.get("/search", searchBookTemplates);
 
 // ============private rotes
 
+BookTemplateRouter.put("/updateBookWithChapters/:id", updateBookWithChapters);
 BookTemplateRouter.post(
   "/createbooktemplate",
   authorize(["Admin"]),

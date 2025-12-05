@@ -6,10 +6,6 @@ import logger from "../../../../../CORE/utils/logger/index.js";
 // Instantiate the generator
 const storybookGenerator = new StorybookGenerator();
 
-/**
- * NEW: Renamed to generateTemplate
- * This is the FAST, text-only generation endpoint.
- */
 export const generateTemplate = async (req, res, next) => {
   try {
     const userId = req.user.id;
