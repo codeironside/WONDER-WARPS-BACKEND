@@ -13,7 +13,7 @@ const storybookGenerator = new StorybookGenerator();
  */
 export const saveTemplateAndGenerateMedia = (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     // **THE FIX IS HERE:**
     // We now expect 'storyTemplate' from the body, not 'story'.

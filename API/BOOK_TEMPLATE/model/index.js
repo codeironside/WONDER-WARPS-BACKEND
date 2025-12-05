@@ -484,33 +484,23 @@ class BookTemplate {
 
   static async updateChapters(bookTemplateId, chaptersData, userId) {
     try {
-      const chaptersUpdateSchema = Joi.array()
-        .items(
-          Joi.object({
-            _id: Joi.string().hex().length(24).required(),
-            chapter_title: Joi.string().max(500).required(),
-            chapter_content: Joi.string().required(),
-          }).unknown(false),
-        )
-        .min(1);
-
-      const { error, value: validatedChapters } = chaptersUpdateSchema.validate(
-        chaptersData,
-        {
-          abortEarly: false,
-          stripUnknown: true,
-        },
-      );
-
-      if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
-
       const existingTemplate = await BookTemplateModel.findOne({
         _id: bookTemplateId,
-        user_id: userId,
       });
 
       if (!existingTemplate) {
         throw new ErrorHandler("Book template not found or unauthorized", 404);
+      }
+
+      if (
+        !chaptersData ||
+        !Array.isArray(chaptersData) ||
+        chaptersData.length === 0
+      ) {
+        throw new ErrorHandler(
+          "Chapters array is required and must not be empty",
+          400,
+        );
       }
 
       const session = await mongoose.startSession();
@@ -519,7 +509,7 @@ class BookTemplate {
       try {
         const updateResults = [];
 
-        for (const chapterData of validatedChapters) {
+        for (const chapterData of chaptersData) {
           const existingChapter = await Chapter.findOne({
             _id: chapterData._id,
             book_template_id: bookTemplateId,
@@ -532,14 +522,40 @@ class BookTemplate {
             );
           }
 
+          const updateFields = {};
+
+          if (chapterData.chapter_title !== undefined) {
+            if (
+              typeof chapterData.chapter_title !== "string" ||
+              chapterData.chapter_title.trim() === ""
+            ) {
+              throw new ErrorHandler(
+                `Chapter title for chapter ${chapterData._id} must be a non-empty string`,
+                400,
+              );
+            }
+            updateFields.chapter_title = chapterData.chapter_title.substring(
+              0,
+              500,
+            );
+          }
+
+          if (chapterData.chapter_content !== undefined) {
+            if (
+              typeof chapterData.chapter_content !== "string" ||
+              chapterData.chapter_content.trim() === ""
+            ) {
+              throw new ErrorHandler(
+                `Chapter content for chapter ${chapterData._id} must be a non-empty string`,
+                400,
+              );
+            }
+            updateFields.chapter_content = chapterData.chapter_content;
+          }
+
           const updatedChapter = await Chapter.findByIdAndUpdate(
             chapterData._id,
-            {
-              $set: {
-                chapter_title: chapterData.chapter_title.substring(0, 500),
-                chapter_content: chapterData.chapter_content,
-              },
-            },
+            { $set: updateFields },
             {
               session,
               runValidators: true,

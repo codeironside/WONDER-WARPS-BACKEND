@@ -4,7 +4,7 @@ import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
 
 export const createPrintOrder = async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const orderData = req.body;
 
     const printService = new PrintOrderService();

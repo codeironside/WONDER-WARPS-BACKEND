@@ -8,7 +8,7 @@ const storybookGenerator = new StorybookGenerator();
 
 export const generateTemplate = async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const {
       theme,
       name,

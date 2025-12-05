@@ -15,7 +15,7 @@ export const updateDedicationMessage = async (req, res, next) => {
 
     const { bookId } = req.params;
     const { dedication_message } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     if (!bookId) {
       throw new ErrorHandler("Book ID is required", 400);

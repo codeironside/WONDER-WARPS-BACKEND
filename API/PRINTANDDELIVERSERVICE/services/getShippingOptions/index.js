@@ -5,7 +5,7 @@ import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
 export const getShippingOptions = async (req, res, next) => {
   try {
     const { orderId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const printService = new PrintOrderService();
     const result = await printService.getShippingOptions(orderId, userId);

@@ -6,7 +6,7 @@ import logger from "../../../../../CORE/utils/logger/index.js";
 const previewBook = async (req, res, next) => {
   try {
     const { bookId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const book = await PersonalizedBook.findById(bookId);
 
@@ -39,7 +39,7 @@ const previewBook = async (req, res, next) => {
     logger.error("Book preview failed", {
       error: error.message,
       bookId: req.params.bookId,
-      userId: req.user.id,
+      userId: req.user._id,
     });
     next(error);
   }

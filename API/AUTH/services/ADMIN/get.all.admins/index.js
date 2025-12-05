@@ -3,7 +3,7 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 
 export const getAllAdmins = async (req, res, next) => {
   try {
-    const currentUserId = req.user.id;
+    const currentUserId = req.user._id;
     const filters = req.query;
 
     const result = await User.getAllAdmins(currentUserId, filters);

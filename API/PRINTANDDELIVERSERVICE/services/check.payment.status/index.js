@@ -5,7 +5,7 @@ import ErrorHandler from "../../../../CORE/middleware/errorhandler/index.js";
 export const checkPaymentStatus = async (req, res, next) => {
   try {
     const { session_id } = req.query;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     if (!session_id) {
       throw new ErrorHandler("Session ID is required", 400);

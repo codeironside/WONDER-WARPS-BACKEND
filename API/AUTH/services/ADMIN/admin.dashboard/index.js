@@ -4,7 +4,7 @@ import { sendResponse } from "../../../../../CORE/utils/response.handler/index.j
 export async function getAdminDashboard(req, res, next) {
   try {
     const dashboardStats = await User.getDashboardStats();
-    const adminInfo = await User.findById(req.user.id).select("-password");
+    const adminInfo = await User.findById(req.user._id).select("-password");
     dashboardStats.admin_info = adminInfo;
 
     sendResponse(

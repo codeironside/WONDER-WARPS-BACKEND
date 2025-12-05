@@ -6,7 +6,7 @@ import BookTemplate from "../../../model/index.js";
 export const updateBookTemplate = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
     const {
       book_title,
       suggested_font,

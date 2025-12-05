@@ -4,7 +4,7 @@ import { sendResponse } from "../../../../CORE/utils/response.handler/index.js";
 export const getPrintOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const printOrder = await PrintOrder.findByIdForUser(orderId, userId);
     sendResponse(res, 200, "order fetched successfully", { printOrder });

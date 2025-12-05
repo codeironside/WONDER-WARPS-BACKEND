@@ -66,7 +66,7 @@ export const personalizeBook = async (req, res, next) => {
 
 // export const getPersonalizedBook = async (req, res, next) => {
 //   try {
-//     const userId = req.user.id;
+//     const userId = req.user._id;
 //     const { bookId } = req.params;
 
 //     const book = await BookPersonalizer.getPersonalizedBook(bookId, userId);
@@ -80,7 +80,7 @@ export const personalizeBook = async (req, res, next) => {
 
 // export const getUserPersonalizedBooks = async (req, res, next) => {
 //   try {
-//     const userId = req.user.id;
+//     const userId = req.user._id;
 
 //     const books = await BookPersonalizer.getUserPersonalizedBooks(userId);
 

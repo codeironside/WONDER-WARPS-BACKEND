@@ -24,7 +24,11 @@ BookTemplateRouter.get("/search", searchBookTemplates);
 
 // ============private rotes
 
-BookTemplateRouter.put("/updateChapters/:id", updateChapters);
+BookTemplateRouter.put(
+  "/updateChapters/:id",
+  authorize(["Admin"]),
+  updateChapters,
+);
 BookTemplateRouter.post(
   "/createbooktemplate",
   authorize(["Admin"]),

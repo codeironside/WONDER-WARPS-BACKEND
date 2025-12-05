@@ -4,7 +4,7 @@ import logger from "../../../../../CORE/utils/logger/index.js";
 import PersonalizedBook from "../../../model/index.js";
 export const getALLUserPersonalizedBooks = async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const {
       page = 1,
       limit = 10,
