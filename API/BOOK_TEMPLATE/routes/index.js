@@ -14,6 +14,7 @@ import { getPopularTemplates } from "../services/USERS/getpopulartemplates/index
 import { searchBookTemplates } from "../services/ADMIN/search.template/index.js";
 import { getPublicTemplateWithChapterssigned } from "../services/USERS/getbookwithchaptersforuser/index.js";
 import { updateBookWithChapters } from "../services/ADMIN/editchapterscontent/index.js";
+import { updateChapters } from "../services/ADMIN/editchaptercontent/index.js";
 
 export const BookTemplateRouter = Router();
 
@@ -23,7 +24,7 @@ BookTemplateRouter.get("/search", searchBookTemplates);
 
 // ============private rotes
 
-BookTemplateRouter.put("/updateBookWithChapters/:id", updateBookWithChapters);
+BookTemplateRouter.put("/updateChapters/:id", updateChapters);
 BookTemplateRouter.post(
   "/createbooktemplate",
   authorize(["Admin"]),

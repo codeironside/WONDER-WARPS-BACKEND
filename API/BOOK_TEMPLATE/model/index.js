@@ -482,6 +482,101 @@ class BookTemplate {
     }
   }
 
+  static async updateChapters(bookTemplateId, chaptersData, userId) {
+    try {
+      const chaptersUpdateSchema = Joi.array()
+        .items(
+          Joi.object({
+            _id: Joi.string().hex().length(24).required(),
+            chapter_title: Joi.string().max(500).required(),
+            chapter_content: Joi.string().required(),
+          }).unknown(false),
+        )
+        .min(1);
+
+      const { error, value: validatedChapters } = chaptersUpdateSchema.validate(
+        chaptersData,
+        {
+          abortEarly: false,
+          stripUnknown: true,
+        },
+      );
+
+      if (error) throw new ErrorHandler(this.formatValidationError(error), 400);
+
+      const existingTemplate = await BookTemplateModel.findOne({
+        _id: bookTemplateId,
+        user_id: userId,
+      });
+
+      if (!existingTemplate) {
+        throw new ErrorHandler("Book template not found or unauthorized", 404);
+      }
+
+      const session = await mongoose.startSession();
+      session.startTransaction();
+
+      try {
+        const updateResults = [];
+
+        for (const chapterData of validatedChapters) {
+          const existingChapter = await Chapter.findOne({
+            _id: chapterData._id,
+            book_template_id: bookTemplateId,
+          }).session(session);
+
+          if (!existingChapter) {
+            throw new ErrorHandler(
+              `Chapter with ID ${chapterData._id} not found`,
+              404,
+            );
+          }
+
+          const updatedChapter = await Chapter.findByIdAndUpdate(
+            chapterData._id,
+            {
+              $set: {
+                chapter_title: chapterData.chapter_title.substring(0, 500),
+                chapter_content: chapterData.chapter_content,
+              },
+            },
+            {
+              session,
+              runValidators: true,
+              new: true,
+            },
+          ).select("_id chapter_title chapter_content");
+
+          updateResults.push({
+            _id: updatedChapter._id,
+            chapter_title: updatedChapter.chapter_title,
+            chapter_content: updatedChapter.chapter_content,
+          });
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return {
+          success: true,
+          updatedCount: updateResults.length,
+          updatedChapters: updateResults,
+          message: `Successfully updated ${updateResults.length} chapter(s)`,
+        };
+      } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        throw error;
+      }
+    } catch (error) {
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler(
+        `Failed to update chapters: ${error.message}`,
+        500,
+      );
+    }
+  }
+
   static async findByIdWithChapters(id) {
     const template = await BookTemplateModel.findById(id);
     if (!template) return null;
