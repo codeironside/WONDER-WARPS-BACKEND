@@ -15,9 +15,7 @@ export const downloadBookPDFforadmin = async (req, res, next) => {
       throw new ErrorHandler("Book not found", 404);
     }
 
-    // if (book.user_id.toString() !== userId.toString()) {
-    //     throw new ErrorHandler("Access denied", 403);
-    // }
+   
 
     if (!book.is_paid) {
       throw new ErrorHandler(
@@ -35,7 +33,7 @@ export const downloadBookPDFforadmin = async (req, res, next) => {
     console.log(req.token);
     console.log("space");
     console.log(safeToken);
-    const printUrl = `https://www.mystoryhat.com/admin/print-book/${bookId}?token=${safeToken}`;
+    const printUrl = `https://www.mystoryhat.com/admn/print-book/${bookId}?token=${safeToken}`;
 
     const frontendDomain = process.env.BASE_URL.replace(/^https?:\/\//, "");
 

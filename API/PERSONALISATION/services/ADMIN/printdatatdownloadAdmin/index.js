@@ -10,7 +10,7 @@ export const getPrintDataToDownloadAdmin = async (req, res, next) => {
     if (!id) {
       throw new ErrorHandler("Personalized book ID is required", 400);
     }
-
+    console.log("re",req.token)
     const book = await PersonalizedBook.findByIdForUserPaidAdmin(id);
 
     sendResponse(res, 200, "Personalized book retrieved successfully", book);
