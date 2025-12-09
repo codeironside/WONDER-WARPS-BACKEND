@@ -4,6 +4,7 @@ import { uploadPhoto } from "../UPLOAD/services/uploads.images/index.js";
 import { uploadSinglePhoto } from "../../../CORE/services/multer/index.js";
 import { validateImageFile } from "../UPLOAD/services/validate.image/index.js";
 import { downloadBookPDF } from "../DOWNLOAD/services/downloadpdf/index.js";
+import { downloadBookPDFforadmin } from "../DOWNLOAD/services/downloadbookforadmin/index.js";
 
 export const fileRouter = Router();
 
@@ -17,6 +18,11 @@ fileRouter.get(
   "/:bookId/download",
   authorize(["Admin", "User"]),
   downloadBookPDF,
+);
+fileRouter.get(
+  "/admin/:bookId/download",
+  authorize(["Admin"]),
+  downloadBookPDFforadmin,
 );
 
 fileRouter.post(
