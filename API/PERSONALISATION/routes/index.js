@@ -16,6 +16,7 @@ import { sendGift } from "../services/USERS/gift.a.friend/index.js";
 import { redeemGift } from "../services/USERS/claim.a.gift/index.js";
 import { saveShippingDetails } from "../services/USERS/shipping/index.js";
 import { updateBookProcessedStatus } from "../services/ADMIN/updateisshippingprocess/index.js";
+import { getPrintDataToDownloadAdmin } from "../services/ADMIN/printdatatdownloadAdmin/index.js";
 
 export const BookPersonalizer = Router();
 
@@ -95,6 +96,11 @@ BookPersonalizer.get(
   "/printdatatodownload/:id",
   authorize(["User", "Admin"]),
   getPrintDataToDownload,
+);
+BookPersonalizer.get(
+  "/admin/printdatatodownload/:id",
+  authorize(["Admin"]),
+  getPrintDataToDownloadAdmin,
 );
 BookPersonalizer.get(
   "/searchbygenre",

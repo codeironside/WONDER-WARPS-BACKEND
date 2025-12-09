@@ -880,6 +880,23 @@ class PersonalizedBook {
       throw new ErrorHandler("Failed to find personalized book", 500);
     }
   }
+  static async findByIdForUserPaidAdmin(bookId) {
+    try {
+      const book = await PersonalizedBookModel.findOne({
+        _id: bookId,
+      }).exec();
+
+      if (!book) {
+        throw new ErrorHandler("Personalized book not found", 404);
+      }
+
+      return book;
+    } catch (error) {
+      console.log(error);
+      if (error instanceof ErrorHandler) throw error;
+      throw new ErrorHandler("Failed to find personalized book", 500);
+    }
+  }
 
   static async findPaidBooksByUser(userId, options = {}) {
     try {
