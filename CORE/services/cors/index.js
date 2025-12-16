@@ -90,7 +90,7 @@ class CorsHandler {
         "X-Request-ID",
       ],
       exposedHeaders: [
-        "Authorization", // Added Authorization header to exposed headers
+        "Authorization",
         "Content-Range",
         "X-Content-Range",
         "X-Request-ID",
@@ -98,7 +98,7 @@ class CorsHandler {
         "X-RateLimit-Remaining",
         "X-RateLimit-Reset",
       ],
-      maxAge: this.isDevelopment ? 600 : 86400, // Shorter cache in development
+      maxAge: this.isDevelopment ? 600 : 86400,
       preflightContinue: false,
     };
   }

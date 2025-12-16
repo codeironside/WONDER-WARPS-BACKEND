@@ -1,6 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { config } from "@/config";
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 class VeoGenerator {
   constructor() {
     const apiKey = config.google.api_key;
@@ -32,65 +34,109 @@ class VeoGenerator {
   }
 
   async generateVideo(prompt, options = {}) {
-    try {
-      console.log(`Starting video generation for prompt: "${prompt}"`);
-      console.log(`Using project ID: ${this.projectId}`);
+    const MAX_RETRIES = 3;
+    let lastError = null;
 
-      const config = {
-        ...this.defaultConfig,
-        ...options,
-      };
-
-      let operation = await this.ai.models.generateVideos({
-        model: "veo-3.1-fast-generate-preview",
-        prompt: prompt,
-        config: config,
-      });
-
-      console.log(
-        "Video generation operation started. Polling for completion...",
-      );
-
-      while (!operation.done) {
-        await new Promise((resolve) => setTimeout(resolve, 10000));
-        console.log("...still generating...");
-        operation = await this.ai.operations.getVideosOperation({
-          operation: operation,
-        });
-      }
-
-      const video = operation.response?.generatedVideos?.[0];
-      if (video?.video?.uri) {
-        const downloadUri = video.video.uri;
-        const publicUri = this.getPublicVideoUri(downloadUri);
-        console.log("Video generated successfully!");
-
-        return {
-          success: true,
-          video_uri: publicUri,
-          prompt: prompt,
-          config: config,
-          duration: video.duration || 10,
-          resolution: config.resolution,
-          project_id: this.projectId,
-        };
-      } else {
-        console.error(
-          "Operation finished, but no video URI was found.",
-          operation,
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(
+          `Starting video generation (Attempt ${attempt}/${MAX_RETRIES})`,
         );
-        throw new Error("Video generation failed or returned no video URI.");
+
+        const currentPrompt =
+          attempt > 1 ? this.sanitizePromptForRetry(prompt) : prompt;
+
+        if (attempt > 1) {
+          console.log(
+            "Using sanitized prompt for retry:",
+            currentPrompt.substring(0, 100) + "...",
+          );
+        }
+
+        const config = {
+          ...this.defaultConfig,
+          ...options,
+        };
+
+        let operation = await this.ai.models.generateVideos({
+          model: "veo-3.1-fast-generate-preview",
+          prompt: currentPrompt,
+          config: config,
+        });
+
+        console.log(
+          `Video generation operation started (Attempt ${attempt}). Polling...`,
+        );
+
+        while (!operation.done) {
+          await sleep(10000); // Wait 10s
+          console.log("...still generating...");
+          operation = await this.ai.operations.getVideosOperation({
+            operation: operation,
+          });
+        }
+
+        if (operation.response?.raiMediaFilteredCount > 0) {
+          const reason =
+            operation.response.raiMediaFilteredReasons?.[0] ||
+            "Unknown safety reason";
+          throw new Error(`Video filtered by safety check: ${reason}`);
+        }
+
+        const video = operation.response?.generatedVideos?.[0];
+        if (video?.video?.uri) {
+          const downloadUri = video.video.uri;
+          const publicUri = this.getPublicVideoUri(downloadUri);
+          console.log("Video generated successfully!");
+
+          return {
+            success: true,
+            video_uri: publicUri,
+            prompt: currentPrompt,
+            config: config,
+            duration: video.duration || 10,
+            resolution: config.resolution,
+            project_id: this.projectId,
+          };
+        } else {
+          console.error(
+            "Operation finished but no video URI found:",
+            operation,
+          );
+          throw new Error("Video generation failed or returned no video URI.");
+        }
+      } catch (error) {
+        console.error(
+          `Video generation attempt ${attempt} failed:`,
+          error.message,
+        );
+        lastError = error;
+
+        if (attempt < MAX_RETRIES) {
+          console.log("Waiting 5 seconds before retrying...");
+          await sleep(5000);
+        }
       }
-    } catch (error) {
-      console.error("An error occurred during video generation:", error);
-      return {
-        success: false,
-        error: error.message,
-        prompt: prompt,
-        project_id: this.projectId,
-        fallback_url: this.generateFallbackUrl(prompt),
-      };
     }
+
+    console.error("All video generation attempts failed.");
+    return {
+      success: false,
+      error: lastError ? lastError.message : "Unknown error",
+      video_uri: null,
+      prompt: prompt,
+      project_id: this.projectId,
+      fallback_url: this.generateFallbackUrl(prompt),
+    };
+  }
+
+  sanitizePromptForRetry(originalPrompt) {
+    const sentences = originalPrompt.split(".");
+    const safePrompt =
+      sentences.slice(0, 2).join(". ") +
+      ". High quality, cinematic, 4k, animated movie style. No text.";
+
+    return safePrompt;
   }
 
   async generateStorybookAnimation(

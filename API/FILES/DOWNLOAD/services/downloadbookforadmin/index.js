@@ -15,8 +15,6 @@ export const downloadBookPDFforadmin = async (req, res, next) => {
       throw new ErrorHandler("Book not found", 404);
     }
 
-   
-
     if (!book.is_paid) {
       throw new ErrorHandler(
         "Please complete payment to download this book",

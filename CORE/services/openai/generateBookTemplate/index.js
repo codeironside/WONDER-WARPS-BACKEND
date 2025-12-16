@@ -820,7 +820,7 @@ You will return the story as a single JSON object with the following format:
       }));
 
       const finalBookData = {
-        user_id: userId,
+        user_id: userId.toString(),
         book_title,
         suggested_font,
         description: description || null,
@@ -873,6 +873,7 @@ You will return the story as a single JSON object with the following format:
     } catch (error) {
       console.error(`FATAL: Background job failed for book: ${book_title}`);
       console.error(error);
+      console.log(error);
 
       if (user && user.email) {
         try {
