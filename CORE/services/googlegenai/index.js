@@ -69,7 +69,7 @@ class VeoGenerator {
         );
 
         while (!operation.done) {
-          await sleep(10000); // Wait 10s
+          await sleep(10000);
           console.log("...still generating...");
           operation = await this.ai.operations.getVideosOperation({
             operation: operation,
@@ -135,12 +135,11 @@ class VeoGenerator {
     const safePrompt =
       sentences.slice(0, 2).join(". ") +
       ". High quality, cinematic, 4k, animated movie style. No text.";
-
     return safePrompt;
   }
 
   async generateStorybookAnimation(
-    storyTitle,
+    bookTitle,
     characterName,
     gender,
     theme,
@@ -149,10 +148,12 @@ class VeoGenerator {
     keyMoments,
     ageMin,
     ageMax,
+    bookCoverUrl,
+    chapterImageUrls,
   ) {
     const ageRange = `${ageMin}-${ageMax}`;
-    const prompt = this.createStorySpecificAnimationPrompt(
-      storyTitle,
+    const prompt = this.createReadingSessionPrompt(
+      bookTitle,
       characterName,
       gender,
       theme,
@@ -160,6 +161,8 @@ class VeoGenerator {
       storySummary,
       keyMoments,
       ageRange,
+      bookCoverUrl,
+      chapterImageUrls,
     );
 
     const options = {
@@ -171,8 +174,8 @@ class VeoGenerator {
     return await this.generateVideo(prompt, options);
   }
 
-  createStorySpecificAnimationPrompt(
-    storyTitle,
+  createReadingSessionPrompt(
+    bookTitle,
     characterName,
     gender,
     theme,
@@ -180,10 +183,12 @@ class VeoGenerator {
     storySummary,
     keyMoments,
     ageRange,
+    bookCoverUrl,
+    chapterImageUrls,
   ) {
     const keyMomentsText = keyMoments
       .slice(0, 3)
-      .map((moment, index) => `Scene ${index + 1}: ${moment}`)
+      .map((moment, index) => `Page ${index + 1}: ${moment}`)
       .join(". ");
 
     const [ageMin, ageMax] = ageRange
@@ -193,42 +198,54 @@ class VeoGenerator {
     const isMiddleChild = ageMin > 6 && ageMin <= 10;
     const isOlderChild = ageMin > 10;
 
-    return `A 10-second cinematic book trailer animation for "${storyTitle}" in ${visualStyle} style, specifically created for children aged ${ageRange}.
+    return `A 10-second cinematic video of a child named ${characterName} reading the book "${bookTitle}" with their parents, using the actual book images created for this story.
 
-STORY CONTEXT:
-- Protagonist: ${characterName}, a ${gender} child
+BOOK DETAILS:
+- Book Title: "${bookTitle}"
+- Main Character: ${characterName}, a ${gender} child
 - Theme: ${theme}
+- Visual Style: ${visualStyle}
 - Story Summary: ${storySummary}
-- Key Story Moments: ${keyMomentsText}
+- Key Story Moments in the book: ${keyMomentsText}
 - Target Audience: Children aged ${ageRange}
 
-ANIMATION SPECIFICS:
-- Opening: ${characterName} discovers the main story element
-- Middle: A pivotal moment of wonder or challenge
-- Closing: ${characterName} achieves something meaningful
-- Visual Style: ${visualStyle}
-- Mood: Magical, adventurous, heartwarming
-- Camera: Dynamic cinematic movements, smooth transitions
-- Lighting: Magical glow, vibrant colors, atmospheric
-- No text, no words, pure visual storytelling
+VIDEO SCENARIO:
+The video shows ${characterName} and their parents sitting together in a cozy living room, reading the actual physical book "${bookTitle}". They are turning pages, pointing at illustrations, and reacting to the story with wonder and joy.
 
-AGE-APPROPRIATE CONTENT REQUIREMENTS:
-- Content must be suitable and engaging for children aged ${ageRange}
-- ${isPreschool ? "Use simple, clear visual storytelling with bright primary colors. Character expressions should be exaggerated and easy to understand. Avoid complex plot points." : ""}
-- ${isMiddleChild ? "Use vibrant colors and dynamic compositions. Character expressions should be clear but more nuanced. Storytelling can include mild challenges and simple moral lessons." : ""}
-- ${isOlderChild ? "Use sophisticated color palettes and complex compositions. Character development can be more detailed. Storytelling can include more complex challenges and character growth." : ""}
-- Character expressions should be appropriate for ${ageRange} year olds
-- Movements should be ${isPreschool ? "slow and clear" : "smooth and dynamic"} for young viewers
-- Avoid any scary, intense, or age-inappropriate content
-- Maintain a positive, uplifting tone throughout
-- Visual storytelling should be ${isPreschool ? "very simple and direct" : isMiddleChild ? "clear and engaging" : "sophisticated but accessible"} for children to follow
+SPECIFIC SCENES:
+1. Opening shot: ${characterName} excitedly holds the book "${bookTitle}" showing the cover to the parents.
+2. Middle sequence: Parents and child turning pages together, looking at the book's illustrations that show key story moments.
+3. Close-up shots: Child's face lighting up with wonder as they see the book's magical illustrations.
+4. Ending: Family hugging with the book open on their laps, showing a heartwarming illustration from the story.
 
-TECHNICAL NOTES:
-- 10-second duration
-- Seamless scene transitions
-- Character expressions showing wonder and determination
-- Magical visual effects appropriate for children's content
-- Optimized for ${ageRange} year old children's attention spans and comprehension`;
+BOOK IMAGES USED:
+- The book cover is shown clearly in the opening shot.
+- The book's interior illustrations (created for each chapter) are visible as pages are turned.
+- The promotional images (book on wall, reading together scene) are integrated as decorative elements in the background.
+
+TECHNICAL DIRECTIONS:
+- Show the actual book with its cover and interior pages
+- Include close-ups of the book's illustrations as pages turn
+- Camera moves dynamically around the reading family
+- Warm, cozy lighting with magical atmospheric glow
+- Character expressions: wonder, joy, bonding
+- 10-second duration with smooth transitions
+- Visual style: ${visualStyle}
+
+AGE-APPROPRIATE DIRECTIONS:
+- Content suitable for children aged ${ageRange}
+- ${isPreschool ? "Simple, clear visual storytelling with bright primary colors. Slow page turning, exaggerated happy expressions." : ""}
+- ${isMiddleChild ? "Vibrant colors and dynamic compositions. Clear page turning with visible illustrations. Character expressions show curiosity and excitement." : ""}
+- ${isOlderChild ? "Sophisticated color palettes and complex camera movements. Detailed illustrations visible. Character expressions show deeper engagement with the story." : ""}
+- Movements: ${isPreschool ? "slow and clear" : "smooth and dynamic"}
+- Positive, uplifting family bonding atmosphere
+- No scary or intense content, only wonder and joy
+
+VISUAL STYLE NOTES:
+- Use ${visualStyle} for the entire scene
+- The book and its illustrations should match the created visual style
+- Magical glow around the book when opened
+- Cozy home environment with warm lighting`;
   }
 
   generateFallbackUrl(prompt) {
@@ -246,7 +263,7 @@ TECHNICAL NOTES:
       const frames = [];
       for (let i = 0; i < Math.min(frameCount, keyMoments.length); i++) {
         const moment = keyMoments[i];
-        const framePrompt = `Storyboard frame for "${storyTitle}": ${moment}. Cinematic composition, dynamic camera angle, emotional moment. Content suitable for children aged ${ageRange}.`;
+        const framePrompt = `Storyboard frame for reading session of "${storyTitle}": ${moment}. Child and parents reading together, pointing at book illustration. Content suitable for children aged ${ageRange}.`;
         frames.push({
           frame_number: i + 1,
           timestamp: `${(i * (10 / frameCount)).toFixed(1)}s`,
@@ -265,7 +282,7 @@ TECHNICAL NOTES:
 
   generateFramePlaceholder(prompt) {
     const encodedPrompt = encodeURIComponent(prompt.substring(0, 30));
-    return `https://via.placeholder.com/1024x1024/9361F3/FFFFFF?text=Storyboard:${encodedPrompt}`;
+    return `https://via.placeholder.com/1024x1024/9361F3/FFFFFF?text=Reading+Session:${encodedPrompt}`;
   }
 
   getProjectId() {

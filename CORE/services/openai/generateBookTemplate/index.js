@@ -6,6 +6,10 @@ import BookTemplate from "../../../../API/BOOK_TEMPLATE/model/index.js";
 import User from "../../../../API/AUTH/model/index.js";
 import emailService from "../../Email/index.js";
 
+// [Vertex AI Imports]
+import { GoogleAuth } from "google-auth-library";
+import path from "path";
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const IMAGE_POSITIONS = {
@@ -85,16 +89,26 @@ const SUGGESTED_FONTS = {
 class StorybookGenerator {
   constructor() {
     const apiKey = config.openai.API_KEY;
-
     if (!apiKey) {
       throw new ErrorHandler(
         "OpenAI API key is required for text generation",
         500,
       );
     }
-
     this.openai = new OpenAI({ apiKey });
     this.veoGenerator = new VeoGenerator();
+
+    // [CRITICAL] Ensure this filename matches the JSON key for:
+    // mystoryhat@gen-lang-client-0326022183.iam.gserviceaccount.com
+    this.googleKeyFilePath = path.join(
+      process.cwd(),
+      "gen-lang-client-0326022183-dee04afb8953.json",
+    );
+
+    this.auth = new GoogleAuth({
+      keyFile: this.googleKeyFilePath,
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    });
   }
 
   getAgeGroup(ageMin) {
@@ -173,7 +187,6 @@ class StorybookGenerator {
       .map((chapter) => chapter.chapter_content + " " + chapter.chapter_title)
       .join(" ")
       .toLowerCase();
-
     const commonKeywords = [
       "adventure",
       "friendship",
@@ -214,11 +227,9 @@ class StorybookGenerator {
       "superhero",
       "detective",
     ];
-
     const foundKeywords = commonKeywords.filter((keyword) =>
       allContent.includes(keyword),
     );
-
     const genderKeyword = storyData.chapters[0]?.chapter_content
       .toLowerCase()
       .includes(" she ")
@@ -226,22 +237,16 @@ class StorybookGenerator {
       : storyData.chapters[0]?.chapter_content.toLowerCase().includes(" he ")
         ? "boy"
         : "";
-
     const finalKeywords = [
       ...new Set([...foundKeywords, genderKeyword].filter(Boolean)),
     ];
-
     return finalKeywords.slice(0, 6);
   }
 
   _getVisualStyle(ageMin, theme) {
-    if (!theme) {
-      console.warn("Theme is undefined, defaulting to Pixar style.");
+    if (!theme)
       return "in a modern Pixar CGI style with high-fidelity rendering, realistic textures, and emotionally expressive rounded characters";
-    }
-
     const lowerTheme = theme.toLowerCase();
-
     const styleMappings = {
       sci_fi: {
         modern:
@@ -306,7 +311,6 @@ class StorybookGenerator {
         ? styleMappings.sci_fi.modern
         : styleMappings.sci_fi.cinematic;
     }
-
     if (
       lowerTheme.includes("humor") ||
       lowerTheme.includes("funny") ||
@@ -316,7 +320,6 @@ class StorybookGenerator {
       if (ageMin <= 10) return styleMappings.humor.modern_cartoon;
       return styleMappings.humor.simpsons;
     }
-
     if (
       lowerTheme.includes("fantasy") ||
       lowerTheme.includes("magic") ||
@@ -326,7 +329,6 @@ class StorybookGenerator {
       if (ageMin <= 10) return styleMappings.fantasy.anime_fantasy;
       return styleMappings.fantasy.disney_renaissance;
     }
-
     if (
       lowerTheme.includes("adventure") ||
       lowerTheme.includes("explore") ||
@@ -336,7 +338,6 @@ class StorybookGenerator {
       if (ageMin <= 10) return styleMappings.adventure.moana;
       return styleMappings.adventure.volumetric;
     }
-
     if (
       lowerTheme.includes("action") ||
       lowerTheme.includes("battle") ||
@@ -346,7 +347,6 @@ class StorybookGenerator {
         ? styleMappings.action.cartoon_network
         : styleMappings.action.fast_furious;
     }
-
     if (
       lowerTheme.includes("classic") ||
       lowerTheme.includes("vintage") ||
@@ -354,24 +354,17 @@ class StorybookGenerator {
     ) {
       return styleMappings.classic.hanna_barbera;
     }
-
-    if (ageMin <= 6) {
-      return styleMappings.preschool.peppa_pig;
-    }
-    if (ageMin <= 10) {
-      return styleMappings.adventure.pixar;
-    }
+    if (ageMin <= 6) return styleMappings.preschool.peppa_pig;
+    if (ageMin <= 10) return styleMappings.adventure.pixar;
     return styleMappings.fantasy.modern_disney;
   }
 
   extractKeyStoryMoments(storyData) {
     const moments = [];
-
     storyData.chapters.forEach((chapter, chapterIndex) => {
       const sentences = chapter.chapter_content
         .split(/[.!?]+/)
         .filter((s) => s.trim().length > 10);
-
       sentences.slice(0, 2).forEach((sentence) => {
         const cleanSentence = sentence.trim();
         if (cleanSentence.length > 20 && cleanSentence.length < 150) {
@@ -383,7 +376,6 @@ class StorybookGenerator {
         }
       });
     });
-
     return moments.slice(0, 5).map((m) => m.moment);
   }
 
@@ -391,7 +383,6 @@ class StorybookGenerator {
     const firstChapter = storyData.chapters[0]?.chapter_content || "";
     const lastChapter =
       storyData.chapters[storyData.chapters.length - 1]?.chapter_content || "";
-
     return `${firstChapter.substring(0, 150)}... ${lastChapter.substring(0, 100)}`.substring(
       0,
       300,
@@ -411,7 +402,6 @@ class StorybookGenerator {
       const storySummary = this.createStorySummary(storyData);
       const keyMoments = this.extractKeyStoryMoments(storyData);
       const ageRange = `${ageMin}-${ageMax}`;
-
       const response = await this.openai.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
@@ -422,23 +412,19 @@ class StorybookGenerator {
           {
             role: "user",
             content: `Create an EXCLUSIVE animation prompt for "${storyData.book_title}" using these exact story details for children aged ${ageRange}:
-
 EXACT STORY CONTENT:
 ${storyData.chapters.map((chapter) => `Chapter: ${chapter.chapter_title}\nContent: ${chapter.chapter_content.substring(0, 200)}`).join("\n\n")}
-
 CHARACTER: ${name} (${gender})
 THEME: ${theme}
 TARGET AGE: ${ageRange}
 VISUAL STYLE: ${visualStyle}
 KEY STORY MOMENTS: ${keyMoments.join(" | ")}
-
 Create a 10-second animation prompt that captures the ESSENCE of this specific story for ${ageRange} year old children. Focus on actual events and character journey from the story above, making it age-appropriate.`,
           },
         ],
         max_tokens: 600,
         temperature: 0.7,
       });
-
       return {
         prompt: response.choices[0].message.content.trim(),
         storySummary: storySummary,
@@ -452,7 +438,6 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
       const storySummary = this.createStorySummary(storyData);
       const keyMoments = this.extractKeyStoryMoments(storyData);
       const ageRange = `${ageMin}-${ageMax}`;
-
       return {
         prompt: `10-second cinematic animation for "${storyData.book_title}" featuring ${name}. Story: ${storySummary}. Key moments: ${keyMoments.join(", ")}. Visual style: ${visualStyle}. Created for children aged ${ageRange}.`,
         storySummary: storySummary,
@@ -473,7 +458,6 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
         name,
         gender,
       );
-
       const animationResult =
         await this.veoGenerator.generateStorybookAnimation(
           storyData.book_title,
@@ -486,14 +470,12 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
           ageMin,
           ageMax,
         );
-
       const storyboardFrames = await this.veoGenerator.generateAnimationFrames(
         storyData.book_title,
         promptData.keyMoments,
         4,
         `${ageMin}-${ageMax}`,
       );
-
       return {
         veo_animation: animationResult,
         storyboard_frames: storyboardFrames,
@@ -523,46 +505,160 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
     }
   }
 
-  async generateImageWithOpenAI(safePrompt, options = {}) {
-    const MAX_RETRIES = 5;
-    let initialDelay = 5000;
+  // ==========================================
+  // [RESTORED] Missing Method - This fixes your crash
+  // ==========================================
+  async generateImagesForChapters(
+    chapters,
+    age_min,
+    gender,
+    name,
+    theme,
+    skin_tone,
+    hair_type,
+    hairstyle,
+    hair_color,
+    eye_color,
+    clothing,
+  ) {
+    const images = [];
+    for (let i = 0; i < chapters.length; i++) {
+      const chapter = chapters[i];
+      try {
+        console.log(
+          `Generating image for chapter ${i + 1}/${chapters.length}...`,
+        );
+        const cleanImageDescription = this.sanitizeImagePrompt(
+          chapter.image_description,
+        );
+        const visualStyle = this._getVisualStyle(age_min, theme);
+
+        const safePrompt = `Children's storybook illustration ${visualStyle}.
+        Main character: ${name}, a ${gender} child with ${skin_tone} skin, ${hair_color} ${hairstyle} ${hair_type} hair, ${eye_color} eyes, wearing ${clothing}.
+        Scene: ${cleanImageDescription}.
+        ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
+        No book titles, no captions, no speech bubbles, no labels.
+        Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
+
+        const imageResult = await this.generateImageWithGemini(safePrompt);
+        images.push(imageResult);
+        console.log(`Successfully generated image for chapter ${i + 1}`);
+      } catch (error) {
+        console.error(
+          `Critical error in generateImagesForChapters loop ${i + 1}:`,
+          error,
+        );
+        images.push({
+          url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
+          provider: "error",
+        });
+      }
+    }
+    return images.filter((result) => result.url !== null);
+  }
+
+  async generateImageWithGemini(safePrompt, options = {}) {
+    const MAX_RETRIES = 3;
+    const modelName = "imagen-3.0-generate-001";
+    const location = "us-central1";
+
+    await sleep(5000);
 
     for (let retries = 0; retries < MAX_RETRIES; retries++) {
       try {
-        console.log("Generating image with OpenAI...");
+        console.log(`[Vertex AI] Attempt ${retries + 1} using ${modelName}...`);
 
-        // FIXED: Use .generate() instead of .create() and correct model name
-        const response = await this.openai.images.generate({
-          model: "dall-e-3", // Fixed model name
-          prompt: safePrompt,
-          n: 1,
-          size: "1024x1024",
-          ...options,
+        const client = await this.auth.getClient();
+        const projectId = await this.auth.getProjectId();
+        const accessToken = await client.getAccessToken();
+        const tokenValue =
+          typeof accessToken === "string" ? accessToken : accessToken.token;
+
+        const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelName}:predict`;
+
+        const payload = {
+          instances: [{ prompt: safePrompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: "1:1",
+            personGeneration: "allow_adult",
+          },
+        };
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tokenValue}`,
+          },
+          body: JSON.stringify(payload),
         });
 
-        return { url: response.data[0].url, provider: "openai" };
-      } catch (openAIError) {
-        console.error("OpenAI image generation failed:", openAIError);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
 
-        // Add retry logic with exponential backoff
-        if (retries < MAX_RETRIES - 1) {
-          const delay = initialDelay * Math.pow(2, retries);
-          console.log(
-            `Retrying in ${delay}ms... (Attempt ${retries + 1}/${MAX_RETRIES})`,
-          );
-          await sleep(delay);
-          continue;
+          if (response.status === 429) {
+            console.warn(
+              `[Vertex AI] Rate Limit Exceeded (429). Pausing for 25 seconds before retry...`,
+            );
+            await sleep(25000);
+            continue;
+          }
+
+          if (response.status === 403) {
+            console.error("[Vertex AI] Permission Denied. Check IAM roles.");
+            break;
+          }
+
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-        break;
+
+        const data = await response.json();
+
+        if (data.predictions?.[0]?.bytesBase64Encoded) {
+          return {
+            url: `data:${data.predictions[0].mimeType || "image/png"};base64,${data.predictions[0].bytesBase64Encoded}`,
+            provider: "google-vertex-imagen",
+          };
+        }
+
+        console.warn("[Vertex AI] No image returned (likely safety filter).");
+        throw new Error("No image data found in predictions.");
+      } catch (error) {
+        console.error(
+          `[Vertex AI] Attempt ${retries + 1} failed:`,
+          error.message,
+        );
+
+        if (retries < MAX_RETRIES - 1 && !error.message.includes("429")) {
+          await sleep(5000);
+        }
       }
     }
 
-    console.warn(
-      "All retries failed for OpenAI image generation. Returning fallback.",
-    );
+    try {
+      console.log("Switching to DALL-E 3 fallback...");
+      const response = await this.openai.images.generate({
+        model: "dall-e-3",
+        prompt: safePrompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json",
+      });
+
+      if (response.data?.[0]?.b64_json) {
+        return {
+          url: `data:image/png;base64,${response.data[0].b64_json}`,
+          provider: "openai-dall-e-3-fallback",
+        };
+      }
+    } catch (e) {
+      console.error("DALL-E Fallback failed:", e.message);
+    }
+
     return {
-      url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
-      provider: "fallback",
+      url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Illustration+Generating...`,
+      provider: "placeholder",
     };
   }
 
@@ -578,21 +674,20 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
     let prompt = `${theme}:\nWrite a full, detailed children's storybook with the following details:\n`;
     if (name) prompt += `- Name: ${name}\n`;
     if (gender) prompt += `- Gender: ${gender}\n`;
-
     Object.entries(otherDetails).forEach(([key, value]) => {
       if (value) {
         const formattedKey = key.replace(/_/g, " ");
         prompt += `- ${formattedKey}: ${value}\n`;
       }
     });
-
     prompt += `\n${prompt_message}\n`;
-
     const ageGroup = this.getAgeGroup(age_min);
     const imagePositions = this.getImagePositions(ageGroup);
     const suggestedFonts = this.getSuggestedFonts(ageGroup, theme);
     const targetChapterCount = this.calculateChapterCount();
     const textLength = this.getTextLengthPerPage(age_min);
+
+    const availableFontsInfo = `For YOUNGER_CHILD (age ≤6): ${SUGGESTED_FONTS.YOUNGER_CHILD.join(", ")}. For MIDDLE_CHILD (age 7-10): ${SUGGESTED_FONTS.MIDDLE_CHILD.join(", ")}. For OLDER_CHILD (age >10): ${SUGGESTED_FONTS.OLDER_CHILD.join(", ")}. Additional theme fonts: fantasy: ${SUGGESTED_FONTS.THEMED_FONTS.fantasy.join(", ")}, adventure: ${SUGGESTED_FONTS.THEMED_FONTS.adventure.join(", ")}, sci_fi: ${SUGGESTED_FONTS.THEMED_FONTS.sci_fi.join(", ")}, mystery: ${SUGGESTED_FONTS.THEMED_FONTS.mystery.join(", ")}, humor: ${SUGGESTED_FONTS.THEMED_FONTS.humor.join(", ")}, educational: ${SUGGESTED_FONTS.THEMED_FONTS.educational.join(", ")}.`;
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -600,7 +695,7 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
         messages: [
           {
             role: "system",
-            content: `You are a professional children's storyteller. You will write a fun, magical, and joyful story for a child aged ${age_min} to ${age_max}, the gender is ${gender}.
+            content: `You are a professional children's storyteller and typography expert. You will write a fun, magical, and joyful story for a child aged ${age_min} to ${age_max}, the gender is ${gender}.
 
 **STORY STRUCTURE:**
 * Create exactly ${targetChapterCount} chapters (pages) for this storybook
@@ -629,8 +724,19 @@ Create a 10-second animation prompt that captures the ESSENCE of this specific s
 **IMAGE POSITION GUIDANCE:**
 For age ${age_min}-${age_max}, choose image positions that enhance engagement. Available positions: ${imagePositions.join(", ")}
 
-**FONT SELECTION:**
-Choose from these age-appropriate fonts: ${suggestedFonts.join(", ")}
+**FONT SELECTION CRITERIA:**
+You are an expert typographer. Based on the age group "${ageGroup}" (age ${age_min}-${age_max}) and theme "${theme}", you MUST intelligently select ONE font from the appropriate categories below.
+
+Available font categories:
+${availableFontsInfo}
+
+Consider these factors when selecting a font:
+1. Age appropriateness: Choose fonts that are easy to read for ${age_min}-${age_max} year olds
+2. Theme matching: Select fonts that match the "${theme}" theme
+3. Readability: Ensure the font is clear and legible for the target age
+4. Style: The font should enhance the story's mood and tone
+
+Select ONE font that best fits all criteria above. Do NOT list multiple fonts or create new font names. Choose only from the fonts listed above.
 
 You will return the story as a single JSON object with the following format:
 {
@@ -644,7 +750,7 @@ You will return the story as a single JSON object with the following format:
       "image_position": "Choose from the available positions above"
     }
   ],
-  "suggested_font": "Choose from the available fonts above",
+  "suggested_font": "The SINGLE font you selected based on age and theme criteria",
   "total_pages": ${targetChapterCount},
   "age_range": "${age_min}-${age_max}",
   "reading_level": "${textLength.description}"
@@ -654,14 +760,21 @@ You will return the story as a single JSON object with the following format:
             role: "user",
             content: `Using the details below, weave a captivating ${targetChapterCount}-page story where ${name} is the true protagonist. Make sure every chapter features ${name} prominently and the story flows naturally across all ${targetChapterCount} pages. Each chapter must be exactly ${textLength.sentences} sentences to maintain perfect pacing for ${age_min}-${age_max} year old readers.
 
-          Details for the story:
-          ${prompt}`,
+Also, as a typography expert, select the SINGLE most appropriate font for this story considering:
+- Target age: ${age_min}-${age_max} (${ageGroup})
+- Story theme: ${theme}
+- Readability for children
+- Theme-appropriate styling
+
+Choose only ONE font from the available font lists provided in the system prompt.
+
+Details for the story:
+${prompt}`,
           },
         ],
         max_tokens: 4000,
         temperature: 0.85,
       });
-
       let storyData;
       try {
         storyData = JSON.parse(response.choices[0].message.content.trim());
@@ -675,21 +788,37 @@ You will return the story as a single JSON object with the following format:
           throw new Error("Invalid JSON response from AI");
         }
       }
-
       if (!storyData.chapters || storyData.chapters.length === 0) {
         throw new Error("No chapters generated");
       }
-
       storyData.chapters.forEach((chapter) => {
         chapter.chapter_content = this.cleanContent(chapter.chapter_content);
       });
 
+      const selectedFont = storyData.suggested_font;
+      const allAvailableFonts = [
+        ...SUGGESTED_FONTS.YOUNGER_CHILD,
+        ...SUGGESTED_FONTS.MIDDLE_CHILD,
+        ...SUGGESTED_FONTS.OLDER_CHILD,
+        ...SUGGESTED_FONTS.THEMED_FONTS.fantasy,
+        ...SUGGESTED_FONTS.THEMED_FONTS.adventure,
+        ...SUGGESTED_FONTS.THEMED_FONTS.sci_fi,
+        ...SUGGESTED_FONTS.THEMED_FONTS.mystery,
+        ...SUGGESTED_FONTS.THEMED_FONTS.humor,
+        ...SUGGESTED_FONTS.THEMED_FONTS.educational,
+      ];
+
+      if (!allAvailableFonts.includes(selectedFont)) {
+        console.warn(
+          `AI selected font "${selectedFont}" is not in the predefined font lists. Falling back to default for age group.`,
+        );
+        storyData.suggested_font = suggestedFonts[0] || "Arial";
+      }
+
       console.log(
-        `Generated story template with ${storyData.chapters.length} chapters for age ${age_min}-${age_max}`,
+        `Generated story template with ${storyData.chapters.length} chapters for age ${age_min}-${age_max} with font: ${storyData.suggested_font}`,
       );
-
       const keywords = this.extractKeywords(storyData);
-
       return {
         ...storyData,
         keywords,
@@ -707,6 +836,42 @@ You will return the story as a single JSON object with the following format:
         500,
       );
     }
+  }
+
+  async generatePromotionalImages(bookData, theme, ageMin, ageMax, name) {
+    const visualStyle = this._getVisualStyle(ageMin, theme);
+    const basePrompt = `Children's book illustration ${visualStyle}. ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE. No book titles, no captions, no speech bubbles, no labels. Pure visual illustration only.`;
+
+    const additionalImages = [];
+
+    const bookOnWallPrompt = `${basePrompt} A beautifully illustrated children's book titled "${bookData.book_title}" lying on a rustic wooden wall. The book cover shows ${name} in a magical scene. Soft sunlight, cozy atmosphere.`;
+    const bookOnWallImage = await this.generateImageWithGemini(
+      bookOnWallPrompt,
+      {
+        useProModel: true,
+      },
+    );
+    additionalImages.push(bookOnWallImage);
+
+    const parentChildReadingPrompt = `${basePrompt} A loving parent and child (age ${ageMin}-${ageMax}) reading the book "${bookData.book_title}" together on a cozy couch. Warm lighting, happy expressions, magical story atmosphere.`;
+    const parentChildReadingImage = await this.generateImageWithGemini(
+      parentChildReadingPrompt,
+      {
+        useProModel: true,
+      },
+    );
+    additionalImages.push(parentChildReadingImage);
+
+    const magicalSettingPrompt = `${basePrompt} The book "${bookData.book_title}" open on a magical floating platform in a fantasy forest. Glowing fairies, sparkling lights, enchanted atmosphere.`;
+    const magicalSettingImage = await this.generateImageWithGemini(
+      magicalSettingPrompt,
+      {
+        useProModel: true,
+      },
+    );
+    additionalImages.push(magicalSettingImage);
+
+    return additionalImages;
   }
 
   async generateMediaAndSave(storyTemplate, userId) {
@@ -731,13 +896,10 @@ You will return the story as a single JSON object with the following format:
       is_personalizable,
       is_public,
     } = storyTemplate;
-
     const ageMinNum = parseInt(age_min, 10);
     const ageMaxNum = parseInt(age_max, 10);
-
     let user = null;
     let savedBook = null;
-
     try {
       try {
         user = await User.findById(userId);
@@ -747,7 +909,6 @@ You will return the story as a single JSON object with the following format:
       } catch (userError) {
         console.error("Failed to fetch user for notification:", userError);
       }
-
       if (user && user.email) {
         try {
           await emailService.bookgenerationorpersonalisation(
@@ -762,16 +923,13 @@ You will return the story as a single JSON object with the following format:
           console.error("Failed to send processing email:", emailError);
         }
       }
-
       if (!theme) {
         throw new ErrorHandler(
           "Theme/Genre field is missing from the story template.",
           400,
         );
       }
-
       console.log(`Starting background media generation for: ${book_title}`);
-
       console.log("Step 1/3: Generating Cover Image...");
       const coverImage = await this.generateCoverImage(
         storyTemplate,
@@ -781,8 +939,18 @@ You will return the story as a single JSON object with the following format:
         ageMinNum,
       );
       console.log("Cover Image complete.");
+      console.log("Step 2/3: Generating Promotional Images...");
+      const promotionalImages = await this.generatePromotionalImages(
+        storyTemplate,
+        theme,
+        ageMinNum,
+        ageMaxNum,
+        name,
+      );
+      console.log("Promotional Images complete.");
+      console.log("Step 3/3: Generating Chapter Images (sequentially)...");
 
-      console.log("Step 2/3: Generating Chapter Images (sequentially)...");
+      // THIS WAS THE MISSING METHOD CAUSING THE CRASH
       const images = await this.generateImagesForChapters(
         chapters,
         ageMinNum,
@@ -797,8 +965,7 @@ You will return the story as a single JSON object with the following format:
         clothing,
       );
       console.log("Chapter Images complete.");
-
-      console.log("Step 3/3: Generating Veo Animation...");
+      console.log("Step 4/3: Generating Veo Animation...");
       const veoAnimation = await this.generateVeoAnimation(
         storyTemplate,
         theme,
@@ -808,17 +975,14 @@ You will return the story as a single JSON object with the following format:
         gender,
       );
       console.log("Veo Animation complete.");
-
       console.log(
         `Media generation complete for: ${book_title}. Preparing to save.`,
       );
-
       const chaptersWithImages = chapters.map((chapter, index) => ({
         ...chapter,
         image_url: images[index]?.url || null,
         image_provider: images[index]?.provider || "none",
       }));
-
       const finalBookData = {
         user_id: userId.toString(),
         book_title,
@@ -834,6 +998,7 @@ You will return the story as a single JSON object with the following format:
         age_min: age_min.toString(),
         age_max: age_max.toString(),
         cover_image: [coverImage.url],
+        promotional_images: promotionalImages.map((img) => img.url),
         genre: theme,
         author: author || name,
         price: price || 0,
@@ -844,13 +1009,10 @@ You will return the story as a single JSON object with the following format:
         is_public: is_public || false,
         video_url: veoAnimation.veo_animation.video_uri,
       };
-
       savedBook = await BookTemplate.create(finalBookData);
-
       console.log(
         `SUCCESS: Background job finished and saved book: ${book_title}`,
       );
-
       if (user && user.email) {
         try {
           await emailService.bookgenerationorpersonalisation(
@@ -868,13 +1030,11 @@ You will return the story as a single JSON object with the following format:
           console.error("Failed to send success email:", emailError);
         }
       }
-
       return savedBook;
     } catch (error) {
       console.error(`FATAL: Background job failed for book: ${book_title}`);
       console.error(error);
       console.log(error);
-
       if (user && user.email) {
         try {
           await emailService.bookgenerationorpersonalisation(
@@ -894,77 +1054,21 @@ You will return the story as a single JSON object with the following format:
           console.error("Failed to send failure email:", emailError);
         }
       }
-
       throw error;
     }
   }
 
-  async generateImagesForChapters(
-    chapters,
-    age_min,
-    gender,
-    name,
-    theme,
-    skin_tone,
-    hair_type,
-    hairstyle,
-    hair_color,
-    eye_color,
-    clothing,
-  ) {
-    const images = [];
-
-    for (let i = 0; i < chapters.length; i++) {
-      const chapter = chapters[i];
-      try {
-        console.log(
-          `Generating image for chapter ${i + 1}/${chapters.length}...`,
-        );
-
-        const cleanImageDescription = this.sanitizeImagePrompt(
-          chapter.image_description,
-        );
-        const visualStyle = this._getVisualStyle(age_min, theme);
-
-        const safePrompt = `Children's storybook illustration ${visualStyle}.
-        Main character: ${name}, a ${gender} child with ${skin_tone} skin, ${hair_color} ${hairstyle} ${hair_type} hair, ${eye_color} eyes, wearing ${clothing}.
-        Scene: ${cleanImageDescription}.
-        ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
-        No book titles, no captions, no speech bubbles, no labels.
-        Pure visual illustration only with bright, friendly, whimsical, child-friendly style.`;
-
-        const imageResult = await this.generateImageWithOpenAI(safePrompt);
-        images.push(imageResult);
-
-        console.log(`Successfully generated image for chapter ${i + 1}`);
-      } catch (error) {
-        console.error(
-          `Critical error in generateImagesForChapters loop ${i + 1}:`,
-          error,
-        );
-        images.push({
-          url: `https://via.placeholder.com/1024x1024/4A90E2/FFFFFF?text=Image+Coming+Soon`,
-          provider: "error",
-        });
-      }
-    }
-
-    return images.filter((result) => result.url !== null);
-  }
-
   async generateCoverImage(storyData, gender, name, theme, age_min) {
     const visualStyle = this._getVisualStyle(age_min, theme);
-
     const safePrompt = `Children's book illustration ${visualStyle}.
     A magical and joyful scene featuring the main character, ${name}, a ${gender} child protagonist.
     The image should be bright, friendly, and enchanting, suitable for a children's storybook.
     ABSOLUTELY NO TEXT, WORDS, LETTERS, OR WRITING OF ANY KIND IN THE IMAGE.
     No book titles, no captions, no speech bubbles, no labels.
     Pure visual illustration only with captivating magical atmosphere. NO TEXT whatsoever`;
-
     try {
-      const coverResult = await this.generateImageWithOpenAI(safePrompt, {
-        quality: "hd",
+      const coverResult = await this.generateImageWithGemini(safePrompt, {
+        useProModel: true,
       });
       return coverResult;
     } catch (error) {

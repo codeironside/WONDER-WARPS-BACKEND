@@ -1,5 +1,6 @@
 import ImageValidator from "../../../../../CORE/services/openai/validatePicture/index.js";
 import ErrorHandler from "../../../../../CORE/middleware/errorhandler/index.js";
+import { sendResponse } from "../../../../../CORE/utils/response.handler/index.js";
 const imageValidator = new ImageValidator();
 
 export const validateImageFile = async (req, res, next) => {
@@ -24,15 +25,7 @@ export const validateImageFile = async (req, res, next) => {
       userId,
       criteria,
     );
-
-    res.json({
-      success: true,
-      data: {
-        imageUrl: result.imageUrl,
-        characteristics: result.characteristics,
-        message: "Image validated successfully",
-      },
-    });
+    sendResponse(res, 200, "image validated successfully", result);
   } catch (error) {
     next(error);
   }

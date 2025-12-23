@@ -27,7 +27,8 @@ const chapterSchema = new mongoose.Schema(
     },
     image_url: {
       type: String,
-      maxlength: 1000,
+      // Increased max length for DB just in case, though S3 URLs are short
+      // Base64 is handled by S3Service before saving
       default: null,
     },
     book_template_id: {
@@ -116,6 +117,11 @@ const bookTemplateSchema = new mongoose.Schema(
         message: "At least one cover image is required",
       },
     },
+    // [FIX] Added promotional_images to Mongoose Schema
+    promotional_images: {
+      type: [String],
+      default: [],
+    },
     genre: {
       type: String,
       default: null,
@@ -175,6 +181,7 @@ const BookTemplateModel = mongoose.model("BookTemplate", bookTemplateSchema);
 class BookTemplate {
   static s3Service = new S3Service();
 
+  // [FIX] Updated Joi Schema to allow large Base64 strings and promotional_images
   static validationSchema = Joi.object({
     user_id: Joi.string().hex().length(24).required(),
     book_title: Joi.string().trim().min(3).max(255).required(),
@@ -189,7 +196,14 @@ class BookTemplate {
     gender: Joi.string().required(),
     age_min: Joi.string().required(),
     age_max: Joi.string().allow(null, "").optional(),
-    cover_image: Joi.array().items(Joi.string().uri()).min(1).required(),
+    // Allow up to 15MB characters for Base64 inputs
+    cover_image: Joi.array()
+      .items(Joi.string().max(15000000))
+      .min(1)
+      .required(),
+    promotional_images: Joi.array()
+      .items(Joi.string().max(15000000))
+      .optional(),
     genre: Joi.string().allow(null, "").optional(),
     author: Joi.string().allow(null, "").optional(),
     price: Joi.number().precision(2).min(0).allow(null).optional(),
@@ -200,7 +214,8 @@ class BookTemplate {
           chapter_content: Joi.string().required(),
           image_description: Joi.string().max(1000).allow(null, "").optional(),
           image_position: Joi.string().max(50).allow(null, "").optional(),
-          image_url: Joi.string().uri().max(1000000).allow(null, "").optional(),
+          // Allow up to 15MB characters for Base64 inputs
+          image_url: Joi.string().max(15000000).allow(null, "").optional(),
         }),
       )
       .default([]),
@@ -217,6 +232,7 @@ class BookTemplate {
   }
 
   static async create(data) {
+    // 1. Validate incoming data (Base64 is allowed here due to updated Joi max limits)
     const { error, value: validatedData } = this.validationSchema.validate(
       data,
       {
@@ -238,6 +254,7 @@ class BookTemplate {
       );
     }
 
+    // 2. Upload Base64 images to S3 and replace with URLs
     try {
       await this.uploadMediaToS3(validatedData);
     } catch (error) {
@@ -249,7 +266,7 @@ class BookTemplate {
     session.startTransaction();
 
     try {
-      console.log(validatedData);
+      console.log("Saving Book Template to DB...");
       const newTemplate = new BookTemplateModel(validatedData);
       await newTemplate.save({ session });
 
@@ -261,7 +278,7 @@ class BookTemplate {
             chapter.image_description?.substring(0, 1000) || null,
           image_position:
             chapter.image_position?.substring(0, 50) || "full scene",
-          image_url: chapter.image_url?.substring(0, 1000) || null,
+          image_url: chapter.image_url || null, // S3 URL is short enough now
           book_template_id: newTemplate._id,
           order: index,
         }));
@@ -284,26 +301,27 @@ class BookTemplate {
   static async uploadMediaToS3(templateData) {
     console.log("Uploading media to S3...");
 
+    // 1. Upload Cover Images
     if (templateData.cover_image && Array.isArray(templateData.cover_image)) {
       const uploadedCoverImages = [];
-
       for (const imageUrl of templateData.cover_image) {
-        if (!imageUrl) {
-          throw new ErrorHandler("Cover image URL cannot be empty", 400);
-        }
-
+        if (!imageUrl) continue;
         try {
-          console.log(`Uploading cover image: ${imageUrl}`);
-          const s3Key = this.s3Service.generateImageKey(
-            `books/${templateData.book_title}/covers`,
-            imageUrl,
-          );
-          const s3Url = await this.s3Service.uploadImageFromUrl(
-            imageUrl,
-            s3Key,
-          );
-          console.log(`Cover image uploaded to: ${s3Url}`);
-          uploadedCoverImages.push(s3Url);
+          // Detect if it's base64 (starts with data:) or already a URL
+          if (imageUrl.startsWith("data:")) {
+            const s3Key = this.s3Service.generateImageKey(
+              `books/${templateData.book_title}/covers`,
+              imageUrl,
+            );
+            const s3Url = await this.s3Service.uploadImageFromUrl(
+              imageUrl,
+              s3Key,
+            );
+            console.log(`Cover image uploaded to: ${s3Url}`);
+            uploadedCoverImages.push(s3Url);
+          } else {
+            uploadedCoverImages.push(imageUrl);
+          }
         } catch (error) {
           console.error(`Failed to upload cover image: ${error.message}`);
           throw new ErrorHandler(
@@ -312,12 +330,41 @@ class BookTemplate {
           );
         }
       }
-
       templateData.cover_image = uploadedCoverImages;
-    } else {
-      throw new ErrorHandler("Cover image is required", 400);
     }
 
+    // 2. [FIX] Upload Promotional Images
+    if (
+      templateData.promotional_images &&
+      Array.isArray(templateData.promotional_images)
+    ) {
+      const uploadedPromoImages = [];
+      for (const imageUrl of templateData.promotional_images) {
+        if (!imageUrl) continue;
+        try {
+          if (imageUrl.startsWith("data:")) {
+            const s3Key = this.s3Service.generateImageKey(
+              `books/${templateData.book_title}/promotional`,
+              imageUrl,
+            );
+            const s3Url = await this.s3Service.uploadImageFromUrl(
+              imageUrl,
+              s3Key,
+            );
+            console.log(`Promo image uploaded to: ${s3Url}`);
+            uploadedPromoImages.push(s3Url);
+          } else {
+            uploadedPromoImages.push(imageUrl);
+          }
+        } catch (error) {
+          console.error(`Failed to upload promo image: ${error.message}`);
+          // Don't throw here, just skip failed promo images
+        }
+      }
+      templateData.promotional_images = uploadedPromoImages;
+    }
+
+    // 3. Upload Video
     if (templateData.video_url) {
       try {
         console.log(`Uploading video: ${templateData.video_url}`);
@@ -337,24 +384,30 @@ class BookTemplate {
       }
     }
 
+    // 4. Upload Chapter Images
     if (templateData.chapters && Array.isArray(templateData.chapters)) {
       for (const chapter of templateData.chapters) {
         if (!chapter.image_url) continue;
 
         try {
-          console.log(`Uploading chapter image: ${chapter.image_url}`);
-          const s3Key = this.s3Service.generateImageKey(
-            `books/${templateData.book_title}/chapters`,
-            chapter.image_url,
-          );
-          const s3Url = await this.s3Service.uploadImageFromUrl(
-            chapter.image_url,
-            s3Key,
-          );
-          console.log(`Chapter image uploaded to: ${s3Url}`);
-          chapter.image_url = s3Url;
+          if (chapter.image_url.startsWith("data:")) {
+            console.log(
+              `Uploading chapter image for ${chapter.chapter_title}...`,
+            );
+            const s3Key = this.s3Service.generateImageKey(
+              `books/${templateData.book_title}/chapters`,
+              chapter.image_url,
+            );
+            const s3Url = await this.s3Service.uploadImageFromUrl(
+              chapter.image_url,
+              s3Key,
+            );
+            console.log(`Chapter image uploaded: ${s3Url}`);
+            chapter.image_url = s3Url;
+          }
         } catch (error) {
           console.error(`Failed to upload chapter image: ${error.message}`);
+          chapter.image_url = null; // Clear if failed
         }
       }
     }

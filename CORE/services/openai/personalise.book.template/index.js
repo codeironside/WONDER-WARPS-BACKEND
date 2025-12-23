@@ -1000,11 +1000,10 @@ REQUIREMENTS:
         console.log("Generating image with OpenAI...");
 
         const requestOptions = {
-          model: "dall-e-3",
+          model: "gpt-image-1.5",
           prompt: safePrompt,
           n: 1,
           size: "1024x1024",
-          response_format: "b64_json",
           ...options,
         };
 

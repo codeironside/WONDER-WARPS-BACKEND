@@ -31,9 +31,8 @@ export class AWSEmailCore {
   }
 
   async getRawMessageContent(messageId) {
-    const { GetRawMessageContentCommand } = await import(
-      "@aws-sdk/client-workmailmessageflow"
-    );
+    const { GetRawMessageContentCommand } =
+      await import("@aws-sdk/client-workmailmessageflow");
     const command = new GetRawMessageContentCommand({
       MessageId: messageId,
     });
